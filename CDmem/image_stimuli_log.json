@@ -1,0 +1,806 @@
+{
+  "seed": 42,
+  "n_images": 200,
+  "images": [
+    {
+      "filename": "snowglobe",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\snowglobe.png"
+    },
+    {
+      "filename": "bull",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\bull.png"
+    },
+    {
+      "filename": "apron",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\apron.png"
+    },
+    {
+      "filename": "usbkey",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\usbkey.png"
+    },
+    {
+      "filename": "freezer02",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\freezer02.png"
+    },
+    {
+      "filename": "escalator",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\escalator.png"
+    },
+    {
+      "filename": "dustpan",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\dustpan.png"
+    },
+    {
+      "filename": "cessna",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\cessna.png"
+    },
+    {
+      "filename": "tuque03a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\tuque03a.png"
+    },
+    {
+      "filename": "broccoli01a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\broccoli01a.png"
+    },
+    {
+      "filename": "storagebin",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\storagebin.png"
+    },
+    {
+      "filename": "woodenpegs",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\woodenpegs.png"
+    },
+    {
+      "filename": "pot02a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\pot02a.png"
+    },
+    {
+      "filename": "boot02b",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\boot02b.png"
+    },
+    {
+      "filename": "rug01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\rug01.png"
+    },
+    {
+      "filename": "lockingplier",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\lockingplier.png"
+    },
+    {
+      "filename": "awning",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\awning.png"
+    },
+    {
+      "filename": "avocado01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\avocado01.png"
+    },
+    {
+      "filename": "bowtie",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\bowtie.png"
+    },
+    {
+      "filename": "dropper01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\dropper01.png"
+    },
+    {
+      "filename": "electricdrumset",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\electricdrumset.png"
+    },
+    {
+      "filename": "parkingmeter",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\parkingmeter.png"
+    },
+    {
+      "filename": "sand",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\sand.png"
+    },
+    {
+      "filename": "armchair02",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\armchair02.png"
+    },
+    {
+      "filename": "puttyknife",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\puttyknife.png"
+    },
+    {
+      "filename": "date",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\date.png"
+    },
+    {
+      "filename": "toaster01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\toaster01.png"
+    },
+    {
+      "filename": "solderingwire",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\solderingwire.png"
+    },
+    {
+      "filename": "telescope",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\telescope.png"
+    },
+    {
+      "filename": "waterbottle01b",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\waterbottle01b.png"
+    },
+    {
+      "filename": "litterbox",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\litterbox.png"
+    },
+    {
+      "filename": "drum01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\drum01.png"
+    },
+    {
+      "filename": "metronome",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\metronome.png"
+    },
+    {
+      "filename": "rope03",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\rope03.png"
+    },
+    {
+      "filename": "fridge",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\fridge.png"
+    },
+    {
+      "filename": "airhockeytable",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\airhockeytable.png"
+    },
+    {
+      "filename": "christmasball",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\christmasball.png"
+    },
+    {
+      "filename": "tape02a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\tape02a.png"
+    },
+    {
+      "filename": "wafflemaker",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\wafflemaker.png"
+    },
+    {
+      "filename": "hedgetrimmer",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\hedgetrimmer.png"
+    },
+    {
+      "filename": "toast",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\toast.png"
+    },
+    {
+      "filename": "chimpanzee",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\chimpanzee.png"
+    },
+    {
+      "filename": "drill01b",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\drill01b.png"
+    },
+    {
+      "filename": "headphones02b",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\headphones02b.png"
+    },
+    {
+      "filename": "watermelon01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\watermelon01.png"
+    },
+    {
+      "filename": "videocamera01a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\videocamera01a.png"
+    },
+    {
+      "filename": "key07",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\key07.png"
+    },
+    {
+      "filename": "boxingglove01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\boxingglove01.png"
+    },
+    {
+      "filename": "interlockingbuildingblock03b",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\interlockingbuildingblock03b.png"
+    },
+    {
+      "filename": "hikingshoe01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\hikingshoe01.png"
+    },
+    {
+      "filename": "sandbagthrowgame",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\sandbagthrowgame.png"
+    },
+    {
+      "filename": "flamingo",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\flamingo.png"
+    },
+    {
+      "filename": "barbecue03",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\barbecue03.png"
+    },
+    {
+      "filename": "motorcycle",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\motorcycle.png"
+    },
+    {
+      "filename": "pokerset",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\pokerset.png"
+    },
+    {
+      "filename": "carkey",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\carkey.png"
+    },
+    {
+      "filename": "kettle01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\kettle01.png"
+    },
+    {
+      "filename": "book",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\book.png"
+    },
+    {
+      "filename": "powerchair",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\powerchair.png"
+    },
+    {
+      "filename": "generator",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\generator.png"
+    },
+    {
+      "filename": "shorts01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\shorts01.png"
+    },
+    {
+      "filename": "scrubbingbrush05b",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\scrubbingbrush05b.png"
+    },
+    {
+      "filename": "iron01b",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\iron01b.png"
+    },
+    {
+      "filename": "recyclingbin",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\recyclingbin.png"
+    },
+    {
+      "filename": "cutleryset",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\cutleryset.png"
+    },
+    {
+      "filename": "binoculars01b",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\binoculars01b.png"
+    },
+    {
+      "filename": "barrel01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\barrel01.png"
+    },
+    {
+      "filename": "earthermometer",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\earthermometer.png"
+    },
+    {
+      "filename": "gasburner",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\gasburner.png"
+    },
+    {
+      "filename": "starfish01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\starfish01.png"
+    },
+    {
+      "filename": "wateringcan",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\wateringcan.png"
+    },
+    {
+      "filename": "brick",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\brick.png"
+    },
+    {
+      "filename": "swan",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\swan.png"
+    },
+    {
+      "filename": "toyxylophone",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\toyxylophone.png"
+    },
+    {
+      "filename": "moccasin",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\moccasin.png"
+    },
+    {
+      "filename": "ironingboard01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\ironingboard01.png"
+    },
+    {
+      "filename": "clock04",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\clock04.png"
+    },
+    {
+      "filename": "jeans01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\jeans01.png"
+    },
+    {
+      "filename": "hubcap",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\hubcap.png"
+    },
+    {
+      "filename": "dolly01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\dolly01.png"
+    },
+    {
+      "filename": "flashlight02b",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\flashlight02b.png"
+    },
+    {
+      "filename": "blackberry",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\blackberry.png"
+    },
+    {
+      "filename": "satellitedish01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\satellitedish01.png"
+    },
+    {
+      "filename": "coffeepot03a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\coffeepot03a.png"
+    },
+    {
+      "filename": "plasticbottle",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\plasticbottle.png"
+    },
+    {
+      "filename": "wineglass01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\wineglass01.png"
+    },
+    {
+      "filename": "skiboot01a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\skiboot01a.png"
+    },
+    {
+      "filename": "motoroilbottle01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\motoroilbottle01.png"
+    },
+    {
+      "filename": "ziplocbag",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\ziplocbag.png"
+    },
+    {
+      "filename": "fonduefuel",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\fonduefuel.png"
+    },
+    {
+      "filename": "protractor",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\protractor.png"
+    },
+    {
+      "filename": "tomatojuice",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\tomatojuice.png"
+    },
+    {
+      "filename": "hairdryer02a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\hairdryer02a.png"
+    },
+    {
+      "filename": "belltower01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\belltower01.png"
+    },
+    {
+      "filename": "egg01a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\egg01a.png"
+    },
+    {
+      "filename": "visor",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\visor.png"
+    },
+    {
+      "filename": "grater01a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\grater01a.png"
+    },
+    {
+      "filename": "leek",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\leek.png"
+    },
+    {
+      "filename": "floortile02",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\floortile02.png"
+    },
+    {
+      "filename": "bikewheel",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\bikewheel.png"
+    },
+    {
+      "filename": "donotentersign",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\donotentersign.png"
+    },
+    {
+      "filename": "railwaycrossingsign",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\railwaycrossingsign.png"
+    },
+    {
+      "filename": "safe",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\safe.png"
+    },
+    {
+      "filename": "rockingchair",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\rockingchair.png"
+    },
+    {
+      "filename": "painttray",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\painttray.png"
+    },
+    {
+      "filename": "laptop01a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\laptop01a.png"
+    },
+    {
+      "filename": "motorboat02",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\motorboat02.png"
+    },
+    {
+      "filename": "chalkboarderaser01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\chalkboarderaser01.png"
+    },
+    {
+      "filename": "strawbasket01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\strawbasket01.png"
+    },
+    {
+      "filename": "windowblinds02",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\windowblinds02.png"
+    },
+    {
+      "filename": "ethernetcable02",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\ethernetcable02.png"
+    },
+    {
+      "filename": "tree",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\tree.png"
+    },
+    {
+      "filename": "polarbear",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\polarbear.png"
+    },
+    {
+      "filename": "flag",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\flag.png"
+    },
+    {
+      "filename": "mailtruck",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\mailtruck.png"
+    },
+    {
+      "filename": "ledflashlight",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\ledflashlight.png"
+    },
+    {
+      "filename": "sportbag",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\sportbag.png"
+    },
+    {
+      "filename": "webcam",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\webcam.png"
+    },
+    {
+      "filename": "ceilingfan01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\ceilingfan01.png"
+    },
+    {
+      "filename": "peanut01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\peanut01.png"
+    },
+    {
+      "filename": "oven",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\oven.png"
+    },
+    {
+      "filename": "bottleofwhitewine",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\bottleofwhitewine.png"
+    },
+    {
+      "filename": "bassguitar",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\bassguitar.png"
+    },
+    {
+      "filename": "bucket02",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\bucket02.png"
+    },
+    {
+      "filename": "chiliflake",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\chiliflake.png"
+    },
+    {
+      "filename": "tiger02",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\tiger02.png"
+    },
+    {
+      "filename": "thermometer02b",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\thermometer02b.png"
+    },
+    {
+      "filename": "bikelock",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\bikelock.png"
+    },
+    {
+      "filename": "kitchenscale01a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\kitchenscale01a.png"
+    },
+    {
+      "filename": "kiddiepool",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\kiddiepool.png"
+    },
+    {
+      "filename": "mug01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\mug01.png"
+    },
+    {
+      "filename": "fanblades",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\fanblades.png"
+    },
+    {
+      "filename": "almond",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\almond.png"
+    },
+    {
+      "filename": "cabbage",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\cabbage.png"
+    },
+    {
+      "filename": "shelves",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\shelves.png"
+    },
+    {
+      "filename": "tennisball01b",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\tennisball01b.png"
+    },
+    {
+      "filename": "zebra",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\zebra.png"
+    },
+    {
+      "filename": "stackingring01a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\stackingring01a.png"
+    },
+    {
+      "filename": "manshoe",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\manshoe.png"
+    },
+    {
+      "filename": "chocolatefonduedish",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\chocolatefonduedish.png"
+    },
+    {
+      "filename": "slipper01b",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\slipper01b.png"
+    },
+    {
+      "filename": "africanelephant",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\africanelephant.png"
+    },
+    {
+      "filename": "pumpkin",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\pumpkin.png"
+    },
+    {
+      "filename": "paperairplane",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\paperairplane.png"
+    },
+    {
+      "filename": "cookie01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\cookie01.png"
+    },
+    {
+      "filename": "fanheater",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\fanheater.png"
+    },
+    {
+      "filename": "moth",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\moth.png"
+    },
+    {
+      "filename": "beermug01a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\beermug01a.png"
+    },
+    {
+      "filename": "pencilsharpener02a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\pencilsharpener02a.png"
+    },
+    {
+      "filename": "grater",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\grater.png"
+    },
+    {
+      "filename": "chessknight03a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\chessknight03a.png"
+    },
+    {
+      "filename": "lock03a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\lock03a.png"
+    },
+    {
+      "filename": "greenolive",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\greenolive.png"
+    },
+    {
+      "filename": "paintscraper",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\paintscraper.png"
+    },
+    {
+      "filename": "glassescase",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\glassescase.png"
+    },
+    {
+      "filename": "bracelet01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\bracelet01.png"
+    },
+    {
+      "filename": "boatmotor",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\boatmotor.png"
+    },
+    {
+      "filename": "couch02",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\couch02.png"
+    },
+    {
+      "filename": "pingpongpaddle01a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\pingpongpaddle01a.png"
+    },
+    {
+      "filename": "book01b",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\book01b.png"
+    },
+    {
+      "filename": "sapsucker",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\sapsucker.png"
+    },
+    {
+      "filename": "kiwi03",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\kiwi03.png"
+    },
+    {
+      "filename": "scarf",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\scarf.png"
+    },
+    {
+      "filename": "rainboot",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\rainboot.png"
+    },
+    {
+      "filename": "waterlily",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\waterlily.png"
+    },
+    {
+      "filename": "aceofdiamond",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\aceofdiamond.png"
+    },
+    {
+      "filename": "glass02a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\glass02a.png"
+    },
+    {
+      "filename": "clipboard",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\clipboard.png"
+    },
+    {
+      "filename": "scotchtape",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\scotchtape.png"
+    },
+    {
+      "filename": "airvent",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\airvent.png"
+    },
+    {
+      "filename": "salsa",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\salsa.png"
+    },
+    {
+      "filename": "cookingpot",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\cookingpot.png"
+    },
+    {
+      "filename": "matches",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\matches.png"
+    },
+    {
+      "filename": "lipstick",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\lipstick.png"
+    },
+    {
+      "filename": "lifejacket",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\lifejacket.png"
+    },
+    {
+      "filename": "pylon01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\pylon01.png"
+    },
+    {
+      "filename": "candy",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\candy.png"
+    },
+    {
+      "filename": "ashtray01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\ashtray01.png"
+    },
+    {
+      "filename": "mask02a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\mask02a.png"
+    },
+    {
+      "filename": "gamecontroller01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\gamecontroller01.png"
+    },
+    {
+      "filename": "baguette01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\baguette01.png"
+    },
+    {
+      "filename": "bananas",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\bananas.png"
+    },
+    {
+      "filename": "jack",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\jack.png"
+    },
+    {
+      "filename": "eraser",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\eraser.png"
+    },
+    {
+      "filename": "lighter01",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\lighter01.png"
+    },
+    {
+      "filename": "backgammon",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\backgammon.png"
+    },
+    {
+      "filename": "sdcard",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\sdcard.png"
+    },
+    {
+      "filename": "petcarrier",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\petcarrier.png"
+    },
+    {
+      "filename": "killerwhale",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\killerwhale.png"
+    },
+    {
+      "filename": "plasticbasket01a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\plasticbasket01a.png"
+    },
+    {
+      "filename": "linedpaper",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\linedpaper.png"
+    },
+    {
+      "filename": "handblender",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\handblender.png"
+    },
+    {
+      "filename": "electricrazor",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\electricrazor.png"
+    },
+    {
+      "filename": "wirestripper",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\wirestripper.png"
+    },
+    {
+      "filename": "bookshelf",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\bookshelf.png"
+    },
+    {
+      "filename": "caulking",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\caulking.png"
+    },
+    {
+      "filename": "mrpotatohead",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\mrpotatohead.png"
+    },
+    {
+      "filename": "notebook03a",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\notebook03a.png"
+    },
+    {
+      "filename": "redfox",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\redfox.png"
+    },
+    {
+      "filename": "bubbleblower",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\stimuli_datasets\\IMAGINE\\familiar\\png\\bubbleblower.png"
+    }
+  ]
+}

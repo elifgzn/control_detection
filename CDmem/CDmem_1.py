@@ -163,7 +163,7 @@ if AUTO_TEST:
     SIMULATE = True
     CHECK_MODE = True
 else:
-    expInfo = {"participant": "", "session": "001", "simulate": False, "check_mode": True}
+    expInfo = {"participant": "", "session": "001", "simulate": False, "check_mode": False}
     dlg = gui.DlgFromDict(expInfo, order=["participant", "session", "simulate", "check_mode"], title=expName)
     if not dlg.OK:
         core.quit()  # User pressed Cancel
@@ -176,10 +176,10 @@ else:
 # CHECK_MODE uses minimal trials so the experimenter can quickly verify
 # that the script runs correctly end-to-end.
 if CHECK_MODE:
-    CHECK_CALIBRATION_TRIALS = 20    # Minimum trials for staircase
+    CHECK_CALIBRATION_TRIALS = 10    # Minimum trials for staircase
     CHECK_TEST_TRIALS_PER_LEVEL = 5  # Trials per difficulty level per block
 else:
-    CHECK_CALIBRATION_TRIALS = 60    # Full calibration
+    CHECK_CALIBRATION_TRIALS = 30    # Full calibration
     CHECK_TEST_TRIALS_PER_LEVEL = 25 # Full test (4 levels × 25 = 100 trials per block)
 
 if CHECK_MODE:
@@ -705,7 +705,7 @@ SPEED_MULTIPLIER = 1.5    # Multiply trajectory velocities to make shapes move f
 # ─────────────────────────────────────────────────────────────────────────────
 
 IMAGINE_DIR  = pathlib.Path(r"C:\Users\elifg\Desktop\PHD\stimuli_datasets\IMAGINE\familiar\png")
-IMAGE_SIZE   = (40, 40)   # Display size in pixels — matches the 40×40 px shapes
+IMAGE_SIZE   = (100, 100)   # Display size in pixels — matches the 40×40 px shapes
 N_IMAGES     = 200        # Number of images to sample from the full set
 IMAGE_SEED   = 42         # Fixed seed for reproducible sampling across runs
 IMAGE_LOG    = pathlib.Path(__file__).parent / "image_stimuli_log.json"
@@ -813,6 +813,20 @@ image_pairs = make_image_pairs(sampled_images)
 
 # Global index into image_pairs — incremented by each test trial
 pair_index = 0
+
+# ── Sample 200 FOIL images for the memory test ───────────────────────────────
+# Foils are the 200 familiar images NOT used in the experiment.
+# We identify them by subtracting the sampled set from the full set.
+_sampled_stems = {d['filename'] for d in sampled_images}
+_all_pngs      = sorted(IMAGINE_DIR.glob("*.png"))
+_foil_pool     = [p for p in _all_pngs if p.stem not in _sampled_stems]
+
+# Use the same participant-specific RNG (already used above) to sample foils
+_foil_rng  = random.Random(int(hashlib.md5((expInfo['participant'] + '_foil').encode()).hexdigest(), 16) % (2**32))
+foil_images = [
+    {'filename': p.stem, 'path': str(p)}
+    for p in _foil_rng.sample(_foil_pool, N_IMAGES)
+]
 
 # Fixation cross shown at the start of each trial
 fix = visual.TextStim(win, "+", color="white", height=60)
@@ -1651,6 +1665,137 @@ def run_test_block_for_level(threshold_75, level_name, prop_value,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  MEMORY TEST
+#  After all 4 test blocks, participants complete a yes/no recognition test.
+#  400 images are shown one at a time (200 seen during the experiment +
+#  200 unseen foils). For each image, participants press:
+#    A = Yes (I saw this during the experiment)
+#    S = No  (I did not see this during the experiment)
+#  Logged per item: filename, seen/unseen ground truth, response, accuracy, RT.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def run_memory_test(seen_images, foil_images_list):
+    """
+    Run the yes/no recognition memory test.
+
+    Parameters
+    ----------
+    seen_images      : list of dicts {'filename', 'path'} — the 200 images
+                       shown during the experiment (ground truth = 'seen')
+    foil_images_list : list of dicts {'filename', 'path'} — 200 new images
+                       never shown during the experiment (ground truth = 'unseen')
+
+    Each item is shown one at a time. Participant presses:
+      A = Yes (seen before)   |   S = No (not seen before)
+    No time limit per item.
+
+    Logged per item (appended to the main CSV via thisExp):
+      mem_item_num    : item number within the memory test (1–400)
+      mem_filename    : image filename stem
+      mem_ground_truth: 'seen' or 'unseen'
+      mem_response    : 'yes' or 'no'
+      mem_accuracy    : 1 if correct, 0 if incorrect
+      mem_rt          : response time in seconds
+    """
+    global global_trial_counter
+
+    # Build the full 400-item list: tag each image with its ground truth
+    mem_items = (
+        [{'filename': d['filename'], 'path': d['path'], 'ground_truth': 'seen'}
+         for d in seen_images] +
+        [{'filename': d['filename'], 'path': d['path'], 'ground_truth': 'unseen'}
+         for d in foil_images_list]
+    )
+
+    # Shuffle with a participant-specific seed for reproducibility
+    _mem_rng = random.Random(
+        int(hashlib.md5((expInfo['participant'] + '_mem').encode()).hexdigest(), 16) % (2**32)
+    )
+    _mem_rng.shuffle(mem_items)
+
+    print(f"\nMemory test: {len(mem_items)} items (200 seen + 200 unseen)")
+
+    # Pre-create a large ImageStim; we'll update its image each trial
+    mem_img_stim = visual.ImageStim(win, size=(300, 300))
+    mem_prompt   = visual.TextStim(
+        win,
+        text="Have you seen this object during the experiment before?\n\nA = Yes          S = No",
+        pos=(0, -220), color='white', height=26, wrapWidth=900
+    )
+
+    for item_num, item in enumerate(mem_items, start=1):
+        global_trial_counter += 1
+
+        # Load image for this item
+        mem_img_stim.image = item['path']
+        mem_img_stim.pos   = (0, 80)   # Slightly above centre; prompt sits below
+
+        # Draw image + prompt and start timing
+        event.clearEvents(eventType='keyboard')
+        mem_img_stim.draw()
+        mem_prompt.draw()
+        win.flip()
+        item_onset = core.getTime()
+
+        # Wait for A or S (no time limit)
+        mem_response = None
+        mem_rt       = np.nan
+
+        if SIMULATE:
+            core.wait(0.2)
+            mem_response = _mem_rng.choice(['yes', 'no'])
+            mem_rt       = 0.2
+        else:
+            while mem_response is None:
+                keys = event.getKeys(['a', 's', 'escape'], timeStamped=True)
+                if keys:
+                    key, key_time = keys[0]
+                    if key == 'escape':
+                        _save(); core.quit()
+                    elif key == 'a':
+                        mem_response = 'yes'
+                        mem_rt       = key_time - item_onset
+                    elif key == 's':
+                        mem_response = 'no'
+                        mem_rt       = key_time - item_onset
+                core.wait(0.01)
+
+        # Accuracy: correct if 'yes' for seen, 'no' for unseen
+        ground_truth  = item['ground_truth']
+        mem_correct   = int(
+            (mem_response == 'yes' and ground_truth == 'seen') or
+            (mem_response == 'no'  and ground_truth == 'unseen')
+        )
+
+        # Brief blank between items
+        win.flip()
+        core.wait(0.3)
+
+        # Log to main CSV
+        thisExp.addData('trial_num',        global_trial_counter)
+        thisExp.addData('participant',      expInfo['participant'])
+        thisExp.addData('session',          expInfo['session'])
+        thisExp.addData('phase',            'memory_test')
+        thisExp.addData('mem_item_num',     item_num)
+        thisExp.addData('mem_filename',     item['filename'])
+        thisExp.addData('mem_ground_truth', ground_truth)
+        thisExp.addData('mem_response',     mem_response)
+        thisExp.addData('mem_accuracy',     mem_correct)
+        thisExp.addData('mem_rt',           mem_rt)
+        thisExp.nextEntry()
+
+        # Optional mid-test break every 100 items
+        if item_num % 100 == 0 and item_num < len(mem_items):
+            msg.text = (f"Memory test: {item_num} of {len(mem_items)} done.\n\n"
+                        f"Take a short break if needed.\n\n"
+                        f"Press SPACE to continue.")
+            msg.draw(); win.flip()
+            wait_keys(['space', 'escape'])
+
+    print(f"Memory test complete. {len(mem_items)} items judged.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  INSTRUCTION SCREENS
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1834,6 +1979,31 @@ for block_idx, level_name in enumerate(block_order):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  MEMORY TEST PHASE
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Show transition instructions before the memory test
+msg.text = """MEMORY TEST
+
+The main experiment is now complete.
+
+You will now see a series of objects, one at a time.
+For each object, decide whether you saw it during the experiment.
+
+  A = Yes, I saw this object during the experiment
+  S = No, I did not see this object
+
+There are 400 objects in total. Take your time — there is no time limit.
+
+Press SPACE to begin the memory test."""
+msg.draw(); win.flip()
+wait_keys(['space', 'escape'])
+
+# Run the memory test (200 seen + 200 foils, shuffled)
+run_memory_test(sampled_images, foil_images)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  END OF EXPERIMENT
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1850,6 +2020,7 @@ Your data have been recorded.
 Summary:
   Calibrated threshold: {threshold_75:.2f}
   Blocks completed: {TOTAL_BLOCKS}
+  Memory test: complete
 
 Press SPACE to exit."""
 msg.draw(); win.flip(); wait_keys()

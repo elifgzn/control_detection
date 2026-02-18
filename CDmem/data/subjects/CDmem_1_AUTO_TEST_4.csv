@@ -1,0 +1,2 @@
+﻿thisRow.t,notes,trial_num,participant,session,phase,n_shapes,block_num,staircase_trial,prop_used,accuracy,is_timeout,rt_choice,early_response,true_shape,resp_shape,angle_bias,applied_angle_bias,consecutive_correct,reversals,current_staircase_prop,mean_evidence,sum_evidence,var_evidence,target_snippet_id,distractor_snippet_ids,participant,session,
+,,1,AUTO_TEST,001,calibration,2,0,1,0.25,1,False,0.3,False,dot,dot,0,0,1,0,0.25,0.2602369403403622,47.10288620160556,12.728403682575124,178,[np.int64(1018)],AUTO_TEST,001,
