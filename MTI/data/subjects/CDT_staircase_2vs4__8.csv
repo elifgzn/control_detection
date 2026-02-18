@@ -1,0 +1,2 @@
+﻿thisRow.t,notes,trial_num,participant,session,phase,n_shapes,block_num,staircase_trial,prop_used,accuracy,is_timeout,rt_choice,early_response,true_shape,resp_shape,angle_bias,applied_angle_bias,consecutive_correct,reversals,current_staircase_prop,mean_evidence,sum_evidence,var_evidence,participant,session,block_order,
+,,1,,001,calibration,4,1,1,0.25,0,False,3.8446191999828443,False,circle,square,0,0,0,0,0.3,1.9410195433580824,351.3245373478129,207.85265970503943,,001,4shape_first,

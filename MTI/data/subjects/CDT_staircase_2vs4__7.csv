@@ -1,0 +1,8 @@
+﻿thisRow.t,notes,trial_num,participant,session,phase,n_shapes,block_num,staircase_trial,prop_used,accuracy,is_timeout,rt_choice,early_response,true_shape,resp_shape,angle_bias,applied_angle_bias,consecutive_correct,reversals,current_staircase_prop,mean_evidence,sum_evidence,var_evidence,participant,session,
+,,1,,001,calibration,2,1,1,0.25,1,False,2.570573900011368,False,square,square,0,0,1,0,0.25,-0.3598728788031952,-65.13699106337833,3.5000887224479387,,001,
+,,2,,001,calibration,2,1,2,0.25,0,False,1.4397337000118569,False,dot,square,0,0,0,0,0.3,2.8745043385550937,520.285285278472,295.1488400781981,,001,
+,,3,,001,calibration,2,1,3,0.3,1,False,1.162319800001569,False,square,square,0,0,1,0,0.3,2.720071652809685,492.33296915855294,429.73747377225584,,001,
+,,4,,001,calibration,2,1,4,0.3,1,False,0.28251109999837354,False,square,square,0,0,2,0,0.3,1.2786774828965612,231.44062440427757,307.24707587455106,,001,
+,,5,,001,calibration,2,1,5,0.3,0,False,0.5861296000075527,False,dot,square,0,0,0,0,0.35,2.296883585768598,415.7359290241162,195.28329043240848,,001,
+,,6,,001,calibration,2,1,6,0.35,1,False,1.222974799980875,False,dot,dot,0,0,1,0,0.35,4.61978379332267,826.9412990047579,272.51623918932785,,001,
+,,7,,001,calibration,2,1,7,0.35,0,False,0.5297006999608129,False,dot,square,0,0,0,0,0.39999999999999997,8.116014218450426,1468.9985735395271,395.11466218192544,,001,
