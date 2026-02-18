@@ -1,0 +1,90 @@
+﻿Project Idea
+Agency as Multi-Timescale Inference: Serial Dependence and Temporal Integration in Control Detection
+
+
+1. Background and Rationale
+The sense of agency (SoA)—the experience of controlling one’s actions and their effects—is increasingly understood as an inferential, context-sensitive process rather than a binary on/off signal. Recent work shows that SoA depends not only on current sensorimotor congruence, but also on history: previous stimuli and previous choices systematically bias current judgments of control (e.g. Stern et al., 2022). Research on serial dependence in visual perception has revealed that behavior reflects the superposition of at least two processes operating over time: repulsive stimulus history effects and attractive choice history effects (Fritsche et al., 2017; Bosch et al., 2020).
+One open question is how these history effects unfold across multiple timescales, and whether the temporal integration window for agency is fixed or adapts to task complexity and uncertainty. Bayesian and sequential sampling models predict that when current evidence is weak or ambiguous, the system should rely more strongly on prior information and potentially integrate information over a longer temporal horizon. This prediction has been tested in low-level perception, but not systematically in the domain of agency.
+
+
+2. Core Idea
+We propose to study agency as a multi-timescale inference process, in which the brain integrates sensorimotor evidence and recent history over variable temporal windows that adapt to task complexity. Concretely, we will examine how stimulus history (objective control levels) and choice history (previous agency judgements) influence current control-detection performance and SoA ratings, and whether the strength and temporal extent of these history effects differ between low and high complexity conditions.
+
+
+3. Experimental Design
+We will adapt a continuous control-detection task. On each trial, participants move a cursor while several shapes move on the screen. The cursor movement will influence the motion of one shape. It will be completely independent of the other shapes’ trajectories.
+
+
+
+
+* Complexity factor (2 levels):
+
+   * Easy: 2 shapes (1 target, 1 distractor)
+
+   * Complex: 4 shapes (1 target, 3 distractors)
+
+      * Control evidence (within each complexity):
+The target’s trajectory is a weighted mixture of the participant’s movement and prerecorded noise. The self-motion proportion is individually calibrated in a short staircase for each condition to find a threshold T (~75% correct). Four control levels are then defined around T (T−0.10, T−0.05, T, T+0.05, T+0.10) and used in both complexity conditions, ensuring comparable evidence distributions.
+
+      * Task:
+On each trial, participants indicate which shape they controlled (2AFC in the Easy condition, 4AFC in the Complex condition) and then rate how much control they felt over the chosen shape on a 1–7 scale.
+
+
+4. Analysis Strategy
+We will treat current responses as the outcome of a history-sensitive inference process and apply two complementary modeling approaches:
+         1. Lag-by-lag logistic regression (sliding window):
+For each participant and condition, we will dissociate stimulus history (control levels) from choice history (previous accuracy/decisions) and estimate their influence at varying lags separately in Easy vs Complex conditions.
+
+         2. Parametric exponential decay models:
+Since lag-by-lag coefficients are most likely to show a monotonic decay, we will fit an exponential decay function where w parameterizes the temporal integration window. Larger w implies a longer effective memory for past trials. Comparing w between Easy and Complex conditions will directly test whether complexity lengthens the temporal integration window for agency-related decisions.
+
+The same framework will be applied to subjective SoA ratings to test whether the multi-timescale structure seen in performance also appears at the subjective level.
+
+
+
+
+
+
+
+
+5. Hypotheses
+            1. Two-process structure:
+
+               * Stimulus history will produce repulsive effects (e.g. after low control, current low control is perceived as “more self”), whereas choice history will produce attractive effects (tendency to repeat previous agency attributions).
+
+                  2. Complexity-dependent gain and window:
+
+                     * In the Complex condition, both stimulus and choice history coefficients will be stronger at lag-1 and will remain significant at longer lags (lag-2, lag-3) relative to the Easy condition.
+
+                     * Exponential decay models will yield larger decay parameters w in the Complex condition, indicating a longer temporal integration window under high complexity.
+
+                        3. Alignment of performance and subjective SoA:
+
+                           * ?
+
+
+6. Expected Contributions
+Conceptually, the project frames agency as a multi-timescale inference process, in which the brain dynamically adjusts how far back in time it integrates evidence about control depending on task complexity and uncertainty. Methodologically, it imports serial dependence tools (history dissociation, sliding window, exponential kernels) into control-detection research, providing a rigorous way to quantify temporal integration windows for agency.
+
+
+Additional Study - Design to be determined
+
+So far, we’ve treated agency as something that unfolds across trials: previous stimuli and choices bias current judgments over many seconds or minutes. But agency is also built within a single trial, moment by moment, as the system continuously evaluates “Does this feel like me?” while sensorimotor signals stream in.
+A natural way to describe this is in terms of a within-trial temporal integration process with a time constant τ:
+                           * At each instant, the system gets a tiny piece of evidence about control (e.g., “current movement matches my intention” vs “feels off”).
+
+                           * These samples are not used in isolation; they are integrated over time into a running internal estimate of “how likely is it that I am in control right now?”
+
+                           * τ describes how long past evidence remains influential: A short τ means fast forgetting and strong emphasis on the most recent moments.
+A long τ means slow forgetting and broader pooling of evidence over the whole action.
+
+Conceptually, this is like a leaky integrator: recent sensorimotor evidence pushes the internal state toward “self” or “not self,” but the trace of past evidence gradually decays with a timescale set by τ. Different τ values correspond to different micro-timescales of agency: With a short τ, agency behaves more like a “snapshot”: the system is highly responsive to what is happening right now, and older fluctuations are quickly discounted. With a long τ, agency behaves more like a “running average”: the system tolerates brief mismatches and relies on a longer history of coherence before updating its judgment.
+
+This within-trial τ naturally complements the across-trial history effects:
+                              * Across trials, we ask: How far back does the system remember previous outcomes when forming a new judgment? (serial dependence and exponential decay with parameter w).
+
+                              * Within a trial, τ asks: How far back does the system remember previous moments within a single action episode when deciding whether this felt self-generated?
+
+Thinking of agency as multi-timescale inference means:
+At the fast scale, τ governs how sensorimotor evidence is integrated over hundreds of milliseconds to a few seconds within a trial. At the slow scale, history parameters (like w) govern how previous trials’ outcomes bias new judgments over dozens of seconds or minutes.
+Together, these parameters provide a way to think about how much the system is taking the past into account when deciding if it is in control or not.
