@@ -195,6 +195,20 @@ else:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  SCREENSHOT SETTINGS
+#  Screenshots are saved automatically at the first frame of each phase.
+#  Saved to: CDmem/screenshots/screenshot_calibration.png etc.
+# ─────────────────────────────────────────────────────────────────────────────
+
+SCREENSHOTS_DIR = pathlib.Path(__file__).parent / "screenshots"
+SCREENSHOTS_DIR.mkdir(exist_ok=True)
+
+# Tracks which phases have already had a screenshot saved this session.
+# Keys: 'calibration', 'test', 'memory_test'
+_screenshots_saved = set()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  MOTION LIBRARY
 #  Pre-recorded cursor movement snippets are stored as velocity arrays in
 #  core_pool.npy. Each snippet is a sequence of (dx, dy) displacements.
@@ -1233,6 +1247,8 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
         applied_angle = int(rng.choice([90, -90]))
 
     # ── MOTION PHASE: exactly 3 seconds, no response allowed ────────────────
+    # Two screenshots per phase: frame 1 (starting positions) + frame 30 (~0.5 s in, mid-motion)
+    _SCREENSHOT_FRAMES = {1: 'frame001', 30: 'frame030'}
     while clk.getTime() < MOTION_DURATION:
         # Get current mouse position and compute displacement from last frame
         x, y = mouse.getPos()
@@ -1335,6 +1351,16 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
                 _save(); core.quit()
 
         stim_A.draw(); stim_B.draw(); win.flip()
+
+        # ── Screenshots: frame 1 (start) + frame 30 (~0.5 s, mid-motion) ────────
+        if frame in _SCREENSHOT_FRAMES:
+            key = f"{phase}_{_SCREENSHOT_FRAMES[frame]}"
+            if key not in _screenshots_saved:
+                fname = SCREENSHOTS_DIR / f"screenshot_{key}.png"
+                win.getMovieFrame(buffer='front')
+                win.saveMovieFrames(str(fname))
+                _screenshots_saved.add(key)
+                print(f"[Screenshot] Saved: {fname}")
 
     # ── RESPONSE PHASE ───────────────────────────────────────────────────────
     # After the motion phase ends, a response screen appears.
@@ -1736,6 +1762,14 @@ def run_memory_test(seen_images, foil_images_list):
         mem_prompt.draw()
         win.flip()
         item_onset = core.getTime()
+
+        # Screenshot: capture the very first memory test item
+        if item_num == 1 and 'memory_test' not in _screenshots_saved:
+            fname = SCREENSHOTS_DIR / "screenshot_memory_test.png"
+            win.getMovieFrame(buffer='front')
+            win.saveMovieFrames(str(fname))
+            _screenshots_saved.add('memory_test')
+            print(f"[Screenshot] Saved: {fname}")
 
         # Wait for A or S (no time limit)
         mem_response = None
