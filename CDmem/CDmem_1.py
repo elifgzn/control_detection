@@ -50,6 +50,8 @@ import hashlib
 import json
 import subprocess
 from itertools import permutations  # Used for counterbalancing block order
+import serial #for sending triggers via triggerbox
+import time 
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -97,7 +99,38 @@ def check_and_run_with_correct_python():
 if check_and_run_with_correct_python():
     sys.exit(0)
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# INITIALIZE TRIGGERBOX
+USE_TRIGGERS = True  # Set to False to disable EEG triggers manually
+
+# Replace 'COM3' with the actual port found in Device Manager
+try:
+    if USE_TRIGGERS:
+        port = serial.Serial('COM3') 
+        port.write(b'\x00')  # Ensure it starts at zero
+        TRIGGERBOX_READY = True
+    else:
+        print("EEG triggers are DISABLED via USE_TRIGGERS flag.")
+        TRIGGERBOX_READY = False
+        port = None
+except Exception as e:
+    print(f"WARNING: Could not connect to TriggerBox on COM3: {e}")
+    print("Experiment will continue without EEG triggers.")
+    TRIGGERBOX_READY = False
+    port = None
+
+def send_trigger(val):
+    """Sends a trigger byte and resets it after a short delay."""
+    if not TRIGGERBOX_READY or port is None:
+        return
+    try:
+        port.write(bytes([val]))      # Set the trigger lines
+        time.sleep(0.01)              # Wait 10ms (standard pulse width)
+        port.write(b'\x00')           # Reset all lines to zero
+    except Exception as e:
+        print(f"Error sending trigger {val}: {e}")
+
+# ---------------------------------------------------------------------------
 #  IMPORTS (available after interpreter check)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1200,6 +1233,16 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
         right_label = stim_left_label
     stim_A.draw(); stim_B.draw(); win.flip()
 
+    # ── EEG Triggers: Stimulus Onset ────────────────────────────────────────
+    trigger_stim_onset = np.nan
+    if phase == "test" and difficulty_level:
+        try:
+            level_idx = int(difficulty_level.split('_')[-1])
+            trigger_stim_onset = 10 + level_idx
+            send_trigger(trigger_stim_onset)
+        except (ValueError, IndexError):
+            pass
+
     # ── Wait for mouse movement to start ────────────────────────────────────
     # The trial doesn't begin until the participant moves the mouse.
     # This ensures the motion phase always starts with active mouse input.
@@ -1247,6 +1290,16 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
         applied_angle = int(rng.choice([90, -90]))
 
     # ── MOTION PHASE: exactly 3 seconds, no response allowed ────────────────
+    # EEG Triggers: Motion Start
+    trigger_motion_start = np.nan
+    if phase == "test" and difficulty_level:
+        try:
+            level_idx = int(difficulty_level.split('_')[-1])
+            trigger_motion_start = 20 + level_idx
+            send_trigger(trigger_motion_start)
+        except (ValueError, IndexError):
+            pass
+
     # Two screenshots per phase: frame 1 (starting positions) + frame 30 (~0.5 s in, mid-motion)
     _SCREENSHOT_FRAMES = {1: 'frame001', 30: 'frame030'}
     while clk.getTime() < MOTION_DURATION:
@@ -1381,6 +1434,16 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
         msg.draw(); win.flip()
         key_to_label = {'a': 'square', 's': 'dot'}
 
+    # EEG Triggers: Response Screen Onset
+    trigger_resp_onset = np.nan
+    if phase == "test" and difficulty_level:
+        try:
+            level_idx = int(difficulty_level.split('_')[-1])
+            trigger_resp_onset = 30 + level_idx
+            send_trigger(trigger_resp_onset)
+        except (ValueError, IndexError):
+            pass
+
     resp_shape = None
     rt_choice  = np.nan
 
@@ -1402,6 +1465,12 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
 
     # Accuracy: 1 if participant identified the correct target, 0 otherwise
     correct = int(resp_shape == target)
+
+    # EEG Triggers: Response Value
+    trigger_resp_val = np.nan
+    if phase == "test":
+        trigger_resp_val = 41 if correct else 42
+        send_trigger(trigger_resp_val)
 
     # ── CONFIDENCE RATING (test trials only) ─────────────────────────────────
     # Participants rate how confident they are in their shape choice (1–4 scale).
@@ -1514,6 +1583,11 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
         # Image info (NaN for calibration trials, filenames for test trials)
         img_A_name=img_A_info['filename'] if use_images else np.nan,
         img_B_name=img_B_info['filename'] if use_images else np.nan,
+        # Trigger values for logging
+        trigger_stim_onset=trigger_stim_onset,
+        trigger_motion_start=trigger_motion_start,
+        trigger_resp_onset=trigger_resp_onset,
+        trigger_resp_val=trigger_resp_val
     )
 
 
@@ -1683,6 +1757,11 @@ def run_test_block_for_level(threshold_75, level_name, prop_value,
         thisExp.addData('distractor_snippet_ids',  str(res.get('distractor_snippet_ids', [])))
         thisExp.addData('img_A_name',              res.get('img_A_name', np.nan))
         thisExp.addData('img_B_name',              res.get('img_B_name', np.nan))
+        # Log EEG triggers
+        thisExp.addData('trigger_stim_onset',      res.get('trigger_stim_onset', np.nan))
+        thisExp.addData('trigger_motion_start',    res.get('trigger_motion_start', np.nan))
+        thisExp.addData('trigger_resp_onset',      res.get('trigger_resp_onset', np.nan))
+        thisExp.addData('trigger_resp_val',        res.get('trigger_resp_val', np.nan))
         thisExp.nextEntry()
 
         # Offer a break every 50 trials within a block
@@ -1763,6 +1842,10 @@ def run_memory_test(seen_images, foil_images_list):
         win.flip()
         item_onset = core.getTime()
 
+        # EEG Triggers: Recognition Stimulus Onset
+        mem_trigger_onset = 51 if item['ground_truth'] == 'seen' else 52
+        send_trigger(mem_trigger_onset)
+
         # Screenshot: capture the very first memory test item
         if item_num == 1 and 'memory_test' not in _screenshots_saved:
             fname = SCREENSHOTS_DIR / "screenshot_memory_test.png"
@@ -1801,6 +1884,11 @@ def run_memory_test(seen_images, foil_images_list):
             (mem_response == 'no'  and ground_truth == 'unseen')
         )
 
+        # EEG Triggers: Recognition Participant Response
+        # 61 = Correct (Hit or CR), 62 = Incorrect (Miss or FA)
+        mem_trigger_resp = 61 if mem_correct else 62
+        send_trigger(mem_trigger_resp)
+
         # Brief blank between items
         win.flip()
         core.wait(0.3)
@@ -1816,6 +1904,9 @@ def run_memory_test(seen_images, foil_images_list):
         thisExp.addData('mem_response',     mem_response)
         thisExp.addData('mem_accuracy',     mem_correct)
         thisExp.addData('mem_rt',           mem_rt)
+        # Log EEG triggers
+        thisExp.addData('mem_trigger_onset', mem_trigger_onset)
+        thisExp.addData('mem_trigger_resp',  mem_trigger_resp)
         thisExp.nextEntry()
 
         # Optional mid-test break every 100 items
