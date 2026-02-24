@@ -21,7 +21,7 @@ See [`CDmem/README.md`](CDmem/README.md) for full details.
 
 ## MTI — Multi-Timescale Inference
 
-A separate experiment testing whether agency detection reflects multi-timescale temporal integration, comparing Easy (2-shape) and Complex (4-shape) conditions.
+A separate experiment by https://github.com/SimonKnogler testing whether agency detection reflects multi-timescale temporal integration, comparing Easy (2-shape) and Complex (4-shape) conditions. CDmem was adapted from this experiment.
 
 See [`MTI/README.md`](MTI/README.md) for full details.
 
