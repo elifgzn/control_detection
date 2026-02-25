@@ -1930,27 +1930,22 @@ def run_memory_test(seen_images, foil_images_list):
 def show_initial_instructions():
     """Display the welcome and general task instructions."""
     instructions = [
-        """Welcome to the study.
+        """Dear participant, welcome to the study!
 
-In this session you will see two moving objects on screen.
-Move your mouse and try to figure out which object you are controlling.
+This task involves moving objects on the screen, and figuring out which one is under your control. The experiment consists of 4 blocks with 25 trials each.
 
-The session includes a practice phase (with simple shapes) followed by 4 test blocks (with images).
+In each trial, you will see two objects on the screen.
+You will use the touchpad to move the objects. Only one of them will be controlled by your touchpad movements. After a certain duration, you will be asked to press [A] or [S] to report which object you were controlling. Then, you will receive feedback on whether your response was correct or incorrect. Please try to respond accurately. 
 
-Press SPACE to continue...""",
+After each trial, you will be asked to indicate your feeling of control (on a scale of 1 to 7, where 1 is no control and 7 is full control), and how confident you are in this feeling (on a scale of 1 to 4, where 1 is not confident and 4 is very confident). Please answer by pressing the corresponding number on the keyboard.
 
-        """Response instructions:
+Please respond as accurately as possible throughout the whole experiment. If unsure, make your best guess.
 
-After each trial, you will be asked:
-  1. Which object did you control?
-       Practice: A = Square, S = Circle
-       Test:     A = Left image, S = Right image
-  2. How confident are you in your choice? (1-4)
-  3. How much control did you feel? (1-7)
+Please feel free to ask any questions to the experimenter now.
 
-Please respond as accurately as possible. If unsure, make your best guess.
+Before the main experiment, you will practice the task with simple shapes.
 
-Press SPACE to continue..."""
+Please press SPACE to start the practice block."""
     ]
 
     for instruction in instructions:
@@ -1959,6 +1954,7 @@ Press SPACE to continue..."""
         keys = wait_keys(['space', 'escape'])
         if 'escape' in keys:
             _save(); core.quit()
+
 
 
 def show_calibration_instructions():
