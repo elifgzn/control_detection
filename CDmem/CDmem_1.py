@@ -101,7 +101,7 @@ if check_and_run_with_correct_python():
 
 # ---------------------------------------------------------------------------
 # INITIALIZE TRIGGERBOX
-USE_TRIGGERS = True  # Set to False to disable EEG triggers manually
+USE_TRIGGERS = False  # Set to False to disable EEG triggers manually
 
 # Replace 'COM3' with the actual port found in Device Manager
 try:
@@ -231,14 +231,15 @@ else:
 #  SCREENSHOT SETTINGS
 #  Screenshots are saved automatically at the first frame of each phase.
 #  Saved to: CDmem/screenshots/screenshot_calibration.png etc.
+#  NOTE: Commented out — screenshots already exist.
 # ─────────────────────────────────────────────────────────────────────────────
 
-SCREENSHOTS_DIR = pathlib.Path(__file__).parent / "screenshots"
-SCREENSHOTS_DIR.mkdir(exist_ok=True)
+# SCREENSHOTS_DIR = pathlib.Path(__file__).parent / "screenshots"
+# SCREENSHOTS_DIR.mkdir(exist_ok=True)
 
 # Tracks which phases have already had a screenshot saved this session.
 # Keys: 'calibration', 'test', 'memory_test'
-_screenshots_saved = set()
+# _screenshots_saved = set()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1301,7 +1302,8 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
             pass
 
     # Two screenshots per phase: frame 1 (starting positions) + frame 30 (~0.5 s in, mid-motion)
-    _SCREENSHOT_FRAMES = {1: 'frame001', 30: 'frame030'}
+    # NOTE: Commented out — screenshots already exist.
+    # _SCREENSHOT_FRAMES = {1: 'frame001', 30: 'frame030'}
     while clk.getTime() < MOTION_DURATION:
         # Get current mouse position and compute displacement from last frame
         x, y = mouse.getPos()
@@ -1406,14 +1408,15 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
         stim_A.draw(); stim_B.draw(); win.flip()
 
         # ── Screenshots: frame 1 (start) + frame 30 (~0.5 s, mid-motion) ────────
-        if frame in _SCREENSHOT_FRAMES:
-            key = f"{phase}_{_SCREENSHOT_FRAMES[frame]}"
-            if key not in _screenshots_saved:
-                fname = SCREENSHOTS_DIR / f"screenshot_{key}.png"
-                win.getMovieFrame(buffer='front')
-                win.saveMovieFrames(str(fname))
-                _screenshots_saved.add(key)
-                print(f"[Screenshot] Saved: {fname}")
+        # NOTE: Commented out — screenshots already exist.
+        # if frame in _SCREENSHOT_FRAMES:
+        #     key = f"{phase}_{_SCREENSHOT_FRAMES[frame]}"
+        #     if key not in _screenshots_saved:
+        #         fname = SCREENSHOTS_DIR / f"screenshot_{key}.png"
+        #         win.getMovieFrame(buffer='front')
+        #         win.saveMovieFrames(str(fname))
+        #         _screenshots_saved.add(key)
+        #         print(f"[Screenshot] Saved: {fname}")
 
     # ── RESPONSE PHASE ───────────────────────────────────────────────────────
     # After the motion phase ends, a response screen appears.
