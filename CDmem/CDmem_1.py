@@ -744,7 +744,7 @@ def mix_direction_only(mouse_dx, mouse_dy, traj_dx, traj_dy, prop):
 OFFSET_X         = 300    # Horizontal distance from center to shape start position (px)
 OFFSET_Y         = 150    # Vertical distance from center to shape start position (px)
 LOWPASS          = 0.2    # Low-pass filter weight: lower = less smoothing, more responsive
-SPEED_MULTIPLIER = 1.5    # Multiply trajectory velocities to make shapes move faster
+SPEED_MULTIPLIER = 1.3    # Multiply trajectory velocities to make shapes move faster
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  IMAGINE DATASET CONSTANTS
@@ -753,7 +753,7 @@ SPEED_MULTIPLIER = 1.5    # Multiply trajectory velocities to make shapes move f
 # ─────────────────────────────────────────────────────────────────────────────
 
 IMAGINE_DIR  = pathlib.Path(r"C:\Users\elifg\Desktop\PHD\stimuli_datasets\IMAGINE\familiar\png")
-IMAGE_SIZE   = (100, 100)   # Display size in pixels — matches the 40×40 px shapes
+IMAGE_SIZE   = (200, 200)   # Display size in pixels — matches the 40×40 px shapes
 N_IMAGES     = 200        # Number of images to sample from the full set
 IMAGE_SEED   = 42         # Fixed seed for reproducible sampling across runs
 IMAGE_LOG    = pathlib.Path(__file__).parent / "image_stimuli_log.json"
