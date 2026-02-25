@@ -1935,7 +1935,7 @@ def show_initial_instructions():
 This task involves moving objects on the screen, and figuring out which one is under your control. The experiment consists of 4 blocks with 25 trials each.
 
 In each trial, you will see two objects on the screen.
-You will use the touchpad to move the objects. Only one of them will be controlled by your touchpad movements. After a certain duration, you will be asked to press [A] or [S] to report which object you were controlling. Then, you will receive feedback on whether your response was correct or incorrect. Please try to respond accurately. 
+You will use the touchpad to move the objects. Only one of them will be controlled by your touchpad movements. After a certain duration, you will be asked to press [A] or [S] to report which object you were controlling.  Please try to respond accurately. 
 
 After each trial, you will be asked to indicate your feeling of control (on a scale of 1 to 7, where 1 is no control and 7 is full control), and how confident you are in this feeling (on a scale of 1 to 4, where 1 is not confident and 4 is very confident). Please answer by pressing the corresponding number on the keyboard.
 
@@ -1943,7 +1943,7 @@ Please respond as accurately as possible throughout the whole experiment. If uns
 
 Please feel free to ask any questions to the experimenter now.
 
-Before the main experiment, you will practice the task with simple shapes.
+Before the main experiment, you will practice the task with simple shapes. During the practice block, you will receive feedback on whether your response was correct or incorrect. You won't be asked to indicate your feeling of control or confidence.
 
 Please press SPACE to start the practice block."""
     ]
@@ -1957,22 +1957,22 @@ Please press SPACE to start the practice block."""
 
 
 
-def show_calibration_instructions():
-    """Display instructions for the calibration (practice) phase."""
-    msg.text = """PRACTICE PHASE
+# def show_calibration_instructions():
+#     """Display instructions for the calibration (practice) phase."""
+#     msg.text = """PRACTICE PHASE
 
-In this phase, you will practice the task.
-After each trial, you will receive feedback: "Right" or "Wrong".
+# In this phase, you will practice the task.
+# After each trial, you will receive feedback: "Right" or "Wrong".
 
-This helps us calibrate the task difficulty to your individual level.
+# This helps us calibrate the task difficulty to your individual level.
 
-Response keys:
-  A = Square
-  S = Circle
+# Response keys:
+#   A = Square
+#   S = Circle
 
-Press SPACE to start the practice..."""
-    msg.draw(); win.flip()
-    wait_keys(['space', 'escape'])
+# Press SPACE to start the practice..."""
+#     msg.draw(); win.flip()
+#     wait_keys(['space', 'escape'])
 
 
 def show_test_block_instructions(block_num, total_blocks, level_name):
@@ -1989,17 +1989,17 @@ def show_test_block_instructions(block_num, total_blocks, level_name):
     # as that information could bias their responses.
     msg.text = f"""TEST BLOCK {block_num} of {total_blocks}
 
-You will now see pairs of images moving on screen.
-Move your mouse and decide which image you controlled.
+This was the end of the practice block. 
 
-After each trial:
-  1. Press A (Left image) or S (Right image) to indicate which you controlled
-  2. Rate your confidence (1-4)
-  3. Rate how much control you felt (1-7)
+You will now see pairs of images on screen.
+Use the touchpad to move the images and decide which image was the one you controlled.
 
-No feedback will be shown in this block.
+You will be asked to indicate your decision by pressing [A] or [S]. 
+Remember that you will also be asked to indicate your feeling of control (on a scale of 1 to 7, where 1 is no control and 7 is full control), and how confident you are in this feeling (on a scale of 1 to 4, where 1 is not confident and 4 is very confident), by pressing the corresponding number on the keyboard.
 
-Press SPACE to start Block {block_num}..."""
+No feedback will be shown in the main experiment.
+
+Please press SPACE to start Block {block_num}..."""
     msg.draw(); win.flip()
     wait_keys(['space', 'escape'])
 
@@ -2015,7 +2015,7 @@ show_initial_instructions()
 # Run the 3-up-1-down staircase to find the participant's 75% threshold.
 show_calibration_instructions()
 
-msg.text = ("Calibration Phase: Practice\n\n"
+msg.text = ("Practice Block\n\n"
             "In this block, you will practice the task.\n"
             "You will receive feedback after each response.\n\n"
             "Press SPACE to start.")
@@ -2032,12 +2032,11 @@ expInfo['threshold_75']          = threshold_75
 expInfo['staircase_reversals']   = staircase.reversals
 
 # Show calibration completion screen
-msg.text = """Calibration complete!
+msg.text = """Practice complete!
 
-Your individual difficulty level has been estimated.
 You can take a short break now.
 
-Press SPACE to continue to the main experiment."""
+Please press SPACE to continue to the main experiment."""
 msg.draw(); win.flip(); wait_keys()
 
 # ── Step 3: Calculate 4 difficulty levels ────────────────────────────────────
@@ -2097,8 +2096,8 @@ for block_idx, level_name in enumerate(block_order):
     # Show a break screen between blocks (not after the last block)
     if block_num < TOTAL_BLOCKS:
         msg.text = (f"Block {block_num} of {TOTAL_BLOCKS} complete!\n\n"
-                    f"Take a short break.\n\n"
-                    f"Press SPACE when you are ready to continue.")
+                    f"You can take a short break.\n\n"
+                    f"Please press SPACE when you are ready to continue.")
         msg.draw(); win.flip(); wait_keys()
 
 
@@ -2107,19 +2106,16 @@ for block_idx, level_name in enumerate(block_order):
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Show transition instructions before the memory test
-msg.text = """MEMORY TEST
+msg.text = """
 
-The main experiment is now complete.
+The main experiment is now complete. One last part! 
 
-You will now see a series of objects, one at a time.
-For each object, decide whether you saw it during the experiment.
+You will now see a series of objects on the screen, one at a time.
+For each object, decide whether you saw it during the experiment (old) or not (new). If you have seen the object before (old), press [A]. If you have not seen the object before (new), press [S].
 
-  A = Yes, I saw this object during the experiment
-  S = No, I did not see this object
+Please try to respond as accurately as possible. If unsure, make your best guess.
 
-There are 400 objects in total. Take your time — there is no time limit.
-
-Press SPACE to begin the memory test."""
+Please press SPACE to start."""
 msg.draw(); win.flip()
 wait_keys(['space', 'escape'])
 
@@ -2139,12 +2135,7 @@ print(f"  Block order: {block_order}")
 
 msg.text = f"""Thank you for participating!
 
-Your data have been recorded.
-
-Summary:
-  Calibrated threshold: {threshold_75:.2f}
-  Blocks completed: {TOTAL_BLOCKS}
-  Memory test: complete
+Your data have been recorded. 
 
 Press SPACE to exit."""
 msg.draw(); win.flip(); wait_keys()
