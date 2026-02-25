@@ -1232,6 +1232,11 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
         stim_A.pos = (OFFSET_X, 0);  stim_B.pos = (-OFFSET_X, 0)
         left_label  = stim_right_label
         right_label = stim_left_label
+
+    # Save starting positions so we can reset the images at response time
+    start_pos_A = tuple(stim_A.pos)
+    start_pos_B = tuple(stim_B.pos)
+
     stim_A.draw(); stim_B.draw(); win.flip()
 
     # ── EEG Triggers: Stimulus Onset ────────────────────────────────────────
@@ -1421,21 +1426,58 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
     # ── RESPONSE PHASE ───────────────────────────────────────────────────────
     # After the motion phase ends, a response screen appears.
     # Calibration: A = Square, S = Circle
-    # Test:        A = Left image, S = Right image
+    # Test:        Images are reset to their starting positions.
+    #              A key label is shown below the left image, S below the right.
     event.clearEvents(eventType='keyboard')
-    response_start_time = core.getTime()
+
+    # Key mapping: always based on which image is on which side
+    key_to_label = {'a': left_label, 's': right_label}
+
+    CHOICE_DURATION = 5.0  # Fixed response window (seconds)
 
     if use_images:
-        # Show the two images side-by-side as a reminder during the response
-        stim_A.draw(); stim_B.draw()
-        msg.text = "Which image did you control?\n\nA = Left image          S = Right image"
-        msg.draw(); win.flip()
-        # Map keys to the label of whichever image is on that side
-        key_to_label = {'a': left_label, 's': right_label}
+        # Reset images to their starting positions
+        stim_A.pos = start_pos_A
+        stim_B.pos = start_pos_B
+
+        # ── Build A / S key labels positioned below each image ────────────────
+        # Determine which image is on the left side
+        if start_pos_A[0] < 0:   # stim_A is on the left
+            left_img_x, right_img_x = start_pos_A[0], start_pos_B[0]
+        else:                     # stim_B is on the left
+            left_img_x, right_img_x = start_pos_B[0], start_pos_A[0]
+
+        img_y = 0        # vertical centre of images
+        img_half_h = IMAGE_SIZE[1] / 2  # half height of image stimulus
+        label_y = img_y - img_half_h - 40  # 40 px below the bottom edge
+
+        key_label_A_stim = visual.TextStim(
+            win, text="A", pos=(left_img_x, label_y),
+            height=36, color='white', bold=True, alignText='center'
+        )
+        key_label_S_stim = visual.TextStim(
+            win, text="S", pos=(right_img_x, label_y),
+            height=36, color='white', bold=True, alignText='center'
+        )
+        choice_question = visual.TextStim(
+            win, text="Which image did you control?",
+            pos=(0, 380), height=30, color='white', wrapWidth=1200
+        )
+
+        def draw_choice_screen():
+            stim_A.draw()
+            stim_B.draw()
+            key_label_A_stim.draw()
+            key_label_S_stim.draw()
+            choice_question.draw()
+            win.flip()
     else:
+        # Calibration: plain text prompt
         msg.text = "Which shape did you control?\n\nA = Square          S = Circle"
-        msg.draw(); win.flip()
-        key_to_label = {'a': 'square', 's': 'dot'}
+
+        def draw_choice_screen():
+            msg.draw()
+            win.flip()
 
     # EEG Triggers: Response Screen Onset
     trigger_resp_onset = np.nan
@@ -1449,24 +1491,47 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
 
     resp_shape = None
     rt_choice  = np.nan
+    response_clock = core.Clock()  # Starts now; used for both RT and 5-s window
+
+    draw_choice_screen()
+    response_start_time = response_clock.getTime()  # ≈ 0 — used for RT
 
     if SIMULATE:
+        # Simulate an early response, then wait out the remaining window
         core.wait(0.3)
         resp_shape = rng.choice([stim_left_label, stim_right_label])
-        rt_choice  = 0.3
+        rt_choice  = response_clock.getTime()
+        remaining  = CHOICE_DURATION - rt_choice
+        if remaining > 0:
+            core.wait(remaining)
     else:
-        while resp_shape is None:
+        # Run until the full 5 s are up
+        while response_clock.getTime() < CHOICE_DURATION:
+            elapsed = response_clock.getTime()
+            draw_choice_screen()
             keys = event.getKeys(['a', 's', 'escape'], timeStamped=True)
             if keys:
                 key, key_time = keys[0]
-                if key == "escape":
+                if key == 'escape':
                     _save(); core.quit()
-                elif key in key_to_label:
+                elif key in key_to_label and resp_shape is None:
                     resp_shape = key_to_label[key]
-                    rt_choice  = key_time - response_start_time
+                    rt_choice  = elapsed
+                    # Response recorded — keep drawing the screen until 5 s done
             core.wait(0.01)
 
-    # Accuracy: 1 if participant identified the correct target, 0 otherwise
+        # Timed out — show "Please answer faster" for 2 s
+        if resp_shape is None:
+            resp_shape = 'timeout'
+            timeout_msg = visual.TextStim(
+                win, text="Please answer faster!",
+                pos=(0, 0), height=40, color='yellow', bold=True
+            )
+            timeout_msg.draw(); win.flip()
+            core.wait(2.0)
+
+    # Accuracy: 1 if participant identified the correct target, 0 otherwise.
+    # Timeouts count as incorrect.
     correct = int(resp_shape == target)
 
     # EEG Triggers: Response Value
@@ -1825,10 +1890,21 @@ def run_memory_test(seen_images, foil_images_list):
 
     # Pre-create a large ImageStim; we'll update its image each trial
     mem_img_stim = visual.ImageStim(win, size=(300, 300))
-    mem_prompt   = visual.TextStim(
+
+    # Question text sits below the image
+    mem_question = visual.TextStim(
         win,
-        text="Have you seen this object during the experiment before?\n\nA = Yes          S = No",
-        pos=(0, -220), color='white', height=26, wrapWidth=900
+        text="Have you seen this object during the experiment before?",
+        pos=(0, -200), color='white', height=26, wrapWidth=900
+    )
+    # Key labels: A = Old (left), S = New (right)
+    mem_key_A = visual.TextStim(
+        win, text="A\nOld", pos=(-80, -270),
+        height=28, color='white', bold=True, alignText='center'
+    )
+    mem_key_S = visual.TextStim(
+        win, text="S\nNew", pos=(80, -270),
+        height=28, color='white', bold=True, alignText='center'
     )
 
     for item_num, item in enumerate(mem_items, start=1):
@@ -1838,10 +1914,12 @@ def run_memory_test(seen_images, foil_images_list):
         mem_img_stim.image = item['path']
         mem_img_stim.pos   = (0, 80)   # Slightly above centre; prompt sits below
 
-        # Draw image + prompt and start timing
+        # Draw image + key labels and start timing
         event.clearEvents(eventType='keyboard')
         mem_img_stim.draw()
-        mem_prompt.draw()
+        mem_question.draw()
+        mem_key_A.draw()
+        mem_key_S.draw()
         win.flip()
         item_onset = core.getTime()
 
@@ -1937,7 +2015,7 @@ This task involves moving objects on the screen, and figuring out which one is u
 In each trial, you will see two objects on the screen.
 You will use the touchpad to move the objects. Only one of them will be controlled by your touchpad movements. After a certain duration, you will be asked to press [A] or [S] to report which object you were controlling.  Please try to respond accurately. 
 
-After each trial, you will be asked to indicate your feeling of control (on a scale of 1 to 7, where 1 is no control and 7 is full control), and how confident you are in this feeling (on a scale of 1 to 4, where 1 is not confident and 4 is very confident). Please answer by pressing the corresponding number on the keyboard.
+After each trial, you will be asked to indicate your feeling of control (on a scale of 1 to 7, where 1 is no control and 7 is full control), and how confident you were in your answer to which object you controlled (on a scale of 1 to 4, where 1 is not confident and 4 is very confident). Please answer by pressing the corresponding number on the keyboard.
 
 Please respond as accurately as possible throughout the whole experiment. If unsure, make your best guess.
 
@@ -1995,7 +2073,7 @@ You will now see pairs of images on screen.
 Use the touchpad to move the images and decide which image was the one you controlled.
 
 You will be asked to indicate your decision by pressing [A] or [S]. 
-Remember that you will also be asked to indicate your feeling of control (on a scale of 1 to 7, where 1 is no control and 7 is full control), and how confident you are in this feeling (on a scale of 1 to 4, where 1 is not confident and 4 is very confident), by pressing the corresponding number on the keyboard.
+Remember that you will also be asked to indicate your feeling of control (on a scale of 1 to 7, where 1 is no control and 7 is full control), and how confident you were in your answer to which object you controlled (on a scale of 1 to 4, where 1 is not confident and 4 is very confident), by pressing the corresponding number on the keyboard.
 
 No feedback will be shown in the main experiment.
 
