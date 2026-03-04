@@ -49,7 +49,7 @@ import atexit
 import hashlib
 import json
 import subprocess
-from itertools import permutations  # Used for counterbalancing block order
+
 import serial #for sending triggers via triggerbox
 import time 
 
@@ -213,18 +213,18 @@ if CHECK_MODE:
     CHECK_TEST_TRIALS_PER_LEVEL = 5  # Trials per difficulty level per block
 else:
     CHECK_CALIBRATION_TRIALS = 30    # Full calibration
-    CHECK_TEST_TRIALS_PER_LEVEL = 25 # Full test (4 levels × 25 = 100 trials per block)
+    CHECK_TEST_TRIALS_PER_LEVEL = 20 # 20 trials per miniblock (6 miniblocks × 20 = 120 total)
 
 if CHECK_MODE:
     print("=" * 60)
     print("** CHECK MODE ENABLED — Running minimal trials **")
     print(f"   Calibration: {CHECK_CALIBRATION_TRIALS} trials")
-    print(f"   Test: {CHECK_TEST_TRIALS_PER_LEVEL} trials/level × 4 levels × 4 blocks")
+    print(f"   Test: {CHECK_TEST_TRIALS_PER_LEVEL} trials/miniblock × 6 miniblocks = {CHECK_TEST_TRIALS_PER_LEVEL * 6} total")
     print("=" * 60)
 else:
     print("Running FULL experiment mode")
     print(f"   Calibration: {CHECK_CALIBRATION_TRIALS} trials")
-    print(f"   Test: {CHECK_TEST_TRIALS_PER_LEVEL} trials/level × 4 levels × 4 blocks")
+    print(f"   Test: {CHECK_TEST_TRIALS_PER_LEVEL} trials/miniblock × 6 miniblocks = {CHECK_TEST_TRIALS_PER_LEVEL * 6} total")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1138,9 +1138,8 @@ def calculate_difficulty_levels(threshold_75, step_size=0.08, min_prop=0.05, max
 #    2. Shapes appear; wait for mouse movement to begin
 #    3. Motion phase (3 seconds): shapes move, mouse influences target
 #    4. Response phase: participant presses A (square) or S (circle)
-#    5. Confidence rating (1–4) — test trials only
-#    6. Feedback ("Right"/"Wrong") — calibration trials only
-#    7. Agency rating (1–7) — test trials only
+#    5. Feedback ("Right"/"Wrong") — calibration trials only
+#    6. Agency rating (1–7) — test trials only
 #
 #  Returns a dict of trial results for logging.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1540,24 +1539,6 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
         trigger_resp_val = 41 if correct else 42
         send_trigger(trigger_resp_val)
 
-    # ── CONFIDENCE RATING (test trials only) ─────────────────────────────────
-    # Participants rate how confident they are in their shape choice (1–4 scale).
-    confidence_rating = np.nan
-    if phase == "test":
-        if SIMULATE:
-            confidence_rating = float(rng.integers(1, 5))
-        else:
-            msg.text = ("How confident are you in your choice?\n\n"
-                        "1 = Not at all confident\n"
-                        "2 = Slightly confident\n"
-                        "3 = Moderately confident\n"
-                        "4 = Very confident")
-            msg.draw(); win.flip()
-            conf_key = wait_keys(['1', '2', '3', '4', 'escape'])[0]
-            if conf_key == "escape":
-                _save(); core.quit()
-            confidence_rating = int(conf_key)
-            core.wait(0.2)
 
     # ── FEEDBACK (calibration trials only) ───────────────────────────────────
     # During calibration, participants receive immediate feedback so the
@@ -1638,7 +1619,6 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
         applied_angle_bias=applied_angle,
         true_shape=target,
         resp_shape=resp_shape,
-        confidence_rating=confidence_rating,
         accuracy=correct,
         rt_choice=rt_choice,
         agency_rating=agency_rating,
@@ -1811,7 +1791,6 @@ def run_test_block_for_level(threshold_75, level_name, prop_value,
         thisExp.addData('accuracy',                res.get('accuracy', 0))
         thisExp.addData('is_timeout',              res.get('resp_shape') == 'timeout')
         thisExp.addData('rt_choice',               res.get('rt_choice', np.nan))
-        thisExp.addData('confidence_rating',       res.get('confidence_rating', np.nan))
         thisExp.addData('agency_rating',           res.get('agency_rating', np.nan))
         thisExp.addData('early_response',          res.get('early_response', False))
         thisExp.addData('true_shape',              res.get('true_shape', ''))
@@ -2010,18 +1989,18 @@ def show_initial_instructions():
     instructions = [
         """Dear participant, welcome to the study!
 
-This task involves moving objects on the screen, and figuring out which one is under your control. The experiment consists of 4 blocks with 25 trials each.
+This task involves moving objects on the screen, and figuring out which one is under your control. The experiment consists of 6 blocks with 20 trials each.
 
 In each trial, you will see two objects on the screen.
-You will use the touchpad to move the objects. Only one of them will be controlled by your touchpad movements. After a certain duration, you will be asked to press [A] or [S] to report which object you were controlling.  Please try to respond accurately. 
+You will use the touchpad to move the objects. Only one of them will be controlled by your touchpad movements. After a certain duration, you will be asked to press [A] or [S] to report which object you were controlling. Please try to respond accurately.
 
-After each trial, you will be asked to indicate your feeling of control (on a scale of 1 to 7, where 1 is no control and 7 is full control), and how confident you were in your answer to which object you controlled (on a scale of 1 to 4, where 1 is not confident and 4 is very confident). Please answer by pressing the corresponding number on the keyboard.
+After each trial, you will be asked to indicate your feeling of control (on a scale of 1 to 7, where 1 is no control and 7 is full control). Please answer by pressing the corresponding number on the keyboard.
 
 Please respond as accurately as possible throughout the whole experiment. If unsure, make your best guess.
 
 Please feel free to ask any questions to the experimenter now.
 
-Before the main experiment, you will practice the task with simple shapes. During the practice block, you will receive feedback on whether your response was correct or incorrect. You won't be asked to indicate your feeling of control or confidence.
+Before the main experiment, you will practice the task with simple shapes. During the practice block, you will receive feedback on whether your response was correct or incorrect. You won't be asked to indicate your feeling of control.
 
 Please press SPACE to start the practice block."""
     ]
@@ -2053,31 +2032,23 @@ Please press SPACE to start the practice block."""
 #     wait_keys(['space', 'escape'])
 
 
-def show_test_block_instructions(block_num, total_blocks, level_name):
+def show_test_phase_instructions():
     """
-    Display instructions before each test block.
-
-    Parameters
-    ----------
-    block_num    : int — current block number (1-indexed)
-    total_blocks : int — total number of test blocks
-    level_name   : str — difficulty level label (not shown to participant)
+    Display transition instructions shown ONCE after calibration,
+    before the first miniblock of test trials.
     """
-    # Note: we deliberately do NOT tell participants the difficulty level,
-    # as that information could bias their responses.
-    msg.text = f"""TEST BLOCK {block_num} of {total_blocks}
-
-This was the end of the practice block. 
+    msg.text = """Well done — the practice block is now complete!
 
 You will now see pairs of images on screen.
 Use the touchpad to move the images and decide which image was the one you controlled.
 
-You will be asked to indicate your decision by pressing [A] or [S]. 
-Remember that you will also be asked to indicate your feeling of control (on a scale of 1 to 7, where 1 is no control and 7 is full control), and how confident you were in your answer to which object you controlled (on a scale of 1 to 4, where 1 is not confident and 4 is very confident), by pressing the corresponding number on the keyboard.
+Indicate your decision by pressing [A] or [S].
+After each trial, rate your feeling of control on a scale of 1 to 7
+(1 = no control, 7 = full control) by pressing the corresponding number.
 
-No feedback will be shown in the main experiment.
+No feedback will be shown during the main experiment.
 
-Please press SPACE to start Block {block_num}..."""
+Please press SPACE to start."""
     msg.draw(); win.flip()
     wait_keys(['space', 'escape'])
 
@@ -2117,65 +2088,65 @@ You can take a short break now.
 Please press SPACE to continue to the main experiment."""
 msg.draw(); win.flip(); wait_keys()
 
-# ── Step 3: Calculate 4 difficulty levels ────────────────────────────────────
+# ── Step 3: Calculate difficulty levels ──────────────────────────────────────
 # Derive 4 prop values symmetrically around the calibrated threshold.
-# Level 1 = hardest (threshold - 2*step), Level 4 = easiest (threshold + 2*step)
+# Only level_1 and level_3 are used in the test phase.
+# Level 1 = hardest (threshold - 2*step), Level 3 = somewhat easy (threshold + 1*step)
 levels = calculate_difficulty_levels(threshold_75, step_size=0.08)
 
 print(f"\nDifficulty levels derived from threshold={threshold_75:.3f}:")
 for name, val in levels.items():
     print(f"  {name}: prop={val:.3f}")
 
-# ── Step 4: Determine counterbalanced block order ─────────────────────────────
-# We use all 4! = 24 permutations of the 4 difficulty levels.
-# Each participant (indexed by their participant number mod 24) gets a unique
-# ordering of the 4 test blocks. This ensures that across 24 participants,
-# every possible block order appears exactly once.
+# ── Step 4: Determine miniblock order by participant parity ───────────────────
+# Odd participant number  → starts with level_1: [L1, L3, L1, L3, L1, L3]
+# Even participant number → starts with level_3: [L3, L1, L3, L1, L3, L1]
 try:
     participant_num = int(expInfo["participant"])
 except ValueError:
-    # If participant ID is not a number (e.g. "P01"), derive a number from its hash
+    # If participant ID is not a plain number, derive one from its hash
     participant_num = int(hashlib.sha256(expInfo["participant"].encode()).hexdigest(), 16)
 
-# Generate all 24 permutations of the 4 level names
-all_level_orders = list(permutations(['level_1', 'level_2', 'level_3', 'level_4']))
+starts_with_level1 = (participant_num % 2 == 1)   # odd → level_1 first
+level_A = 'level_1' if starts_with_level1 else 'level_3'
+level_B = 'level_3' if starts_with_level1 else 'level_1'
 
-# Select this participant's block order
-block_order = list(all_level_orders[participant_num % 24])
+miniblock_sequence = [level_A, level_B, level_A, level_B, level_A, level_B]
 
-# Save the block order to expInfo for logging
-expInfo['block_order'] = str(block_order)
+expInfo['miniblock_order'] = str(miniblock_sequence)
+expInfo['starts_with']     = level_A
 
-print(f"\nParticipant {expInfo['participant']} (num={participant_num}): "
-      f"Block order = {block_order}")
+print(f"\nParticipant {expInfo['participant']} (num={participant_num}, "
+      f"{'odd' if starts_with_level1 else 'even'}): "
+      f"Miniblock order = {miniblock_sequence}")
 
-# ── Step 5: Run 4 test blocks ─────────────────────────────────────────────────
-# Each block presents all trials at a single fixed difficulty level.
-# Block order is counterbalanced across participants (see above).
-TOTAL_BLOCKS = 4
+# ── Step 5: Show test phase instructions (once, after calibration) ────────────
+show_test_phase_instructions()
 
-for block_idx, level_name in enumerate(block_order):
-    block_num  = block_idx + 1       # 1-indexed block number
-    prop_value = levels[level_name]  # Self-proportion for this block
+# ── Step 6: Run 6 miniblocks ──────────────────────────────────────────────────
+# Miniblocks alternate between level_1 and level_3 (order set by parity above).
+# Each miniblock contains CHECK_TEST_TRIALS_PER_LEVEL trials (20 in full mode).
+TOTAL_MINIBLOCKS = 6
 
-    # Show block instructions (difficulty level is NOT revealed to participant)
-    show_test_block_instructions(block_num, TOTAL_BLOCKS, level_name)
+for mb_idx, level_name in enumerate(miniblock_sequence):
+    miniblock_num = mb_idx + 1
+    prop_value    = levels[level_name]
 
-    # Run all trials for this block
+    # Run all trials for this miniblock
     run_test_block_for_level(
         threshold_75=threshold_75,
         level_name=level_name,
         prop_value=prop_value,
         num_trials=CHECK_TEST_TRIALS_PER_LEVEL,
-        block_num=block_num,
+        block_num=miniblock_num,
         angle_bias=0
     )
 
-    # Show a break screen between blocks (not after the last block)
-    if block_num < TOTAL_BLOCKS:
-        msg.text = (f"Block {block_num} of {TOTAL_BLOCKS} complete!\n\n"
+    # Show a break screen between miniblocks (not after the last one)
+    if miniblock_num < TOTAL_MINIBLOCKS:
+        msg.text = (f"Miniblock {miniblock_num} of {TOTAL_MINIBLOCKS} complete!\n\n"
                     f"You can take a short break.\n\n"
-                    f"Please press SPACE when you are ready to continue.")
+                    f"Press SPACE when you are ready to continue.")
         msg.draw(); win.flip(); wait_keys()
 
 
@@ -2209,7 +2180,7 @@ final_used = len(used_trajectory_indices)
 print(f"\nExperiment complete!")
 print(f"  Total trajectories used: {final_used}")
 print(f"  Calibrated threshold (75%): {threshold_75:.3f}")
-print(f"  Block order: {block_order}")
+print(f"  Miniblock order: {miniblock_sequence}")
 
 msg.text = f"""Thank you for participating!
 
