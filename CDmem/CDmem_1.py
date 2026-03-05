@@ -748,13 +748,14 @@ SPEED_MULTIPLIER = 1.3    # Multiply trajectory velocities to make shapes move f
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  IMAGINE DATASET CONSTANTS
-#  200 familiar images are sampled from the IMAGINE dataset and used as
-#  moving stimuli in the TEST phase only. Calibration keeps the shapes.
+#  Familiar images are sampled from CARA_prep chosen_stimuli dataset.
+#  They are paired (e.g., alpaca_03s.jpg and alpaca_07s.jpg). We use one from
+#  each pair in the test phase and the other in the memory test phase.
 # ─────────────────────────────────────────────────────────────────────────────
 
-IMAGINE_DIR  = pathlib.Path(r"C:\Users\elifg\Desktop\PHD\stimuli_datasets\IMAGINE\familiar\png")
+IMAGINE_DIR  = pathlib.Path(r"C:\Users\elifg\Desktop\PHD\CARA_prep\stimulus_prep\chosen_stimuli")
 IMAGE_SIZE   = (200, 200)   # Display size in pixels — matches the 40×40 px shapes
-N_IMAGES     = 200        # Number of images to sample from the full set
+N_IMAGES     = 120        # Number of unique pairs needed for TEST phase = 120 trials (6 miniblocks x 20)
 IMAGE_SEED   = 42         # Fixed seed for reproducible sampling across runs
 IMAGE_LOG    = pathlib.Path(__file__).parent / "image_stimuli_log.json"
 
@@ -764,6 +765,59 @@ IMAGE_LOG    = pathlib.Path(__file__).parent / "image_stimuli_log.json"
 # ─────────────────────────────────────────────────────────────────────────────
 
 def sample_and_log_images(img_dir, n, seed):
+    """
+    Randomly sample `n` unique pairs from `img_dir` and split them.
+    
+    Images in `chosen_stimuli` are named like `alpaca_03s.jpg`, `alpaca_07s.jpg`.
+    We group them by the stem before the last underscore, randomly assign one 
+    to test_group and one to recognition_group. Then we sample `n` objects from 
+    these to use in the experiment, leaving the extras unused.
+    
+    Returns:
+       test_images: list of dicts for the test phase
+       recognition_images: list of dicts for the recognition phase (as foils)
+    """
+    all_jpgs = sorted(img_dir.glob("*.jpg"))  # Sort for determinism
+    
+    # Group by object name (everything before the last underscore)
+    from collections import defaultdict
+    pairs = defaultdict(list)
+    for p in all_jpgs:
+        # e.g. "alpaca_03s.jpg" -> stem "alpaca_03s" -> split "_" -> "alpaca"
+        object_name = "_".join(p.stem.split("_")[:-1])
+        pairs[object_name].append(p)
+        
+    # Keep only valid pairs (exactly 2 images)
+    valid_pairs = {k: v for k, v in pairs.items() if len(v) == 2}
+    
+    rng_img  = random.Random(seed)            # Isolated RNG so experiment RNG is unaffected
+    sampled_object_keys = rng_img.sample(list(valid_pairs.keys()), n)
+    
+    test_images = []
+    recognition_images = []
+    
+    for obj_key in sampled_object_keys:
+        img_list = valid_pairs[obj_key]
+        # Randomly assign one to test, one to recognition
+        if rng_img.choice([True, False]):
+            test_images.append({'filename': img_list[0].stem, 'path': str(img_list[0])})
+            recognition_images.append({'filename': img_list[1].stem, 'path': str(img_list[1])})
+        else:
+            test_images.append({'filename': img_list[1].stem, 'path': str(img_list[1])})
+            recognition_images.append({'filename': img_list[0].stem, 'path': str(img_list[0])})
+
+    records = {
+        'seed': seed, 
+        'n_pairs_sampled': n, 
+        'test_images': test_images,
+        'recognition_images': recognition_images
+    }
+
+    with open(IMAGE_LOG, 'w', encoding='utf-8') as f:
+        json.dump(records, f, indent=2)
+
+    print(f"[IMAGINE] Sampled {n} object pairs. Log saved to: {IMAGE_LOG}")
+    return test_images, recognition_images
     """
     Randomly sample `n` PNG images from `img_dir` and write a JSON log.
 
@@ -789,17 +843,23 @@ def sample_and_log_images(img_dir, n, seed):
     return records
 
 
-def make_image_pairs(images):
+def make_image_pairs(images, seed):
     """
-    Pair `images` into non-overlapping pairs: (img[0], img[1]), (img[2], img[3]), ...
-
-    Each image appears in exactly ONE pair — no image is shared across pairs.
-    With N_IMAGES=200 this produces 100 pairs, one per test trial.
-
-    Returns a list of 100 tuples: [(dict_A, dict_B), ...]
+    Pair `test_images` into non-overlapping pairs for simultaneous presentation.
+    
+    Since each object concept only appears once in `test_images`, any random 
+    pairing of two different list elements will naturally pair two DIFFERENT objects.
+    
+    Returns a list of tuples: [(dict_A, dict_B), ...]
     """
     assert len(images) % 2 == 0, "Need an even number of images to form pairs"
-    pairs = [(images[i], images[i + 1]) for i in range(0, len(images), 2)]
+    
+    # Shuffle locally to create random pairings
+    rng_img = random.Random(seed)
+    shuffled = list(images)
+    rng_img.shuffle(shuffled)
+    
+    pairs = [(shuffled[i], shuffled[i + 1]) for i in range(0, len(shuffled), 2)]
     return pairs
 
 
@@ -849,32 +909,20 @@ dot    = visual.Circle(win, 20, fillColor="black", lineColor="black")
 # ── Sample IMAGINE images and build trial pairs ───────────────────────────────
 # Done here (after the window is open) so the log is always written before
 # the experiment starts. The participant dialog has already run at this point.
-sampled_images = sample_and_log_images(IMAGINE_DIR, N_IMAGES, IMAGE_SEED)
+sampled_test_images, foil_images = sample_and_log_images(IMAGINE_DIR, N_IMAGES, IMAGE_SEED)
 
-# Shuffle the sampled list with a participant-specific seed so pair order
-# differs across participants but is reproducible for the same participant.
-_img_rng = random.Random(int(hashlib.md5(expInfo['participant'].encode()).hexdigest(), 16) % (2**32))
-_img_rng.shuffle(sampled_images)
-
-# Build 100 non-overlapping pairs from the shuffled list
-image_pairs = make_image_pairs(sampled_images)
+# Build non-overlapping pairs for the test phase trials
+# Use participant seed so the simultaneous pairings are random but reproducible per participant
+_pair_seed = int(hashlib.md5(expInfo['participant'].encode()).hexdigest(), 16) % (2**32)
+image_pairs = make_image_pairs(sampled_test_images, _pair_seed)
 
 # Global index into image_pairs — incremented by each test trial
 pair_index = 0
 
-# ── Sample 200 FOIL images for the memory test ───────────────────────────────
-# Foils are the 200 familiar images NOT used in the experiment.
-# We identify them by subtracting the sampled set from the full set.
-_sampled_stems = {d['filename'] for d in sampled_images}
-_all_pngs      = sorted(IMAGINE_DIR.glob("*.png"))
-_foil_pool     = [p for p in _all_pngs if p.stem not in _sampled_stems]
-
-# Use the same participant-specific RNG (already used above) to sample foils
-_foil_rng  = random.Random(int(hashlib.md5((expInfo['participant'] + '_foil').encode()).hexdigest(), 16) % (2**32))
-foil_images = [
-    {'filename': p.stem, 'path': str(p)}
-    for p in _foil_rng.sample(_foil_pool, N_IMAGES)
-]
+# ── 200 FOIL images for the memory test ───────────────────────────────
+# We already populated `foil_images` from the paired subset sampled above.
+# The `foil_images` list contains exactly N_IMAGES (120) unseen images that are 
+# the paired counterparts to the `sampled_test_images`.
 
 # Fixation cross shown at the start of each trial
 fix = visual.TextStim(win, "+", color="white", height=60)
@@ -2168,8 +2216,8 @@ Please press SPACE to start."""
 msg.draw(); win.flip()
 wait_keys(['space', 'escape'])
 
-# Run the memory test (200 seen + 200 foils, shuffled)
-run_memory_test(sampled_images, foil_images)
+# Run the memory test (N_IMAGES seen + N_IMAGES foils, shuffled)
+run_memory_test(sampled_test_images, foil_images)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
