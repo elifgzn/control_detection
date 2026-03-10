@@ -196,8 +196,8 @@ if AUTO_TEST:
     SIMULATE = True
     CHECK_MODE = True
 else:
-    expInfo = {"participant": "", "session": "001", "simulate": False, "check_mode": False}
-    dlg = gui.DlgFromDict(expInfo, order=["participant", "session", "simulate", "check_mode"], title=expName)
+    expInfo = {"participant": "", "session": "001", "age": "", "gender": "", "handedness": "", "simulate": False, "check_mode": False}
+    dlg = gui.DlgFromDict(expInfo, order=["participant", "session", "age", "gender", "handedness", "simulate", "check_mode"], title=expName)
     if not dlg.OK:
         core.quit()  # User pressed Cancel
     SIMULATE = bool(expInfo.pop("simulate"))
