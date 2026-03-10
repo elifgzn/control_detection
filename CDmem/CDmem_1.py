@@ -12,10 +12,10 @@ control over moving shapes, and how this detection is influenced by memory
 across trials (serial dependence / history effects).
 
 Experiment structure:
-  1. CALIBRATION PHASE
-     A 3-up-1-down staircase procedure finds each participant's individual
-     75% accuracy threshold — the "self-proportion" (prop) at which they
-     can correctly identify the controlled shape ~75% of the time.
+   1. CALIBRATION PHASE
+     A QUEST+ Bayesian adaptive procedure estimates each participant's
+     psychometric function and finds the "self-proportion" (prop) at which
+     they can correctly identify the controlled shape ~75% of the time.
 
   2. TEST PHASE (4 blocks)
      Four difficulty levels are derived from the calibrated threshold.
@@ -209,10 +209,10 @@ else:
 # CHECK_MODE uses minimal trials so the experimenter can quickly verify
 # that the script runs correctly end-to-end.
 if CHECK_MODE:
-    CHECK_CALIBRATION_TRIALS = 10    # Minimum trials for staircase
+    CHECK_CALIBRATION_TRIALS = 6     # Minimum trials for QUEST+ (matches MTI check mode)
     CHECK_TEST_TRIALS_PER_LEVEL = 5  # Trials per difficulty level per block
 else:
-    CHECK_CALIBRATION_TRIALS = 30    # Full calibration
+    CHECK_CALIBRATION_TRIALS = 60    # Full QUEST+ calibration (matches MTI)
     CHECK_TEST_TRIALS_PER_LEVEL = 20 # 20 trials per miniblock (6 miniblocks × 20 = 120 total)
 
 if CHECK_MODE:
@@ -1031,149 +1031,208 @@ def show_break_screen(trials_completed, total_trials_in_block, block_label):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  3-UP-1-DOWN STAIRCASE
-#  This adaptive procedure finds the "self-proportion" (prop) at which the
-#  participant achieves approximately 75% accuracy.
-#
-#  Rules:
-#    - 3 consecutive correct responses → decrease prop (make task harder)
-#    - 1 incorrect response            → increase prop (make task easier)
-#
-#  Mathematically, this converges to ~79.4% correct, which is close to 75%.
-#  The threshold estimate is the mean prop over the last 8 trials.
+#  QUEST+ HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
 
-class ThreeUpOneDownStaircase:
-    """
-    3-up-1-down adaptive staircase for estimating the 75% accuracy threshold.
+def logit(x):
+    """Convert a probability to logit (log-odds) scale."""
+    x = float(np.clip(x, 1e-6, 1 - 1e-6))
+    return float(np.log(x / (1 - x)))
 
-    Attributes
-    ----------
-    current_prop        : float — current self-proportion value
-    step_size           : float — how much to change prop on each step
-    consecutive_correct : int   — count of consecutive correct responses
-    reversals           : int   — number of direction reversals (used to
-                                  assess convergence)
-    prop_history        : list  — all prop values presented
-    response_history    : list  — all responses (1=correct, 0=incorrect)
-    reversal_props      : list  — prop values at each reversal point
-    """
 
-    def __init__(self, start_prop=0.25, step_size=0.05, min_prop=0.05, max_prop=0.90):
+def inv_logit(z):
+    """Convert a logit value back to probability."""
+    return float(1.0 / (1.0 + np.exp(-z)))
+
+
+def clamp_prop(s):
+    """Clamp a prop value to the valid experiment range [0.02, 0.90]."""
+    return float(np.clip(s, 0.02, 0.90))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  QUEST+ STAIRCASE
+#  Bayesian adaptive procedure to estimate the psychometric function.
+#  Uses entropy-minimising stimulus selection.
+#  Adapted from: MT Inference.py (SimonKnogler / GitHub)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class QuestPlusStaircase:
+    def __init__(self, target_type):
         """
-        Parameters
-        ----------
-        start_prop : float — initial prop (default 0.25 = harder start)
-        step_size  : float — step size for prop adjustments
-        min_prop   : float — minimum allowed prop
-        max_prop   : float — maximum allowed prop
-        """
-        self.current_prop        = start_prop
-        self.step_size           = step_size
-        self.min_prop            = min_prop
-        self.max_prop            = max_prop
-        self.consecutive_correct = 0
-        self.trial_count         = 0
-        self.reversals           = 0
-        self.last_direction      = None   # 'up' or 'down'
-        self.prop_history        = []
-        self.response_history    = []
-        self.reversal_props      = []
-
-    def get_current_prop(self):
-        """Return the prop value to use for the next trial."""
-        return self.current_prop
-
-    def update(self, correct):
-        """
-        Update the staircase based on the participant's response.
+        QUEST+ implementation with entropy-based stimulus selection.
 
         Parameters
         ----------
-        correct : int or bool — 1 if correct, 0 if incorrect
+        target_type : str — 'high' (80% target), 'low' (60% target),
+                            or 'neutral' (calibration, ~40% prior mean)
         """
-        correct = int(correct)
+        self.s_grid      = np.linspace(logit(0.05), logit(0.90), 61)
+        self.alpha_grid  = np.linspace(logit(0.05), logit(0.90), 61)
+        self.beta_grid   = np.geomspace(1.0, 12.0, 25)
+        self.lambda_grid = np.array([0.00, 0.01, 0.02, 0.04, 0.06])
+        self.gamma = 0.5
+        self.target_type = target_type
+
+        if target_type == "high":
+            alpha_mu = logit(0.48)
+        elif target_type == "low":
+            alpha_mu = logit(0.33)
+        else:  # 'neutral' — used for calibration
+            alpha_mu = logit(0.40)
+        alpha_sd = 1.0
+
+        self.prior_alpha = np.exp(-0.5 * ((self.alpha_grid - alpha_mu) / alpha_sd) ** 2)
+        self.prior_alpha /= self.prior_alpha.sum()
+
+        beta_mean, beta_gsd = 2.5, 2.0
+        self.prior_beta = np.exp(-0.5 * ((np.log(self.beta_grid) - np.log(beta_mean)) / np.log(beta_gsd)) ** 2)
+        self.prior_beta /= self.prior_beta.sum()
+
+        self.prior_lambda = np.ones_like(self.lambda_grid) / len(self.lambda_grid)
+
+        self.post_alpha  = self.prior_alpha.copy()
+        self.post_beta   = self.prior_beta.copy()
+        self.post_lambda = self.prior_lambda.copy()
+
+        self.trial_count = 0
+        self.responses   = []
+
+    def psychometric(self, s_logit, alpha, beta, lapse):
+        """p(correct | s; α, β, λ) = γ + (1 − γ − λ) σ(β [s − α])"""
+        sigmoid = 1.0 / (1.0 + np.exp(-beta * (s_logit - alpha)))
+        return self.gamma + (1.0 - self.gamma - lapse) * sigmoid
+
+    def compute_entropy(self, posterior):
+        """Shannon entropy of a probability distribution."""
+        posterior = posterior + 1e-12
+        return -np.sum(posterior * np.log(posterior))
+
+    def select_stimulus_entropy_fast(self):
+        """Select next stimulus by expected-entropy minimisation (subsampled grid for speed)."""
+        s_grid_subset   = self.s_grid[::3]
+        current_entropy = self.compute_entropy(self.post_alpha)
+        best_stimulus, max_info_gain = None, -np.inf
+
+        alpha_mean  = np.sum(self.alpha_grid  * self.post_alpha)
+        beta_mean   = np.sum(self.beta_grid   * self.post_beta)
+        lambda_mean = np.sum(self.lambda_grid * self.post_lambda)
+
+        for s_logit in s_grid_subset:
+            p_correct   = self.psychometric(s_logit, alpha_mean, beta_mean, lambda_mean)
+            p_incorrect = 1.0 - p_correct
+            if p_correct < 1e-6 or p_incorrect < 1e-6:
+                continue
+
+            post_c = np.zeros_like(self.post_alpha)
+            post_i = np.zeros_like(self.post_alpha)
+            for idx, alpha in enumerate(self.alpha_grid):
+                lc = self.psychometric(s_logit, alpha, beta_mean, lambda_mean)
+                post_c[idx] = self.post_alpha[idx] * lc
+                post_i[idx] = self.post_alpha[idx] * (1.0 - lc)
+            post_c /= (post_c.sum() + 1e-12)
+            post_i /= (post_i.sum() + 1e-12)
+
+            expected_entropy = (p_correct * self.compute_entropy(post_c) +
+                                p_incorrect * self.compute_entropy(post_i))
+            info_gain = current_entropy - expected_entropy
+            if info_gain > max_info_gain:
+                max_info_gain = info_gain
+                best_stimulus = s_logit
+
+        if best_stimulus is None:
+            best_stimulus = self.s_grid[len(self.s_grid) // 2]
+        return clamp_prop(inv_logit(best_stimulus))
+
+    def select_stimulus_entropy(self):
+        """Select stimulus using fast entropy approximation."""
+        return self.select_stimulus_entropy_fast()
+
+    def update(self, stimulus_prop, correct):
+        """Bayesian update of the posterior after observing a response."""
+        s_logit  = logit(clamp_prop(stimulus_prop))
+        new_post = np.zeros((len(self.alpha_grid), len(self.beta_grid), len(self.lambda_grid)))
+        for i, alpha in enumerate(self.alpha_grid):
+            for j, beta in enumerate(self.beta_grid):
+                for k, lapse in enumerate(self.lambda_grid):
+                    w = self.post_alpha[i] * self.post_beta[j] * self.post_lambda[k]
+                    p = self.psychometric(s_logit, alpha, beta, lapse)
+                    new_post[i, j, k] = w * (p if correct else 1.0 - p)
+        new_post /= (new_post.sum() + 1e-12)
+        self.post_alpha  = new_post.sum(axis=(1, 2))
+        self.post_beta   = new_post.sum(axis=(0, 2))
+        self.post_lambda = new_post.sum(axis=(0, 1))
         self.trial_count += 1
-        self.prop_history.append(self.current_prop)
-        self.response_history.append(correct)
+        self.responses.append((s_logit, correct))
 
-        if correct:
-            self.consecutive_correct += 1
-            if self.consecutive_correct >= 3:
-                # 3 in a row correct → decrease prop (harder)
-                self.consecutive_correct = 0
-                new_prop = max(self.min_prop, self.current_prop - self.step_size)
-                if self.last_direction == 'up':
-                    self.reversals += 1
-                    self.reversal_props.append(self.current_prop)
-                self.current_prop   = new_prop
-                self.last_direction = 'down'
-        else:
-            # 1 incorrect → increase prop (easier)
-            self.consecutive_correct = 0
-            new_prop = min(self.max_prop, self.current_prop + self.step_size)
-            if self.last_direction == 'down':
-                self.reversals += 1
-                self.reversal_props.append(self.current_prop)
-            self.current_prop   = new_prop
-            self.last_direction = 'up'
+    def get_threshold_sd(self):
+        """Standard deviation of the alpha (threshold) posterior in logits."""
+        mu  = np.sum(self.alpha_grid * self.post_alpha)
+        var = np.sum(self.post_alpha * (self.alpha_grid - mu) ** 2)
+        return float(np.sqrt(var))
 
-    def get_threshold_estimate(self, n_last_trials=8):
-        """
-        Estimate the threshold as the mean prop over the last n trials.
+    def get_threshold_mean(self):
+        """Mean of the alpha (threshold) posterior in logits."""
+        return float(np.sum(self.alpha_grid * self.post_alpha))
 
-        Using the last few trials (rather than all trials) gives a more
-        stable estimate because the staircase has converged by then.
-        """
-        if len(self.prop_history) < n_last_trials:
-            return np.mean(self.prop_history) if self.prop_history else self.current_prop
-        return np.mean(self.prop_history[-n_last_trials:])
-
-    def get_summary(self):
-        """Return a dict of summary statistics for logging."""
+    def posterior_summary(self):
+        """Summary statistics of alpha, beta, and lambda posteriors."""
+        a_mu  = np.sum(self.alpha_grid  * self.post_alpha)
+        a_sd  = np.sqrt(np.sum(self.post_alpha  * (self.alpha_grid  - a_mu) ** 2))
+        b_mu  = np.sum(self.beta_grid   * self.post_beta)
+        b_sd  = np.sqrt(np.sum(self.post_beta   * (self.beta_grid   - b_mu) ** 2))
+        l_mu  = np.sum(self.lambda_grid * self.post_lambda)
+        l_sd  = np.sqrt(np.sum(self.post_lambda * (self.lambda_grid - l_mu) ** 2))
         return {
-            'trial_count':       self.trial_count,
-            'reversals':         self.reversals,
-            'final_prop':        self.current_prop,
-            'threshold_estimate': self.get_threshold_estimate(),
-            'mean_accuracy':     np.mean(self.response_history) if self.response_history else 0,
-            'prop_history':      self.prop_history.copy(),
-            'response_history':  self.response_history.copy()
+            'alpha_mean':  float(a_mu),  'alpha_sd':  float(a_sd),
+            'beta_mean':   float(b_mu),  'beta_sd':   float(b_sd),
+            'lambda_mean': float(l_mu),  'lambda_sd': float(l_sd),
         }
+
+    def threshold_for_target(self, p_target):
+        """Find the prop value that yields p_target% correct under the current posterior."""
+        lam_hat = np.sum(self.lambda_grid * self.post_lambda)
+        if p_target > 1.0 - lam_hat:
+            p_target = min(0.85, 1.0 - lam_hat - 0.02)
+        best_diff, best_s = float('inf'), 0.5
+        for s_logit in self.s_grid:
+            p_pred = 0.0
+            for i, alpha in enumerate(self.alpha_grid):
+                for j, beta in enumerate(self.beta_grid):
+                    for k, lapse in enumerate(self.lambda_grid):
+                        w = self.post_alpha[i] * self.post_beta[j] * self.post_lambda[k]
+                        p_pred += w * self.psychometric(s_logit, alpha, beta, lapse)
+            diff = abs(p_pred - p_target)
+            if diff < best_diff:
+                best_diff = diff
+                best_s    = inv_logit(s_logit)
+        return clamp_prop(best_s)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  DIFFICULTY LEVEL CALCULATOR
-#  After calibration, we derive 4 test difficulty levels around the threshold.
-#
-#  Level 1 (hardest): threshold − 2 × step  → participant correct ~55% of the time
-#  Level 2:           threshold − 1 × step  → ~65%
-#  Level 3:           threshold + 1 × step  → ~85%
-#  Level 4 (easiest): threshold + 2 × step  → ~95%
-#
-#  All values are clipped to [min_prop, max_prop] to stay within valid range.
+#  After QUEST+ calibration, derive the 2 test difficulty levels from the
+#  fitted psychometric function using threshold_for_target():
+#    level_1 (hardest):     threshold that yields ~55% correct
+#    level_3 (medium-hard): threshold that yields ~85% correct
 # ─────────────────────────────────────────────────────────────────────────────
 
-def calculate_difficulty_levels(threshold_75, step_size=0.08, min_prop=0.05, max_prop=0.90):
+def calculate_difficulty_levels(quest):
     """
-    Compute 4 difficulty levels symmetrically around the 75% threshold.
+    Compute the 2 test-phase difficulty levels from the QUEST+ posterior.
 
     Parameters
     ----------
-    threshold_75 : float — calibrated prop for ~75% accuracy
-    step_size    : float — spacing between levels (default 0.08)
-    min_prop     : float — minimum allowed prop
-    max_prop     : float — maximum allowed prop
+    quest : QuestPlusStaircase — fitted calibration object
 
     Returns
     -------
-    dict with keys 'level_1' (hardest) to 'level_4' (easiest)
+    dict with keys 'level_1' (~55% correct, hardest) and
+                   'level_3' (~85% correct, medium-hard)
     """
     return {
-        'level_1': np.clip(threshold_75 - 2 * step_size, min_prop, max_prop),
-        'level_2': np.clip(threshold_75 - 1 * step_size, min_prop, max_prop),
-        'level_3': np.clip(threshold_75 + 1 * step_size, min_prop, max_prop),
-        'level_4': np.clip(threshold_75 + 2 * step_size, min_prop, max_prop),
+        'level_1': quest.threshold_for_target(0.55),
+        'level_3': quest.threshold_for_target(0.85),
     }
 
 
@@ -1688,53 +1747,65 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  CALIBRATION PHASE RUNNER
-#  Runs the 3-up-1-down staircase to find the participant's 75% threshold.
-#  Feedback is given after each trial so the staircase can adapt.
+#  CALIBRATION PHASE RUNNER (QUEST+)
+#  Runs a QUEST+ Bayesian adaptive staircase to estimate the participant's
+#  psychometric function (and hence their 75% accuracy threshold).
+#
+#  Adaptive stopping (same as MT Inference.py):
+#    • Run at least CHECK_CALIBRATION_TRIALS trials
+#    • Stop when posterior SD < 0.20 AND trials ≥ min
+#    • Hard cap at CHECK_CALIBRATION_TRIALS + 20 trials
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_calibration_staircase(num_trials, angle_bias=0, block_num=0):
+def run_calibration_quest(num_trials, angle_bias=0, block_num=0):
     """
-    Run the 3-up-1-down staircase calibration phase.
+    Run the QUEST+ calibration phase.
 
     Parameters
     ----------
-    num_trials  : int — number of calibration trials to run
+    num_trials  : int — minimum number of calibration trials (hard cap = +20)
     angle_bias  : int — rotation applied to mouse input (0 = none)
     block_num   : int — block number for logging (0 = calibration)
 
     Returns
     -------
-    staircase : ThreeUpOneDownStaircase — completed staircase object
-    threshold : float — estimated 75% accuracy threshold (mean of last 8 trials)
+    quest     : QuestPlusStaircase — fitted object (use for difficulty levels)
+    threshold : float — estimated 75% accuracy prop
     """
     global global_trial_counter
 
-    # Initialize the staircase starting at prop=0.25 (harder start)
-    staircase = ThreeUpOneDownStaircase(
-        start_prop=0.25,
-        step_size=0.05,
-        min_prop=0.05,
-        max_prop=0.90
-    )
+    quest        = QuestPlusStaircase("neutral")
+    min_trials   = num_trials
+    max_trials   = num_trials + 20
+    sd_threshold = 0.20
 
-    print(f"Starting 3-up-1-down staircase calibration ({num_trials} trials)")
-    print(f"  Starting prop: {staircase.current_prop:.2f}, step: {staircase.step_size:.2f}")
+    print(f"Starting QUEST+ calibration (min={min_trials}, max={max_trials} trials, "
+          f"SD threshold={sd_threshold})")
 
-    for trial_num in range(1, num_trials + 1):
+    trial_num = 0
+    while trial_num < max_trials:
+        trial_num            += 1
         global_trial_counter += 1
-        current_prop = staircase.get_current_prop()
 
-        # Run one trial at the current staircase prop value
+        s_candidate = quest.select_stimulus_entropy()
+
         res = run_trial_2shapes(
             trial_num, "calibration", angle_bias=angle_bias, mode="staircase",
-            prop_override=current_prop, cue_dur_range=(0.5, 0.8),
+            prop_override=s_candidate, cue_dur_range=(0.5, 0.8),
             difficulty_level="calibration", block_num=block_num
         )
 
-        # Update staircase based on response (skip timeouts)
+        # Update QUEST only for valid (non-timeout) responses
         if res.get('resp_shape') != 'timeout':
-            staircase.update(int(res.get('accuracy', 0)))
+            quest.update(s_candidate, int(res.get('accuracy', 0)))
+
+        # Compute QUEST summary every 10 trials (expensive); otherwise fast SD
+        if trial_num % 10 == 0 or trial_num < 10:
+            summ           = quest.posterior_summary()
+            quest_alpha_sd = summ['alpha_sd']
+        else:
+            quest_alpha_sd = quest.get_threshold_sd()
+            summ           = None
 
         # ── Log trial data ────────────────────────────────────────────────────
         thisExp.addData('trial_num',              global_trial_counter)
@@ -1744,7 +1815,8 @@ def run_calibration_staircase(num_trials, angle_bias=0, block_num=0):
         thisExp.addData('n_shapes',                2)
         thisExp.addData('block_num',               block_num)
         thisExp.addData('staircase_trial',         trial_num)
-        thisExp.addData('prop_used',               current_prop)
+        thisExp.addData('prop_used',               s_candidate)
+        thisExp.addData('stimulus_logit',          logit(s_candidate))
         thisExp.addData('accuracy',                res.get('accuracy', 0))
         thisExp.addData('is_timeout',              res.get('resp_shape') == 'timeout')
         thisExp.addData('rt_choice',               res.get('rt_choice', np.nan))
@@ -1753,34 +1825,55 @@ def run_calibration_staircase(num_trials, angle_bias=0, block_num=0):
         thisExp.addData('resp_shape',              res.get('resp_shape', ''))
         thisExp.addData('angle_bias',              angle_bias)
         thisExp.addData('applied_angle_bias',      res.get('applied_angle_bias', angle_bias))
-        thisExp.addData('consecutive_correct',     staircase.consecutive_correct)
-        thisExp.addData('reversals',               staircase.reversals)
-        thisExp.addData('current_staircase_prop',  staircase.current_prop)
+        thisExp.addData('quest_alpha_sd',          quest_alpha_sd)
         thisExp.addData('mean_evidence',           res.get('mean_evidence', np.nan))
         thisExp.addData('sum_evidence',            res.get('sum_evidence', np.nan))
         thisExp.addData('var_evidence',            res.get('var_evidence', np.nan))
         thisExp.addData('target_snippet_id',       res.get('target_snippet_id', np.nan))
         thisExp.addData('distractor_snippet_ids',  str(res.get('distractor_snippet_ids', [])))
+
+        if summ is not None:
+            thisExp.addData('quest_alpha_mean',   summ['alpha_mean'])
+            thisExp.addData('quest_beta_mean',    summ['beta_mean'])
+            thisExp.addData('quest_beta_sd',      summ['beta_sd'])
+            thisExp.addData('quest_lambda_mean',  summ['lambda_mean'])
+            thisExp.addData('quest_lambda_sd',    summ['lambda_sd'])
+        else:
+            thisExp.addData('quest_alpha_mean',   np.nan)
+            thisExp.addData('quest_beta_mean',    np.nan)
+            thisExp.addData('quest_beta_sd',      np.nan)
+            thisExp.addData('quest_lambda_mean',  np.nan)
+            thisExp.addData('quest_lambda_sd',    np.nan)
+
         thisExp.nextEntry()
 
         if trial_num % 10 == 0:
-            print(f"  Trial {trial_num}/{num_trials}: "
-                  f"prop={current_prop:.3f}, reversals={staircase.reversals}")
+            print(f"  Trial {trial_num}: prop={s_candidate:.3f}, "
+                  f"alpha_sd={quest_alpha_sd:.4f}")
 
-        # Offer a break every 50 trials
-        if trial_num % 50 == 0 and trial_num < num_trials:
-            show_break_screen(trial_num, num_trials, "Calibration")
+        # Mid-way break
+        halfway = min_trials // 2
+        if trial_num == halfway:
+            msg.text = (f"Short Break\n\n"
+                        f"You have completed {trial_num} practice trials.\n\n"
+                        f"Take a moment to rest if needed.\n\n"
+                        f"Press SPACE to continue.")
+            msg.draw(); win.flip()
+            wait_keys(['space', 'escape'])
 
-    # Compute final threshold estimate
-    threshold = staircase.get_threshold_estimate(n_last_trials=8)
-    summary   = staircase.get_summary()
+        # Adaptive stopping: converge after min_trials if posterior SD is small
+        if trial_num >= min_trials and quest_alpha_sd < sd_threshold:
+            print(f"  QUEST+ converged after {trial_num} trials "
+                  f"(alpha_sd={quest_alpha_sd:.4f} < {sd_threshold})")
+            break
 
+    threshold = quest.threshold_for_target(0.75)
+    summary   = quest.posterior_summary()
     print(f"\nCalibration complete:")
-    print(f"  Trials: {summary['trial_count']}, Reversals: {summary['reversals']}")
-    print(f"  Mean accuracy: {summary['mean_accuracy']:.1%}")
-    print(f"  Threshold estimate (avg last 8 trials): {threshold:.3f}")
+    print(f"  Trials: {trial_num}, alpha_sd: {summary['alpha_sd']:.4f}")
+    print(f"  QUEST+ threshold (75% correct): {threshold:.3f}")
 
-    return staircase, threshold
+    return quest, threshold
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2108,25 +2201,23 @@ Please press SPACE to start."""
 # ── Step 1: Show initial instructions ────────────────────────────────────────
 show_initial_instructions()
 
-# ── Step 2: Calibration phase ────────────────────────────────────────────────
-# Run the 3-up-1-down staircase to find the participant's 75% threshold.
-show_calibration_instructions()
-
+# ── Step 2: Calibration phase ────────────────────────────────────────────────────────────────
+# Run QUEST+ to estimate the participant's psychometric function.
 msg.text = ("Practice Block\n\n"
             "In this block, you will practice the task.\n"
             "You will receive feedback after each response.\n\n"
             "Press SPACE to start.")
 msg.draw(); win.flip(); wait_keys()
 
-staircase, threshold_75 = run_calibration_staircase(
+quest, threshold_75 = run_calibration_quest(
     num_trials=CHECK_CALIBRATION_TRIALS,
     angle_bias=0,
-    block_num=0  # Block 0 = calibration (test blocks are 1-4)
+    block_num=0  # Block 0 = calibration (test blocks are 1-6)
 )
 
-# Save threshold to expInfo for reference
-expInfo['threshold_75']          = threshold_75
-expInfo['staircase_reversals']   = staircase.reversals
+# Save QUEST+ results to expInfo for reference
+expInfo['quest_threshold_75'] = threshold_75
+expInfo['quest_alpha_sd']     = quest.get_threshold_sd()
 
 # Show calibration completion screen
 msg.text = """Practice complete!
@@ -2136,13 +2227,11 @@ You can take a short break now.
 Please press SPACE to continue to the main experiment."""
 msg.draw(); win.flip(); wait_keys()
 
-# ── Step 3: Calculate difficulty levels ──────────────────────────────────────
-# Derive 4 prop values symmetrically around the calibrated threshold.
-# Only level_1 and level_3 are used in the test phase.
-# Level 1 = hardest (threshold - 2*step), Level 3 = somewhat easy (threshold + 1*step)
-levels = calculate_difficulty_levels(threshold_75, step_size=0.08)
+# ── Step 3: Calculate difficulty levels ────────────────────────────────────────────────
+# Derive level_1 (~55% correct) and level_3 (~85% correct) via QUEST+ posterior.
+levels = calculate_difficulty_levels(quest)
 
-print(f"\nDifficulty levels derived from threshold={threshold_75:.3f}:")
+print(f"\nDifficulty levels (QUEST+, threshold={threshold_75:.3f}):")
 for name, val in levels.items():
     print(f"  {name}: prop={val:.3f}")
 
@@ -2227,7 +2316,7 @@ run_memory_test(sampled_test_images, foil_images)
 final_used = len(used_trajectory_indices)
 print(f"\nExperiment complete!")
 print(f"  Total trajectories used: {final_used}")
-print(f"  Calibrated threshold (75%): {threshold_75:.3f}")
+print(f"  QUEST+ threshold (75%): {threshold_75:.3f}")
 print(f"  Miniblock order: {miniblock_sequence}")
 
 msg.text = f"""Thank you for participating!
