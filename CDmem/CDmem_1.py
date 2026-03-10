@@ -1691,7 +1691,6 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
                         rating = int(keys[0])
                 core.wait(0.01)
             agency_rating = rating
-            core.wait(0.2)
 
     # ── COMPUTE SUMMARY EVIDENCE METRICS ─────────────────────────────────────
     # Aggregate the per-frame evidence values into summary statistics.
@@ -2027,12 +2026,23 @@ def run_memory_test(seen_images, foil_images_list):
         height=28, color='white', bold=True, alignText='center'
     )
 
+    # Fixation cross for inter-trial interval
+    mem_fix_h = visual.TextStim(win, text='─────', pos=(0, 0), color='white',
+                                height=30, bold=True)
+    mem_fix_v = visual.TextStim(win, text='|', pos=(0, 0), color='white',
+                                height=50, bold=True)
+
     for item_num, item in enumerate(mem_items, start=1):
         global_trial_counter += 1
 
         # Load image for this item
         mem_img_stim.image = item['path']
         mem_img_stim.pos   = (0, 80)   # Slightly above centre; prompt sits below
+
+        # Fixation cross — random duration 0.5–0.8 s
+        fix_dur = random.uniform(0.5, 0.8)
+        mem_fix_h.draw(); mem_fix_v.draw(); win.flip()
+        core.wait(fix_dur)
 
         # Draw image + key labels and start timing
         event.clearEvents(eventType='keyboard')
@@ -2090,9 +2100,7 @@ def run_memory_test(seen_images, foil_images_list):
         mem_trigger_resp = 61 if mem_correct else 62
         send_trigger(mem_trigger_resp)
 
-        # Brief blank between items
-        win.flip()
-        core.wait(0.3)
+        win.flip()  # clear screen; next trial's fixation cross follows immediately
 
         # Log to main CSV
         thisExp.addData('trial_num',        global_trial_counter)
