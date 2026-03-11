@@ -4,7 +4,27 @@
 
 The experiment is divided into 3 phases: **Calibration**, **Test**, and **Memory Test**. Calibration and Test trials all share the same single-trial structure (described below). The Memory Test phase has a different structure.
 
+
+## Trial Count Summary
+
+| Phase | Condition / Mode | Trials | Notes |
+|-------|-----------------|--------|-------|
+| **Calibration** | Full mode | 60–80 | Adaptive stop when alpha SD < 0.20; hard cap at 80 |
+| **Calibration** | Check mode | 6–26 | Same adaptive stop logic |
+| **Test — level_1** | Full mode | 60 (3 miniblocks × 20) | ~55% accuracy (hardest) |
+| **Test — level_3** | Full mode | 60 (3 miniblocks × 20) | ~85% accuracy (medium-hard) |
+| **Test — level_1** | Check mode | 15 (3 miniblocks × 5) | |
+| **Test — level_3** | Check mode | 15 (3 miniblocks × 5) | |
+| **Test (total)** | Full mode | **120** | 6 miniblocks × 20 trials |
+| **Test (total)** | Check mode | **30** | 6 miniblocks × 5 trials |
+| **Memory test — seen** | Any mode | 120 | Images shown during test phase |
+| **Memory test — foils** | Any mode | 120 | Paired counterparts never shown |
+| **Memory test (total)** | Any mode | **240** | Shuffled together |
+| **Grand total** | Full mode | **~420** | Calibration mid-range (70) + 120 test + 240 memory |
+| **Grand total** | Check mode | **~286** | Calibration mid-range (16) + 30 test + 240 memory |
+
 ---
+
 
 ## Single Trial Structure (Calibration & Test)
 

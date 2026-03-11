@@ -230,16 +230,15 @@ else:
 # ─────────────────────────────────────────────────────────────────────────────
 #  SCREENSHOT SETTINGS
 #  Screenshots are saved automatically at the first frame of each phase.
-#  Saved to: CDmem/screenshots/screenshot_calibration.png etc.
-#  NOTE: Commented out — screenshots already exist.
+#  Saved to: CDmem/screenshots/
 # ─────────────────────────────────────────────────────────────────────────────
 
-# SCREENSHOTS_DIR = pathlib.Path(__file__).parent / "screenshots"
-# SCREENSHOTS_DIR.mkdir(exist_ok=True)
+SCREENSHOTS_DIR = pathlib.Path(__file__).parent / "screenshots"
+SCREENSHOTS_DIR.mkdir(exist_ok=True)
 
 # Tracks which phases have already had a screenshot saved this session.
-# Keys: 'calibration', 'test', 'memory_test'
-# _screenshots_saved = set()
+# Keys: e.g. 'calibration_frame001', 'test_frame001', 'memory_test'
+_screenshots_saved = set()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1413,8 +1412,7 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
             pass
 
     # Two screenshots per phase: frame 1 (starting positions) + frame 30 (~0.5 s in, mid-motion)
-    # NOTE: Commented out — screenshots already exist.
-    # _SCREENSHOT_FRAMES = {1: 'frame001', 30: 'frame030'}
+    _SCREENSHOT_FRAMES = {1: 'frame001', 30: 'frame030'}  # frames to capture per phase
     while clk.getTime() < MOTION_DURATION:
         # Get current mouse position and compute displacement from last frame
         x, y = mouse.getPos()
@@ -1519,15 +1517,14 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
         stim_A.draw(); stim_B.draw(); win.flip()
 
         # ── Screenshots: frame 1 (start) + frame 30 (~0.5 s, mid-motion) ────────
-        # NOTE: Commented out — screenshots already exist.
-        # if frame in _SCREENSHOT_FRAMES:
-        #     key = f"{phase}_{_SCREENSHOT_FRAMES[frame]}"
-        #     if key not in _screenshots_saved:
-        #         fname = SCREENSHOTS_DIR / f"screenshot_{key}.png"
-        #         win.getMovieFrame(buffer='front')
-        #         win.saveMovieFrames(str(fname))
-        #         _screenshots_saved.add(key)
-        #         print(f"[Screenshot] Saved: {fname}")
+        if frame in _SCREENSHOT_FRAMES:
+            key = f"{phase}_{_SCREENSHOT_FRAMES[frame]}"
+            if key not in _screenshots_saved:
+                fname = SCREENSHOTS_DIR / f"screenshot_{key}.png"
+                win.getMovieFrame(buffer='front')
+                win.saveMovieFrames(str(fname))
+                _screenshots_saved.add(key)
+                print(f"[Screenshot] Saved: {fname}")
 
     # ── RESPONSE PHASE ───────────────────────────────────────────────────────
     # After the motion phase ends, a response screen appears.
@@ -1662,6 +1659,7 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
     if phase == "test":
         if SIMULATE:
             agency_rating = float(rng.integers(1, 8))
+            core.wait(0.5)
         else:
             event.clearEvents(eventType='keyboard')
             msg.text = "How much control did you feel over the shape's movement?"
@@ -2070,9 +2068,10 @@ def run_memory_test(seen_images, foil_images_list):
         mem_rt       = np.nan
 
         if SIMULATE:
-            core.wait(0.2)
+            sim_rt = random.uniform(1.0, 5.0)
+            core.wait(sim_rt)
             mem_response = _mem_rng.choice(['yes', 'no'])
-            mem_rt       = 0.2
+            mem_rt       = sim_rt
         else:
             while mem_response is None:
                 keys = event.getKeys(['a', 's', 'escape'], timeStamped=True)
