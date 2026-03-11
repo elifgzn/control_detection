@@ -1601,8 +1601,9 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
     response_start_time = response_clock.getTime()  # ≈ 0 — used for RT
 
     if SIMULATE:
-        # Simulate an early response, then wait out the remaining window
-        core.wait(0.3)
+        # Simulate a response time between 1.5 and 4.5 seconds, then wait out the remaining window
+        sim_rt = random.uniform(1.5, 4.5)
+        core.wait(sim_rt)
         resp_shape = rng.choice([stim_left_label, stim_right_label])
         rt_choice  = response_clock.getTime()
         remaining  = CHOICE_DURATION - rt_choice
