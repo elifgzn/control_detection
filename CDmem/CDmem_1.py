@@ -226,6 +226,8 @@ else:
     print(f"   Calibration: {CHECK_CALIBRATION_TRIALS} trials")
     print(f"   Test: {CHECK_TEST_TRIALS_PER_LEVEL} trials/miniblock × 6 miniblocks = {CHECK_TEST_TRIALS_PER_LEVEL * 6} total")
 
+# Start tracking total experiment time from this point (after dialog)
+global_clock = core.Clock()
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  SCREENSHOT SETTINGS
@@ -2323,7 +2325,14 @@ run_memory_test(sampled_test_images, foil_images)
 # ─────────────────────────────────────────────────────────────────────────────
 
 final_used = len(used_trajectory_indices)
-print(f"\nExperiment complete!")
+tot_time_secs = global_clock.getTime()
+tot_mins = int(tot_time_secs // 60)
+tot_secs = int(tot_time_secs % 60)
+
+print(f"\n============================================================")
+print(f"EXPERIMENT COMPLETE")
+print(f"Total Duration: {tot_mins} minutes {tot_secs} seconds")
+print(f"============================================================")
 print(f"  Total trajectories used: {final_used}")
 print(f"  QUEST+ threshold (75%): {threshold_75:.3f}")
 print(f"  Miniblock order: {miniblock_sequence}")
