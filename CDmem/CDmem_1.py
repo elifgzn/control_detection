@@ -739,13 +739,28 @@ def mix_direction_only(mouse_dx, mouse_dy, traj_dx, traj_dy, prop):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  DISPLAY CONSTANTS
+#  DISPLAY & STIMULUS CONSTANTS
 # ─────────────────────────────────────────────────────────────────────────────
 
 OFFSET_X         = 300    # Horizontal distance from center to shape start position (px)
 OFFSET_Y         = 150    # Vertical distance from center to shape start position (px)
 LOWPASS          = 0.2    # Low-pass filter weight: lower = less smoothing, more responsive
 SPEED_MULTIPLIER = 1.3    # Multiply trajectory velocities to make shapes move faster
+
+# ── Visual Angle / Stimulus Size Setup ───────────────────────────────────────
+DIST_CM    = 90.0    # Distance from eyes to monitor
+WIDTH_CM   = 53.0    # Physical width of the monitor
+STIM_SZ_DEG = 2.0    # Desired visual angle size of the stimuli in degrees
+
+def vis_ang_to_pix(deg, dist_cm, width_cm, win_width_pix):
+    """
+    Convert visual angle (degrees) to pixels based on monitor physics.
+    Requires math.tan.
+    """
+    size_cm = 2 * dist_cm * math.tan(math.radians(deg) / 2)
+    pix_per_cm = win_width_pix / width_cm
+    return int(round(size_cm * pix_per_cm))
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  IMAGINE DATASET CONSTANTS
@@ -755,10 +770,11 @@ SPEED_MULTIPLIER = 1.3    # Multiply trajectory velocities to make shapes move f
 # ─────────────────────────────────────────────────────────────────────────────
 
 IMAGINE_DIR  = pathlib.Path(r"C:\Users\elifg\Desktop\PHD\CARA_prep\stimulus_prep\chosen_stimuli")
-IMAGE_SIZE   = (200, 200)   # Display size in pixels — matches the 40×40 px shapes
+IMAGE_SEED   = 42         # Fixed seed for reproducible sampling across runs
+# IMAGE_SIZE will be calculated dynamically based on window width after win is created.
+
 # Number of unique pairs needed for TEST phase = 120 trials (full) or 30 trials (check mode)
 N_IMAGES     = (CHECK_TEST_TRIALS_PER_LEVEL * 6) if CHECK_MODE else 120
-IMAGE_SEED   = 42         # Fixed seed for reproducible sampling across runs
 IMAGE_LOG    = pathlib.Path(__file__).parent / "image_stimuli_log.json"
 
 
@@ -909,9 +925,14 @@ win.setMouseVisible(False)
 SCALED_TEXT_HEIGHT = int(win.size[1] * 0.048)   # For instructions and messages
 SCALED_WRAP_WIDTH  = int(win.size[0] * 0.8)     # 80% of screen width for text wrapping
 
-# The two shapes used in CALIBRATION trials
-square = visual.Rect(win, 40, 40, fillColor="black", lineColor="black")
-dot    = visual.Circle(win, 20, fillColor="black", lineColor="black")
+# Calculate dynamic stimulus size based on 2.0 visual degrees
+target_size_pix = vis_ang_to_pix(STIM_SZ_DEG, DIST_CM, WIDTH_CM, win.size[0])
+IMAGE_SIZE = (target_size_pix, target_size_pix)
+
+# The two shapes used in CALIBRATION trials. Both will take up the computed size.
+# Square gets width and height. Circle gets radius = width/2.
+square = visual.Rect(win, target_size_pix, target_size_pix, fillColor="black", lineColor="black")
+dot    = visual.Circle(win, target_size_pix / 2, fillColor="black", lineColor="black")
 
 # ── Sample IMAGINE images and build trial pairs ───────────────────────────────
 # Done here (after the window is open) so the log is always written before
