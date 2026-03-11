@@ -109,6 +109,49 @@ QUEST+ stops early once the posterior SD of the threshold (`alpha_sd`) drops bel
 ### Mid-block break
 After half the minimum trials, a self-paced break screen is shown. Participant presses **SPACE** to continue.
 
+### How QUEST+ Works in Calibration
+
+The calibration phase uses the QUEST+ Bayesian adaptive staircase to efficiently estimate the participant's psychometric function.
+
+1.  **The Psychometric Function:**
+    It assumes the probability of correctly identifying the controlled shape follows a logistic psychometric function:
+    `p(correct | s) = γ + (1 − γ − λ) * (1 / (1 + exp(-β * (s - α))))`
+    *   `s` = stimulus intensity (proportion of mouse control, in logit scale).
+    *   `α` (alpha) = the threshold (stimulus level yielding ~75% accuracy when γ=0.5 and λ=0).
+    *   `β` (beta) = the slope of the psychometric function.
+    *   `γ` (gamma) = the guess rate (fixed at 0.5 for a 2-alternative forced choice).
+    *   `λ` (lambda) = the lapse rate (probability of making a mistake regardless of stimulus intensity).
+
+2.  **The Prior Grid:**
+    QUEST+ maintains a discrete probability distribution (the "posterior") over a 3D grid of possible parameter values:
+    *   `α` (alpha) grid: 61 values linearly spaced between `logit(0.05)` and `logit(0.90)`. Prior is a Gaussian centered around `logit(0.40)`.
+    *   `β` (beta) grid: 25 values logarithmically spaced from `1.0` to `12.0`. Prior is log-normal.
+    *   `λ` (lambda) grid: 5 values `[0.00, 0.01, 0.02, 0.04, 0.06]`. Prior is uniform.
+
+3.  **Stimulus Selection (Entropy Minimization):**
+    On each trial, QUEST+ selects the next stimulus intensity (`s`) that is expected to provide the most information.
+    *   It calculates the Shannon entropy of the current 3D posterior.
+    *   For a subset of possible stimuli (every 3rd value in the `s` grid to speed up computation), it predicts the probability of a "correct" or "incorrect" response.
+    *   It simulates how the posterior would update given each possible response.
+    *   It selects the `s` value that minimizes the *expected* entropy of the updated posterior (i.e., maximizes expected information gain).
+
+4.  **Posterior Update:**
+    After the participant responds, QUEST+ updates the probability of each parameter combination in the 3D grid using Bayes' rule.
+    *   `P(parameters | response) ∝ P(response | parameters, s) * P(parameters)`
+    *   This shifts the posterior distribution towards the most likely values of `α`, `β`, and `λ` given the participant's actual performance.
+
+5.  **Adaptive Stopping Criterion:**
+    The staircase stops dynamically when it is confident enough in its estimate of the threshold.
+    *   It continuously calculates the standard deviation (SD) of the marginal posterior distribution for `α` (`quest_alpha_sd`).
+    *   Calibration stops as soon as `alpha_sd < 0.20`, provided the minimum number of trials (60 in full mode) has been reached.
+    *   If convergence isn't reached, it hits a hard cap of 80 trials.
+
+6.  **Difficulty Level Derivation:**
+    After calibration ends, the final 3D posterior is used to calculate the specific stimulus intensities (`prop` values) required for the test phase:
+    *   `level_1` (Hard, ~55% accuracy target).
+    *   `level_3` (Medium-hard, ~85% accuracy target).
+    *   These values are derived by finding the `prop` that yields the target probability across the entire weighted parameter space.
+
 ### After calibration
 The QUEST+ posterior is used to derive two difficulty levels for the test phase. A completion screen is shown; participant presses **SPACE** to continue to the test phase.
 
