@@ -17,11 +17,14 @@ The experiment is divided into 3 phases: **Calibration**, **Test**, and **Memory
 | **Test — level_3** | Check mode | 15 (3 miniblocks × 5) | |
 | **Test (total)** | Full mode | **120** | 6 miniblocks × 20 trials |
 | **Test (total)** | Check mode | **30** | 6 miniblocks × 5 trials |
-| **Memory test — seen** | Any mode | 120 | Images shown during test phase |
-| **Memory test — foils** | Any mode | 120 | Paired counterparts never shown |
-| **Memory test (total)** | Any mode | **240** | Shuffled together |
+| **Memory test — seen** | Full mode | 120 | Images shown during test phase |
+| **Memory test — foils** | Full mode | 120 | Paired counterparts never shown |
+| **Memory test (total)** | Full mode | **240** | Shuffled together |
+| **Memory test — seen** | Check mode | 30 | Images shown during check mode test |
+| **Memory test — foils** | Check mode | 30 | Paired counterparts never shown |
+| **Memory test (total)** | Check mode | **60** | Shuffled together |
 | **Grand total** | Full mode | **~420** | Calibration mid-range (70) + 120 test + 240 memory |
-| **Grand total** | Check mode | **~286** | Calibration mid-range (16) + 30 test + 240 memory |
+| **Grand total** | Check mode | **~106** | Calibration mid-range (16) + 30 test + 60 memory |
 
 ---
 
@@ -211,10 +214,10 @@ After each miniblock (except the last), a self-paced break screen is shown. Part
 **Purpose:** Assess recognition memory for the object images seen during the test phase.
 
 Two sets of images are presented in a single shuffled sequence:
-- **Seen images** — the exact images shown during the test phase (120 items, ground truth = *old*).
-- **Foil (unseen) images** — the paired counterparts that were *not* shown during the test phase (120 items, ground truth = *new*).
+- **Seen images** — the exact images shown during the test phase (120 items in full mode, 30 in check mode).
+- **Foil (unseen) images** — the paired counterparts that were *not* shown during the test phase (120 items in full mode, 30 in check mode).
 
-Total: **240 items**, presented one at a time in a participant-specific random order.
+Total: **240 items** (or **60 items** in check mode), presented one at a time in a participant-specific random order.
 
 ### Instructions (self-paced screen)
 Participant reads instructions and presses **SPACE** to begin.

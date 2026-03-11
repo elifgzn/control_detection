@@ -754,7 +754,8 @@ SPEED_MULTIPLIER = 1.3    # Multiply trajectory velocities to make shapes move f
 
 IMAGINE_DIR  = pathlib.Path(r"C:\Users\elifg\Desktop\PHD\CARA_prep\stimulus_prep\chosen_stimuli")
 IMAGE_SIZE   = (200, 200)   # Display size in pixels — matches the 40×40 px shapes
-N_IMAGES     = 120        # Number of unique pairs needed for TEST phase = 120 trials (6 miniblocks x 20)
+# Number of unique pairs needed for TEST phase = 120 trials (full) or 30 trials (check mode)
+N_IMAGES     = (CHECK_TEST_TRIALS_PER_LEVEL * 6) if CHECK_MODE else 120
 IMAGE_SEED   = 42         # Fixed seed for reproducible sampling across runs
 IMAGE_LOG    = pathlib.Path(__file__).parent / "image_stimuli_log.json"
 
