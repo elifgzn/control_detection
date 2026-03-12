@@ -14,7 +14,7 @@ cat("Intercept:", intercept, "\n")
 cat("Slope (control effect):", slope, "\n")
 
 # build skeleton data
-n_participants <- 20
+n_participants <- 60
 n_trials <- 60
 
 df <- expand.grid(
@@ -28,7 +28,10 @@ df$recognized <- rbinom(nrow(df), 1, 0.6)  # placeholder outcome
 model_sim <- makeGlmer(
   recognized ~ control_level + (1 | participant),
   fixef = c(intercept, slope),
-  VarCorr = list(0.3),  # try different values: 0.3, 0.5, 0.8
+  #sd_dprime = 0.75
+  #ri_sd_log_odds = sd_dprime * (np.pi / np.sqrt(3))
+  #print(ri_sd_log_odds)  # ≈ 1.36
+  VarCorr = list(1.36),  # based on Schreiner et al., 2024
   family = binomial,
   data = df
 )
@@ -42,3 +45,13 @@ power_curve <- powerCurve(
 )
 plot(power_curve)
 print(power_curve)
+
+
+library(pwr)
+# effect size for paired t-test
+d_high <- 0.78
+d_low <- 0.70
+sd_pooled <- 0.75
+cohens_d <- (d_high - d_low) / sd_pooled  # ≈ 0.11 - very small
+
+pwr.t.test(d = cohens_d, sig.level = 0.05, power = 0.80, type = "paired")
