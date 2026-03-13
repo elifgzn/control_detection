@@ -750,7 +750,7 @@ SPEED_MULTIPLIER = 1.3    # Multiply trajectory velocities to make shapes move f
 # ── Visual Angle / Stimulus Size Setup ───────────────────────────────────────
 DIST_CM    = 90.0    # Distance from eyes to monitor
 WIDTH_CM   = 53.0    # Physical width of the monitor
-STIM_SZ_DEG = 2.0    # Desired visual angle size of the stimuli in degrees
+STIM_SZ_DEG = 1.0    # Desired visual angle size of the stimuli in degrees
 
 def vis_ang_to_pix(deg, dist_cm, width_cm, win_width_pix):
     """
