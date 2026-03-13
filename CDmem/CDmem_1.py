@@ -750,7 +750,7 @@ SPEED_MULTIPLIER = 1.3    # Multiply trajectory velocities to make shapes move f
 # ── Visual Angle / Stimulus Size Setup ───────────────────────────────────────
 DIST_CM    = 90.0    # Distance from eyes to monitor
 WIDTH_CM   = 53.0    # Physical width of the monitor
-STIM_SZ_DEG = 1.0    # Desired visual angle size of the stimuli in degrees
+STIM_SZ_DEG = 1.5    # Desired visual angle size of the stimuli in degrees
 
 def vis_ang_to_pix(deg, dist_cm, width_cm, win_width_pix):
     """
@@ -924,8 +924,8 @@ win.setMouseVisible(False)
 
 # Compute scalable text sizes based on window resolution
 # Base height factor: 0.05 means ~54 pixels on a 1080p screen (twice as large as original 26)
-SCALED_TEXT_HEIGHT = int(win.size[1] * 0.048)   # For instructions and messages
-SCALED_WRAP_WIDTH  = int(win.size[0] * 0.8)     # 80% of screen width for text wrapping
+# SCALED_TEXT_HEIGHT = int(win.size[1] * 0.048)   # For instructions and messages
+# SCALED_WRAP_WIDTH  = int(win.size[0] * 0.8)     # 80% of screen width for text wrapping
 
 # Calculate dynamic stimulus size based on 2.0 visual degrees
 target_size_pix = vis_ang_to_pix(STIM_SZ_DEG, DIST_CM, WIDTH_CM, win.size[0])
@@ -955,13 +955,13 @@ pair_index = 0
 # the paired counterparts to the `sampled_test_images`.
 
 # Fixation cross shown at the start of each trial
-fix = visual.TextStim(win, "+", color="white", height=SCALED_TEXT_HEIGHT * 1.5)
+fix = visual.TextStim(win, "+", color="white", height=60)
 
 # General-purpose message text (instructions, response prompts, etc.)
-msg = visual.TextStim(win, "", color="white", height=SCALED_TEXT_HEIGHT, wrapWidth=SCALED_WRAP_WIDTH, bold=True)
+msg = visual.TextStim(win, "", color="white", height=26, wrapWidth=1000, bold=True)
 
 # Feedback text shown after calibration trials ("Right" / "Wrong")
-feedbackTxt = visual.TextStim(win, "", color="black", height=80)
+feedbackTxt = visual.TextStim(win, "", color="white", height=40)
 
 # Helper: confine a position to a circle of radius l around the screen center.
 # Prevents shapes from flying off-screen.
@@ -1030,9 +1030,9 @@ def show_break_screen(trials_completed, total_trials_in_block, block_label):
         text=f"BREAK TIME\n\nCompleted {trials_completed} trials.\n"
              f"Progress: {trials_completed}/{total_trials_in_block} ({block_label})\n\n"
              f"Break time remaining: 30 seconds",
-        pos=(0, 50), color='white', height=SCALED_TEXT_HEIGHT, wrapWidth=SCALED_WRAP_WIDTH, bold=True
+        pos=(0, 50), color='white', height=30, wrapWidth=800, bold=True
     )
-    countdown_text = visual.TextStim(win=win, text='30', pos=(0, -100), color='yellow', height=SCALED_TEXT_HEIGHT * 2, bold=True)
+    countdown_text = visual.TextStim(win=win, text='30', pos=(0, -100), color='yellow', height=60, bold=True)
 
     break_clock = core.Clock()
     while break_clock.getTime() < 30.0:
@@ -1054,7 +1054,7 @@ def show_break_screen(trials_completed, total_trials_in_block, block_label):
     visual.TextStim(
         win=win,
         text=f"BREAK COMPLETE\n\nCompleted {trials_completed}/{total_trials_in_block} trials.\n\nPress SPACE to continue.",
-        pos=(0, 0), color='white', height=SCALED_TEXT_HEIGHT, wrapWidth=SCALED_WRAP_WIDTH, bold=True
+        pos=(0, 0), color='white', height=30, wrapWidth=800, bold=True
     ).draw()
     win.flip()
     wait_keys(['space', 'escape'])
@@ -1587,17 +1587,17 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
 
     key_label_A_stim = visual.TextStim(
         win, text="A", pos=(left_img_x, label_y),
-        height=int(SCALED_TEXT_HEIGHT * 1.3), color='white', bold=True, alignText='center'
+        height=30, color='white', bold=True, alignText='center'
     )
     key_label_S_stim = visual.TextStim(
         win, text="S", pos=(right_img_x, label_y),
-        height=int(SCALED_TEXT_HEIGHT * 1.3), color='white', bold=True, alignText='center'
+        height=30, color='white', bold=True, alignText='center'
     )
     
     question_text = "Which image did you control?" if use_images else "Which shape did you control?"
     choice_question = visual.TextStim(
         win, text=question_text,
-        pos=(0, int(win.size[1] * 0.35)), height=SCALED_TEXT_HEIGHT, color='white', wrapWidth=SCALED_WRAP_WIDTH, bold=True
+        pos=(0, int(win.size[1] * 0.2)), height=26, color='white', wrapWidth=1000, bold=True
     )
 
     def draw_choice_screen():
@@ -1659,7 +1659,7 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
             resp_shape = 'timeout'
             timeout_msg = visual.TextStim(
                 win, text="Please answer faster!",
-                pos=(0, 0), height=40, color='yellow', bold=True
+                pos=(0, 0), height=30, color='yellow', bold=True
             )
             timeout_msg.draw(); win.flip()
             core.wait(2.0)
@@ -1694,9 +1694,10 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
         else:
             event.clearEvents(eventType='keyboard')
             msg.text = "How much control did you feel over the shape's movement?"
+            msg.pos = (0, int(win.size[1] * 0.2))
 
             # Dynamic scaling for the rating scale
-            scale_text_height = int(win.size[1] * 0.035)  # Scale text size
+            scale_text_height = 20                        # Scale text size
             scale_width = int(win.size[0] * 0.8)          # 80% screen width
             spacing = scale_width / 6
             start_x = -(scale_width / 2)
@@ -1755,6 +1756,7 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
                         core.wait(0.5)
                 core.wait(0.01)
             agency_rating = rating
+            msg.pos = (0, 0)
 
     # ── COMPUTE SUMMARY EVIDENCE METRICS ─────────────────────────────────────
     # Aggregate the per-frame evidence values into summary statistics.
@@ -2069,21 +2071,21 @@ def run_memory_test(seen_images, foil_images_list):
     mem_question = visual.TextStim(
         win,
         text="Have you seen this object during the experiment before?",
-        pos=(0, int(-win.size[1] * 0.18)), color='white', height=SCALED_TEXT_HEIGHT, wrapWidth=SCALED_WRAP_WIDTH, bold=True
+        pos=(0, int(-win.size[1] * 0.18)), color='white', height=26, wrapWidth=1000, bold=True
     )
     # Key labels: A = Old (left), S = New (right)
     mem_key_A = visual.TextStim(
         win, text="A\nOld", pos=(-int(win.size[0] * 0.05), int(-win.size[1] * 0.25)),
-        height=int(SCALED_TEXT_HEIGHT * 1.1), color='white', bold=True, alignText='center'
+        height=30, color='white', bold=True, alignText='center'
     )
     mem_key_S = visual.TextStim(
         win, text="S\nNew", pos=(int(win.size[0] * 0.05), int(-win.size[1] * 0.25)),
-        height=int(SCALED_TEXT_HEIGHT * 1.1), color='white', bold=True, alignText='center'
+        height=30, color='white', bold=True, alignText='center'
     )
 
     # Fixation cross for inter-trial interval
     mem_fix = visual.TextStim(win, text='+', pos=(0, 0), color='white',
-                              height=int(SCALED_TEXT_HEIGHT * 1.5), bold=True)
+                              height=60, bold=True)
 
     for item_num, item in enumerate(mem_items, start=1):
         global_trial_counter += 1
@@ -2281,13 +2283,14 @@ quest, threshold_75 = run_calibration_quest(
 expInfo['quest_threshold_75'] = threshold_75
 expInfo['quest_alpha_sd']     = quest.get_threshold_sd()
 
-# Show calibration completion screen
-msg.text = """Practice complete!
+# we don't need this because we integrate it in the test phase instructions
+# # Show calibration completion screen
+# msg.text = """Practice complete!
 
-You can take a short break now.
+# You can take a short break now.
 
-Please press SPACE to continue to the main experiment."""
-msg.draw(); win.flip(); wait_keys()
+# Please press SPACE to continue to the main experiment."""
+# msg.draw(); win.flip(); wait_keys()
 
 # ── Step 3: Calculate difficulty levels ────────────────────────────────────────────────
 # Derive level_1 (~55% correct) and level_3 (~85% correct) via QUEST+ posterior.
