@@ -763,18 +763,20 @@ def vis_ang_to_pix(deg, dist_cm, width_cm, win_width_pix):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  IMAGINE DATASET CONSTANTS
+#  DATASET CONSTANTS
 #  Familiar images are sampled from CARA_prep chosen_stimuli dataset.
 #  They are paired (e.g., alpaca_03s.jpg and alpaca_07s.jpg). We use one from
 #  each pair in the test phase and the other in the memory test phase.
 # ─────────────────────────────────────────────────────────────────────────────
 
-IMAGINE_DIR  = pathlib.Path(r"C:\Users\elifg\Desktop\PHD\CARA_prep\stimulus_prep\chosen_stimuli")
+STIM_DIR     = pathlib.Path(r"C:\Users\elifg\Desktop\PHD\CARA_prep\stimulus_prep\chosen_stimuli")
 IMAGE_SEED   = 42         # Fixed seed for reproducible sampling across runs
 # IMAGE_SIZE will be calculated dynamically based on window width after win is created.
 
 # Number of unique pairs needed for TEST phase = 120 trials (full) or 30 trials (check mode)
-N_IMAGES     = (CHECK_TEST_TRIALS_PER_LEVEL * 6) if CHECK_MODE else 120
+# Since each trial needs 2 UNIQUE images (Target & Distractor), we need 240 object concepts
+# to run 120 trials with NO REPEATS.
+N_IMAGES     = (CHECK_TEST_TRIALS_PER_LEVEL * 6) if CHECK_MODE else 240
 IMAGE_LOG    = pathlib.Path(__file__).parent / "image_stimuli_log.json"
 
 
@@ -937,7 +939,7 @@ dot    = visual.Circle(win, target_size_pix / 2, fillColor="black", lineColor="b
 # ── Sample IMAGINE images and build trial pairs ───────────────────────────────
 # Done here (after the window is open) so the log is always written before
 # the experiment starts. The participant dialog has already run at this point.
-sampled_test_images, foil_images = sample_and_log_images(IMAGINE_DIR, N_IMAGES, IMAGE_SEED)
+sampled_test_images, foil_images = sample_and_log_images(STIM_DIR   , N_IMAGES, IMAGE_SEED)
 
 # Build non-overlapping pairs for the test phase trials
 # Use participant seed so the simultaneous pairings are random but reproducible per participant
@@ -947,9 +949,9 @@ image_pairs = make_image_pairs(sampled_test_images, _pair_seed)
 # Global index into image_pairs — incremented by each test trial
 pair_index = 0
 
-# ── 200 FOIL images for the memory test ───────────────────────────────
+# ── Foil images for the memory test ──────────────────────────────────────────
 # We already populated `foil_images` from the paired subset sampled above.
-# The `foil_images` list contains exactly N_IMAGES (120) unseen images that are 
+# The `foil_images` list contains exactly N_IMAGES (240) unseen images that are 
 # the paired counterparts to the `sampled_test_images`.
 
 # Fixation cross shown at the start of each trial
@@ -2011,8 +2013,8 @@ def run_test_block_for_level(threshold_75, level_name, prop_value,
 # ─────────────────────────────────────────────────────────────────────────────
 #  MEMORY TEST
 #  After all 4 test blocks, participants complete a yes/no recognition test.
-#  400 images are shown one at a time (200 seen during the experiment +
-#  200 unseen foils). For each image, participants press:
+#  480 images are shown one at a time (240 seen during the experiment +
+#  240 unseen foils). For each image, participants press:
 #    A = Yes (I saw this during the experiment)
 #    S = No  (I did not see this during the experiment)
 #  Logged per item: filename, seen/unseen ground truth, response, accuracy, RT.
@@ -2024,9 +2026,9 @@ def run_memory_test(seen_images, foil_images_list):
 
     Parameters
     ----------
-    seen_images      : list of dicts {'filename', 'path'} — the 200 images
+    seen_images      : list of dicts {'filename', 'path'} — the 240 images
                        shown during the experiment (ground truth = 'seen')
-    foil_images_list : list of dicts {'filename', 'path'} — 200 new images
+    foil_images_list : list of dicts {'filename', 'path'} — 240 new images
                        never shown during the experiment (ground truth = 'unseen')
 
     Each item is shown one at a time. Participant presses:
@@ -2043,7 +2045,8 @@ def run_memory_test(seen_images, foil_images_list):
     """
     global global_trial_counter
 
-    # Build the full 400-item list: tag each image with its ground truth
+    # Build the full list: tag each image with its ground truth
+    # Total count = 480 items (240 seen + 240 unseen)
     mem_items = (
         [{'filename': d['filename'], 'path': d['path'], 'ground_truth': 'seen'}
          for d in seen_images] +
@@ -2057,7 +2060,7 @@ def run_memory_test(seen_images, foil_images_list):
     )
     _mem_rng.shuffle(mem_items)
 
-    print(f"\nMemory test: {len(mem_items)} items (200 seen + 200 unseen)")
+    print(f"\nMemory test: {len(mem_items)} items ({len(seen_images)} seen + {len(foil_images_list)} unseen)")
 
     # Pre-create a large ImageStim; we'll update its image each trial
     mem_img_stim = visual.ImageStim(win, size=(300, 300))
