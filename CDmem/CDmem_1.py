@@ -147,6 +147,8 @@ from psychopy import visual, event, core, data, gui
 
 kinematics_data = []       # List of dicts, one per frame across all trials
 kinematics_csv_path = ""   # Will be set after participant dialog
+recognition_data = []      # List of dicts, one per trial in memory test
+recognition_csv_path = ""  # Will be set after participant dialog
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -168,6 +170,10 @@ def _save():
                 kinematics_df = pd.DataFrame(kinematics_data)
                 kinematics_df.to_csv(kinematics_csv_path, index=False)
                 print("Kinematics data auto-saved ->", kinematics_csv_path)
+            if recognition_data:
+                recognition_df = pd.DataFrame(recognition_data)
+                recognition_df.to_csv(recognition_csv_path, index=False)
+                print("Recognition data auto-saved ->", recognition_csv_path)
         else:
             print("Experiment not initialized — no data to save.")
         _saved = True
@@ -895,15 +901,17 @@ subjects_dir.mkdir(parents=True, exist_ok=True)
 
 participant_id = expInfo['participant']
 base_filename  = f"CDmem_1_{participant_id}"
-csv_path            = subjects_dir / f"{base_filename}.csv"
-kinematics_csv_path = subjects_dir / f"{base_filename}_kinematics.csv"
+csv_path             = subjects_dir / f"{base_filename}.csv"
+kinematics_csv_path  = subjects_dir / f"{base_filename}_kinematics.csv"
+recognition_csv_path = subjects_dir / f"{base_filename}_recognition.csv"
 
 # If a file with this name already exists, append a number to avoid overwriting
 i = 1
 while csv_path.exists():
-    new_filename        = f"CDmem_1_{participant_id}_{i}"
-    csv_path            = subjects_dir / f"{new_filename}.csv"
-    kinematics_csv_path = subjects_dir / f"{new_filename}_kinematics.csv"
+    new_filename         = f"CDmem_1_{participant_id}_{i}"
+    csv_path             = subjects_dir / f"{new_filename}.csv"
+    kinematics_csv_path  = subjects_dir / f"{new_filename}_kinematics.csv"
+    recognition_csv_path = subjects_dir / f"{new_filename}_recognition.csv"
     i += 1
 
 thisExp = data.ExperimentHandler(
@@ -948,6 +956,9 @@ image_pairs = make_image_pairs(sampled_test_images, _pair_seed)
 
 # Global index into image_pairs — incremented by each test trial
 pair_index = 0
+
+# Mapping to track if an image was controlled ('yes') or distractor ('no')
+image_control_map = {}
 
 # ── Foil images for the memory test ──────────────────────────────────────────
 # We already populated `foil_images` from the paired subset sampled above.
@@ -1282,7 +1293,7 @@ MOUSE_MOVE_THRESHOLD = 0.5
 MOTION_DURATION = 3.0
 
 
-def run_trial_2shapes(trial_num, phase, mode, block_num=1,
+def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
                       prop_override=None, cue_dur_range=None, motion_dur=None,
                       response_window=None, control_condition=None,
                       image_pair=None):
@@ -1294,7 +1305,7 @@ def run_trial_2shapes(trial_num, phase, mode, block_num=1,
 
     Parameters
     ----------
-    trial_num       : int   — trial number within the current phase
+    trial_in_block  : int   — trial number within the current phase (resets per block)
     phase           : str   — 'calibration' or 'test'
     mode            : str   — 'staircase' or 'test' (informational only)
     block_num       : int   — current block number (for logging)
@@ -1395,6 +1406,11 @@ def run_trial_2shapes(trial_num, phase, mode, block_num=1,
     # Randomly decide which stimulus is the target (the one the mouse influences).
     # We keep the labels 'square'/'dot' for calibration, 'img_A'/'img_B' for test.
     target = random.choice([stim_left_label, stim_right_label])
+
+    # If using images, record which one was controlled for later memory analysis
+    if use_images:
+        image_control_map[img_A_info['filename']] = 'yes' if target == 'img_A' else 'no'
+        image_control_map[img_B_info['filename']] = 'yes' if target == 'img_B' else 'no'
 
     # Get 2 unique trajectory snippets: one for target, one for distractor.
     trajectory_indices = get_trajectory_indices(2)
@@ -1753,13 +1769,19 @@ def run_trial_2shapes(trial_num, phase, mode, block_num=1,
     # Tag each frame with trial-level information for later analysis.
     for frame_data in trial_kinematics:
         frame_data.update({
-            'trial_num':        trial_num,
+            'overall_trial_num': global_trial_counter,
+            'trial_in_block':   trial_in_block,
             'phase':            phase,
             'n_shapes':         2,
             'target':           target,
             'prop_used':        prop,
             'block_num':        block_num,
-            'control_condition': control_condition
+            'control_condition': control_condition,
+            'participant':      expInfo.get('participant'),
+            'session':          expInfo.get('session'),
+            'age':              expInfo.get('age'),
+            'gender':           expInfo.get('gender'),
+            'handedness':       expInfo.get('handedness')
         })
     kinematics_data.extend(trial_kinematics)
 
@@ -1853,13 +1875,16 @@ def run_calibration_quest(num_trials, block_num=0):
             summ           = None
 
         # ── Log trial data ────────────────────────────────────────────────────
-        thisExp.addData('trial_num',              global_trial_counter)
+        thisExp.addData('overall_trial_num',      global_trial_counter)
         thisExp.addData('participant',             expInfo['participant'])
         thisExp.addData('session',                 expInfo['session'])
+        thisExp.addData('age',                     expInfo['age'])
+        thisExp.addData('gender',                  expInfo['gender'])
+        thisExp.addData('handedness',              expInfo['handedness'])
         thisExp.addData('phase',                   'calibration')
         thisExp.addData('n_shapes',                2)
         thisExp.addData('block_num',               block_num)
-        thisExp.addData('staircase_trial',         trial_num)
+        thisExp.addData('trial_in_block',          trial_num)
         thisExp.addData('prop_used',               s_candidate)
         thisExp.addData('stimulus_logit',          logit(s_candidate))
         thisExp.addData('detection_accuracy',      res.get('detection_accuracy', 0))
@@ -1953,12 +1978,16 @@ def run_test_block_for_level(threshold_75, level_name, prop_value,
         )
 
         # ── Log trial data ────────────────────────────────────────────────────
-        thisExp.addData('trial_num',              global_trial_counter)
+        thisExp.addData('overall_trial_num',      global_trial_counter)
         thisExp.addData('participant',             expInfo['participant'])
         thisExp.addData('session',                 expInfo['session'])
+        thisExp.addData('age',                     expInfo['age'])
+        thisExp.addData('gender',                  expInfo['gender'])
+        thisExp.addData('handedness',              expInfo['handedness'])
         thisExp.addData('phase',                   'test')
         thisExp.addData('n_shapes',                2)
         thisExp.addData('block_num',               block_num)
+        thisExp.addData('trial_in_block',          trial_num)
         thisExp.addData('control_condition',       level_name)
         thisExp.addData('prop_used',               prop_value)
         thisExp.addData('threshold_75',            threshold_75)
@@ -2014,11 +2043,10 @@ def run_memory_test(seen_images, foil_images_list):
     No time limit per item.
 
     Logged per item (appended to the main CSV via thisExp):
-      mem_item_num    : item number within the memory test (1–400)
+      n_trial         : item number within the memory test (1–400)
       mem_filename    : image filename stem
       mem_ground_truth: 'seen' or 'unseen'
       mem_response    : 'yes' or 'no'
-      mem_accuracy    : 1 if correct, 0 if incorrect
       mem_rt          : response time in seconds
     """
     global global_trial_counter
@@ -2134,21 +2162,24 @@ def run_memory_test(seen_images, foil_images_list):
 
         win.flip()  # clear screen; next trial's fixation cross follows immediately
 
-        # Log to main CSV
-        thisExp.addData('trial_num',        global_trial_counter)
-        thisExp.addData('participant',      expInfo['participant'])
-        thisExp.addData('session',          expInfo['session'])
-        thisExp.addData('phase',            'memory_test')
-        thisExp.addData('mem_item_num',     item_num)
-        thisExp.addData('mem_filename',     item['filename'])
-        thisExp.addData('mem_ground_truth', ground_truth)
-        thisExp.addData('mem_response',     mem_response)
-        thisExp.addData('mem_accuracy',     mem_correct)
-        thisExp.addData('mem_rt',           mem_rt)
-        # Log EEG triggers
-        thisExp.addData('mem_trigger_onset', mem_trigger_onset)
-        thisExp.addData('mem_trigger_resp',  mem_trigger_resp)
-        thisExp.nextEntry()
+        # Log to recognition data list (saved separately)
+        recognition_data.append({
+            'participant':      expInfo.get('participant'),
+            'session':          expInfo.get('session'),
+            'age':              expInfo.get('age'),
+            'gender':           expInfo.get('gender'),
+            'handedness':       expInfo.get('handedness'),
+            'phase':            'memory_test',
+            'overall_trial_num': global_trial_counter,
+            'trial_in_block':   item_num,
+            'mem_filename':     item['filename'],
+            'mem_ground_truth': ground_truth,
+            'controlled':       image_control_map.get(item['filename'], float('nan')),
+            'mem_response':     mem_response,
+            'mem_rt':           mem_rt,
+            'mem_trigger_onset': mem_trigger_onset,
+            'mem_trigger_resp':  mem_trigger_resp
+        })
 
         # Optional mid-test break every 100 items
         if item_num % 100 == 0 and item_num < len(mem_items):

@@ -265,8 +265,9 @@ Participant presses **SPACE** to exit. All data (main CSV + kinematics CSV) is s
 
 | File | Contents |
 |------|----------|
-| `data/subjects/CDmem_1_<ID>.csv` | Trial-by-trial responses: accuracy, RT, agency ratings, QUEST+ parameters, image filenames, EEG triggers, true_controlled, response_controlled |
-| `data/subjects/CDmem_1_<ID>_kinematics.csv` | Frame-by-frame mouse position, shape positions, and per-frame evidence |
+| `data/subjects/CDmem_1_<ID>.csv` | Trial-by-trial responses (Calibration & Test phases): accuracy, RT, agency ratings, QUEST+ parameters, image filenames, EEG triggers, true_controlled, response_controlled, overall_trial_num (session-wide), trial_in_block (resets per block), and full participant metadata |
+| `data/subjects/CDmem_1_<ID>_kinematics.csv` | Frame-by-frame mouse position, shape positions, per-frame evidence, overall_trial_num, trial_in_block, and full participant metadata |
+| `data/subjects/CDmem_1_<ID>_recognition.csv` | Recognition memory test results: filename, ground truth, controlled (yes/no), participant response, RT, EEG triggers, overall_trial_num, trial_in_block, and full participant metadata |
 | `image_stimuli_log.json` | Record of which images were sampled and assigned to test vs. recognition groups |
 
 ---

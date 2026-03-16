@@ -70,8 +70,9 @@ CDT_AUTO_TEST=true python CDmem_1.py   # Fully automated test run
 
 | File | Contents |
 |---|---|
-| `data/subjects/CDmem_1_<ID>.csv` | Trial-by-trial responses (accuracy, RT, agency ratings) |
-| `data/subjects/CDmem_1_<ID>_kinematics.csv` | Frame-by-frame mouse and shape positions |
+| `data/subjects/CDmem_1_<ID>.csv` | Trial-by-trial responses (accuracy, RT, agency ratings) + both overall and block-wise trial numbers + full metadata |
+| `data/subjects/CDmem_1_<ID>_kinematics.csv` | Frame-by-frame mouse and shape positions + both overall and block-wise trial numbers + full metadata |
+| `data/subjects/CDmem_1_<ID>_recognition.csv` | Recognition memory test results + both overall and block-wise trial numbers + full metadata |
 | `screenshots/` | Auto-saved PNG screenshots of each phase |
 
 ---
