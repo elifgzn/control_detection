@@ -967,13 +967,6 @@ feedbackTxt = visual.TextStim(win, "", color="white", height=40)
 # Prevents shapes from flying off-screen.
 confine = lambda p, l=400: p if (r := math.hypot(*p)) <= l else (p[0] * l / r, p[1] * l / r)
 
-# Helper: rotate a 2D vector (vx, vy) by angle a (degrees).
-# Used to apply an angle bias to mouse input (not used in this version, kept for compatibility).
-rotate = lambda vx, vy, a: (
-    vx * math.cos(math.radians(a)) - vy * math.sin(math.radians(a)),
-    vx * math.sin(math.radians(a)) + vy * math.cos(math.radians(a))
-)
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  SIMULATION HELPERS
@@ -1257,12 +1250,12 @@ def calculate_difficulty_levels(quest):
 
     Returns
     -------
-    dict with keys 'level_1' (~55% correct, hardest) and
-                   'level_3' (~85% correct, medium-hard)
+    dict with keys 'low' (~55% correct, hardest) and
+                   'high' (~85% correct, medium-hard)
     """
     return {
-        'level_1': quest.threshold_for_target(0.55),
-        'level_3': quest.threshold_for_target(0.85),
+        'low': quest.threshold_for_target(0.55),
+        'high': quest.threshold_for_target(0.85),
     }
 
 
@@ -1289,9 +1282,9 @@ MOUSE_MOVE_THRESHOLD = 0.5
 MOTION_DURATION = 3.0
 
 
-def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
+def run_trial_2shapes(trial_num, phase, mode, block_num=1,
                       prop_override=None, cue_dur_range=None, motion_dur=None,
-                      response_window=None, difficulty_level=None,
+                      response_window=None, control_condition=None,
                       image_pair=None):
     # image_pair : tuple of two dicts {'filename': str, 'path': str}, or None.
     #              When provided (test phase), images replace the shapes.
@@ -1303,15 +1296,13 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
     ----------
     trial_num       : int   — trial number within the current phase
     phase           : str   — 'calibration' or 'test'
-    angle_bias      : int   — rotation applied to mouse input (degrees).
-                              0 = no rotation; 90 = perpendicular (not used here)
     mode            : str   — 'staircase' or 'test' (informational only)
     block_num       : int   — current block number (for logging)
     prop_override   : float — self-proportion to use (overrides staircase)
     cue_dur_range   : tuple — (min, max) seconds for fixation duration
     motion_dur      : float — motion phase duration (not used; MOTION_DURATION is fixed)
     response_window : float — response time limit (not used; unlimited response time)
-    difficulty_level: str   — level label for logging (e.g. 'level_1')
+    control_condition: str   — level label for logging (e.g. 'low')
 
     Returns
     -------
@@ -1377,9 +1368,10 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
 
     # ── EEG Triggers: Stimulus Onset ────────────────────────────────────────
     trigger_stim_onset = np.nan
-    if phase == "test" and difficulty_level:
+    if phase == "test" and control_condition:
         try:
-            level_idx = int(difficulty_level.split('_')[-1])
+            # low -> level 1, high -> level 3
+            level_idx = 1 if control_condition == 'low' else 3
             trigger_stim_onset = 10 + level_idx
             send_trigger(trigger_stim_onset)
         except (ValueError, IndexError):
@@ -1425,18 +1417,12 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
 
     event.clearEvents(eventType='keyboard')
 
-    # Angle bias: 90 means randomly rotate mouse input left or right.
-    # In this experiment, angle_bias=0 (no rotation), kept for compatibility.
-    applied_angle = angle_bias
-    if angle_bias == 90:
-        applied_angle = int(rng.choice([90, -90]))
-
     # ── MOTION PHASE: exactly 3 seconds, no response allowed ────────────────
     # EEG Triggers: Motion Start
     trigger_motion_start = np.nan
-    if phase == "test" and difficulty_level:
+    if phase == "test" and control_condition:
         try:
-            level_idx = int(difficulty_level.split('_')[-1])
+            level_idx = 1 if control_condition == 'low' else 3
             trigger_motion_start = 20 + level_idx
             send_trigger(trigger_motion_start)
         except (ValueError, IndexError):
@@ -1449,9 +1435,6 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
         x, y = mouse.getPos()
         dx, dy = x - last[0], y - last[1]
         last = (x, y)
-
-        # Apply angle rotation to mouse input (0 here = no change)
-        dx, dy = rotate(dx, dy, applied_angle)
 
         # Get trajectory velocities for this frame.
         # Snippets are looped if the trial is longer than the snippet.
@@ -1610,15 +1593,15 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
 
     # EEG Triggers: Response Screen Onset
     trigger_resp_onset = np.nan
-    if phase == "test" and difficulty_level:
+    if phase == "test" and control_condition:
         try:
-            level_idx = int(difficulty_level.split('_')[-1])
+            level_idx = 1 if control_condition == 'low' else 3
             trigger_resp_onset = 30 + level_idx
             send_trigger(trigger_resp_onset)
         except (ValueError, IndexError):
             pass
 
-    resp_shape = None
+    response_controlled = None
     rt_choice  = np.nan
     response_clock = core.Clock()  # Starts now; used for both RT and 5-s window
 
@@ -1629,7 +1612,7 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
         # Simulate a response time between 1.5 and 4.5 seconds, then wait out the remaining window
         sim_rt = random.uniform(1.5, 4.5)
         core.wait(sim_rt)
-        resp_shape = rng.choice([stim_left_label, stim_right_label])
+        response_controlled = rng.choice([stim_left_label, stim_right_label])
         rt_choice  = response_clock.getTime()
         remaining  = CHOICE_DURATION - rt_choice
         if remaining > 0:
@@ -1644,8 +1627,8 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
                 key, key_time = keys[0]
                 if key == 'escape':
                     _save(); core.quit()
-                elif key in key_to_label and resp_shape is None:
-                    resp_shape = key_to_label[key]
+                elif key in key_to_label and response_controlled is None:
+                    response_controlled = key_to_label[key]
                     rt_choice  = elapsed
                     # Convert selected key color to green, draw it, and keep it until trial ends
                     if key == 'a':
@@ -1655,8 +1638,8 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
             core.wait(0.01)
 
         # Timed out — show "Please answer faster" for 2 s
-        if resp_shape is None:
-            resp_shape = 'timeout'
+        if response_controlled is None:
+            response_controlled = 'timeout'
             timeout_msg = visual.TextStim(
                 win, text="Please answer faster!",
                 pos=(0, 0), height=30, color='yellow', bold=True
@@ -1666,7 +1649,7 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
 
     # Accuracy: 1 if participant identified the correct target, 0 otherwise.
     # Timeouts count as incorrect.
-    correct = int(resp_shape == target)
+    correct = int(response_controlled == target)
 
     # EEG Triggers: Response Value
     trigger_resp_val = np.nan
@@ -1776,7 +1759,7 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
             'target':           target,
             'prop_used':        prop,
             'block_num':        block_num,
-            'difficulty_level': difficulty_level
+            'control_condition': control_condition
         })
     kinematics_data.extend(trial_kinematics)
 
@@ -1787,11 +1770,9 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
         distractor_snippet_ids=[distractor_snippet_idx],
         phase=phase,
         block_num=block_num,
-        angle_bias=angle_bias,
-        applied_angle_bias=applied_angle,
-        true_shape=target,
-        resp_shape=resp_shape,
-        accuracy=correct,
+        true_controlled=target,
+        response_controlled=response_controlled,
+        detection_accuracy=correct,
         rt_choice=rt_choice,
         agency_rating=agency_rating,
         prop_used=prop,
@@ -1799,7 +1780,7 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
         mean_evidence=mean_evidence,
         sum_evidence=sum_evidence,
         var_evidence=var_evidence,
-        difficulty_level=difficulty_level,
+        control_condition=control_condition,
         # Image info (NaN for calibration trials, filenames for test trials)
         img_A_name=img_A_info['filename'] if use_images else np.nan,
         img_B_name=img_B_info['filename'] if use_images else np.nan,
@@ -1822,14 +1803,13 @@ def run_trial_2shapes(trial_num, phase, angle_bias, mode, block_num=1,
 #    • Hard cap at CHECK_CALIBRATION_TRIALS + 20 trials
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_calibration_quest(num_trials, angle_bias=0, block_num=0):
+def run_calibration_quest(num_trials, block_num=0):
     """
     Run the QUEST+ calibration phase.
 
     Parameters
     ----------
     num_trials  : int — minimum number of calibration trials (hard cap = +20)
-    angle_bias  : int — rotation applied to mouse input (0 = none)
     block_num   : int — block number for logging (0 = calibration)
 
     Returns
@@ -1855,13 +1835,13 @@ def run_calibration_quest(num_trials, angle_bias=0, block_num=0):
         s_candidate = quest.select_stimulus_entropy()
 
         res = run_trial_2shapes(
-            trial_num, "calibration", angle_bias=angle_bias, mode="staircase",
+            trial_num, "calibration", mode="staircase",
             prop_override=s_candidate, cue_dur_range=(0.5, 0.8),
-            difficulty_level="calibration", block_num=block_num
+            control_condition="calibration", block_num=block_num
         )
 
         # Update QUEST only for valid (non-timeout) responses
-        if res.get('resp_shape') != 'timeout':
+        if res.get('response_controlled') != 'timeout':
             quest.update(s_candidate, int(res.get('accuracy', 0)))
 
         # Compute QUEST summary every 10 trials (expensive); otherwise fast SD
@@ -1882,14 +1862,12 @@ def run_calibration_quest(num_trials, angle_bias=0, block_num=0):
         thisExp.addData('staircase_trial',         trial_num)
         thisExp.addData('prop_used',               s_candidate)
         thisExp.addData('stimulus_logit',          logit(s_candidate))
-        thisExp.addData('accuracy',                res.get('accuracy', 0))
-        thisExp.addData('is_timeout',              res.get('resp_shape') == 'timeout')
+        thisExp.addData('detection_accuracy',      res.get('detection_accuracy', 0))
+        thisExp.addData('is_timeout',              res.get('response_controlled') == 'timeout')
         thisExp.addData('rt_choice',               res.get('rt_choice', np.nan))
         thisExp.addData('early_response',          res.get('early_response', False))
-        thisExp.addData('true_shape',              res.get('true_shape', ''))
-        thisExp.addData('resp_shape',              res.get('resp_shape', ''))
-        thisExp.addData('angle_bias',              angle_bias)
-        thisExp.addData('applied_angle_bias',      res.get('applied_angle_bias', angle_bias))
+        thisExp.addData('true_controlled',         res.get('true_controlled', ''))
+        thisExp.addData('response_controlled',     res.get('response_controlled', ''))
         thisExp.addData('quest_alpha_sd',          quest_alpha_sd)
         thisExp.addData('mean_evidence',           res.get('mean_evidence', np.nan))
         thisExp.addData('sum_evidence',            res.get('sum_evidence', np.nan))
@@ -1947,7 +1925,7 @@ def run_test_block_for_level(threshold_75, level_name, prop_value,
     Parameters
     ----------
     threshold_75 : float — calibrated 75% threshold (logged for reference)
-    level_name   : str   — difficulty level label (e.g. 'level_1')
+    level_name   : str   — control condition label (e.g. 'low')
     prop_value   : float — self-proportion for all trials in this block
     num_trials   : int   — number of trials in this block
     block_num    : int   — block number (1–4) for logging
@@ -1968,9 +1946,9 @@ def run_test_block_for_level(threshold_75, level_name, prop_value,
 
         # Run one trial at the fixed prop_value for this block, using images
         res = run_trial_2shapes(
-            trial_num, "test", angle_bias=angle_bias, mode="test",
+            trial_num, "test", mode="test",
             prop_override=prop_value, cue_dur_range=(0.5, 0.8),
-            difficulty_level=level_name, block_num=block_num,
+            control_condition=level_name, block_num=block_num,
             image_pair=current_pair
         )
 
@@ -1981,18 +1959,16 @@ def run_test_block_for_level(threshold_75, level_name, prop_value,
         thisExp.addData('phase',                   'test')
         thisExp.addData('n_shapes',                2)
         thisExp.addData('block_num',               block_num)
-        thisExp.addData('difficulty_level',        level_name)
+        thisExp.addData('control_condition',       level_name)
         thisExp.addData('prop_used',               prop_value)
         thisExp.addData('threshold_75',            threshold_75)
-        thisExp.addData('accuracy',                res.get('accuracy', 0))
-        thisExp.addData('is_timeout',              res.get('resp_shape') == 'timeout')
+        thisExp.addData('detection_accuracy',      res.get('detection_accuracy', 0))
+        thisExp.addData('is_timeout',              res.get('response_controlled') == 'timeout')
         thisExp.addData('rt_choice',               res.get('rt_choice', np.nan))
         thisExp.addData('agency_rating',           res.get('agency_rating', np.nan))
         thisExp.addData('early_response',          res.get('early_response', False))
-        thisExp.addData('true_shape',              res.get('true_shape', ''))
-        thisExp.addData('resp_shape',              res.get('resp_shape', ''))
-        thisExp.addData('angle_bias',              angle_bias)
-        thisExp.addData('applied_angle_bias',      res.get('applied_angle_bias', angle_bias))
+        thisExp.addData('true_controlled',         res.get('true_controlled', ''))
+        thisExp.addData('response_controlled',     res.get('response_controlled', ''))
         thisExp.addData('mean_evidence',           res.get('mean_evidence', np.nan))
         thisExp.addData('sum_evidence',            res.get('sum_evidence', np.nan))
         thisExp.addData('var_evidence',            res.get('var_evidence', np.nan))
@@ -2275,7 +2251,6 @@ msg.draw(); win.flip(); wait_keys()
 
 quest, threshold_75 = run_calibration_quest(
     num_trials=CHECK_CALIBRATION_TRIALS,
-    angle_bias=0,
     block_num=0  # Block 0 = calibration (test blocks are 1-6)
 )
 
@@ -2292,26 +2267,26 @@ expInfo['quest_alpha_sd']     = quest.get_threshold_sd()
 # Please press SPACE to continue to the main experiment."""
 # msg.draw(); win.flip(); wait_keys()
 
-# ── Step 3: Calculate difficulty levels ────────────────────────────────────────────────
-# Derive level_1 (~55% correct) and level_3 (~85% correct) via QUEST+ posterior.
+# ── Step 3: Calculate control conditions ────────────────────────────────────────────────
+# Derive low (~55% correct) and high (~85% correct) via QUEST+ posterior.
 levels = calculate_difficulty_levels(quest)
 
-print(f"\nDifficulty levels (QUEST+, threshold={threshold_75:.3f}):")
+print(f"\nControl conditions (QUEST+, threshold={threshold_75:.3f}):")
 for name, val in levels.items():
     print(f"  {name}: prop={val:.3f}")
 
 # ── Step 4: Determine miniblock order by participant parity ───────────────────
-# Odd participant number  → starts with level_1: [L1, L3, L1, L3, L1, L3]
-# Even participant number → starts with level_3: [L3, L1, L3, L1, L3, L1]
+# Odd participant number  → starts with low: [low, high, low, high, low, high]
+# Even participant number → starts with high: [high, low, high, low, high, low]
 try:
     participant_num = int(expInfo["participant"])
 except ValueError:
     # If participant ID is not a plain number, derive one from its hash
     participant_num = int(hashlib.sha256(expInfo["participant"].encode()).hexdigest(), 16)
 
-starts_with_level1 = (participant_num % 2 == 1)   # odd → level_1 first
-level_A = 'level_1' if starts_with_level1 else 'level_3'
-level_B = 'level_3' if starts_with_level1 else 'level_1'
+starts_with_low = (participant_num % 2 == 1)   # odd → low first
+level_A = 'low' if starts_with_low else 'high'
+level_B = 'high' if starts_with_low else 'low'
 
 miniblock_sequence = [level_A, level_B, level_A, level_B, level_A, level_B]
 
@@ -2340,8 +2315,7 @@ for mb_idx, level_name in enumerate(miniblock_sequence):
         level_name=level_name,
         prop_value=prop_value,
         num_trials=CHECK_TEST_TRIALS_PER_LEVEL,
-        block_num=miniblock_num,
-        angle_bias=0
+        block_num=miniblock_num
     )
 
     # Show a break screen between miniblocks (not after the last one)

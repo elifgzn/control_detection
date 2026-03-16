@@ -11,10 +11,10 @@ The experiment is divided into 3 phases: **Calibration**, **Test**, and **Memory
 |-------|-----------------|--------|-------|
 | **Calibration** | Full mode | 60–80 | Adaptive stop when alpha SD < 0.20; hard cap at 80 |
 | **Calibration** | Check mode | 6–26 | Same adaptive stop logic |
-| **Test — level_1** | Full mode | 60 (3 miniblocks × 20) | ~55% accuracy (hardest) |
-| **Test — level_3** | Full mode | 60 (3 miniblocks × 20) | ~85% accuracy (medium-hard) |
-| **Test — level_1** | Check mode | 15 (3 miniblocks × 5) | |
-| **Test — level_3** | Check mode | 15 (3 miniblocks × 5) | |
+| **Test — low** | Full mode | 60 (3 miniblocks × 20) | ~55% accuracy (hardest) |
+| **Test — high** | Full mode | 60 (3 miniblocks × 20) | ~85% accuracy (medium-hard) |
+| **Test — low** | Check mode | 15 (3 miniblocks × 5) | |
+| **Test — high** | Check mode | 15 (3 miniblocks × 5) | |
 | **Test (total)** | Full mode | **120** | 6 miniblocks × 20 trials |
 | **Test (total)** | Check mode | **30** | 6 miniblocks × 5 trials |
 | **Memory test — seen** | Full mode | 120 | Images shown during test phase |
@@ -44,7 +44,9 @@ Two stimuli appear on screen: one on the left (`−300 px`) and one on the right
 - **Calibration phase**: stimuli are a black **Square** (40 × 40 px) and a black **Circle** (radius 20 px).
 - **Test phase**: stimuli are two **object images** (200 × 200 px) from the CARA stimulus set.
 
-One stimulus is the **target** (randomly chosen each trial): its direction is a weighted blend of the participant's **mouse direction** and a pre-recorded **trajectory direction**. The blend weight (`prop`) is set by QUEST+ in calibration, or by the fixed difficulty level in the test phase.
+The other stimulus (the **distractor**) follows its pre-recorded trajectory fully independently of the mouse.
+
+One stimulus is the **target** (randomly chosen each trial): its direction is a weighted blend of the participant's **mouse direction** and a pre-recorded **trajectory direction**. The blend weight (`prop`) is set by QUEST+ in calibration, or by the fixed control condition in the test phase.
 
 The other stimulus (the **distractor**) follows its pre-recorded trajectory fully independently of the mouse.
 
@@ -149,20 +151,20 @@ The calibration phase uses the QUEST+ Bayesian adaptive staircase to efficiently
     *   Calibration stops as soon as `alpha_sd < 0.20`, provided the minimum number of trials (60 in full mode) has been reached.
     *   If convergence isn't reached, it hits a hard cap of 80 trials.
 
-6.  **Difficulty Level Derivation:**
+6.  **Control Condition Derivation:**
     After calibration ends, the final 3D posterior is used to calculate the specific stimulus intensities (`prop` values) required for the test phase:
-    *   `level_1` (Hard, ~55% accuracy target).
-    *   `level_3` (Medium-hard, ~85% accuracy target).
-    *   These values are derived by finding the `prop` that yields the target probability across the entire weighted parameter space.
+    *   `low` (Hard, ~55% accuracy target).
+    *   `high` (Medium-hard, ~85% accuracy target).
+    These values are derived by finding the `prop` that yields the target probability across the entire weighted parameter space.
 
 ### After calibration
-The QUEST+ posterior is used to derive two difficulty levels for the test phase. A completion screen is shown; participant presses **SPACE** to continue to the test phase.
+The QUEST+ posterior is used to derive two control conditions for the test phase. A completion screen is shown; participant presses **SPACE** to continue to the test phase.
 
 ---
 
 ## Phase 2 — Test
 
-**Purpose:** Measure perceived control and sense of agency across two difficulty conditions, using paired object images as stimuli.
+**Purpose:** Measure perceived control and sense of agency across two control conditions, using paired object images as stimuli.
 
 **Stimuli:** Two object images per trial (one target, one distractor), drawn from the CARA stimulus set (200 × 200 px).
 
@@ -170,14 +172,14 @@ The QUEST+ posterior is used to derive two difficulty levels for the test phase.
 
 **Agency rating** collected after every trial.
 
-### Difficulty levels
+### Control conditions
 
 Derived from the QUEST+ calibration posterior via `threshold_for_target()`:
 
-| Level | Target accuracy | Description |
+| Condition | Target accuracy | Description |
 |-------|----------------|-------------|
-| `level_1` | ~55 % correct | Hardest |
-| `level_3` | ~85 % correct | Medium-hard |
+| `low` | ~55 % correct | Hardest |
+| `high` | ~85 % correct | Medium-hard |
 
 ### Image stimuli
 
@@ -189,10 +191,10 @@ Derived from the QUEST+ calibration posterior via `threshold_for_target()`:
 ### Block structure
 
 - Total: **6 miniblocks × 20 trials = 120 test trials** (full mode), or **6 × 5 = 30** in check mode.
-- Miniblocks alternate between `level_1` and `level_3`.
+- Miniblocks alternate between `low` and `high`.
 - The starting level is **counterbalanced by participant number parity**:
-  - **Odd** participant number → starts with `level_1`: `[L1, L3, L1, L3, L1, L3]`
-  - **Even** participant number → starts with `level_3`: `[L3, L1, L3, L1, L3, L1]`
+  - **Odd** participant number → starts with `low`: `[low, high, low, high, low, high]`
+  - **Even** participant number → starts with `high`: `[high, low, high, low, high, low]`
 
 ### Breaks between miniblocks
 After each miniblock (except the last), a self-paced break screen is shown. Participant presses **SPACE** to continue.
@@ -263,7 +265,7 @@ Participant presses **SPACE** to exit. All data (main CSV + kinematics CSV) is s
 
 | File | Contents |
 |------|----------|
-| `data/subjects/CDmem_1_<ID>.csv` | Trial-by-trial responses: accuracy, RT, agency ratings, QUEST+ parameters, image filenames, EEG triggers |
+| `data/subjects/CDmem_1_<ID>.csv` | Trial-by-trial responses: accuracy, RT, agency ratings, QUEST+ parameters, image filenames, EEG triggers, true_controlled, response_controlled |
 | `data/subjects/CDmem_1_<ID>_kinematics.csv` | Frame-by-frame mouse position, shape positions, and per-frame evidence |
 | `image_stimuli_log.json` | Record of which images were sampled and assigned to test vs. recognition groups |
 
