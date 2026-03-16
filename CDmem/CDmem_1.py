@@ -1247,8 +1247,8 @@ class QuestPlusStaircase:
 #  DIFFICULTY LEVEL CALCULATOR
 #  After QUEST+ calibration, derive the 2 test difficulty levels from the
 #  fitted psychometric function using threshold_for_target():
-#    level_1 (hardest):     threshold that yields ~55% correct
-#    level_3 (medium-hard): threshold that yields ~85% correct
+#    low (hardest):     threshold that yields ~55% correct
+#    high (medium-hard): threshold that yields ~85% correct
 # ─────────────────────────────────────────────────────────────────────────────
 
 def calculate_difficulty_levels(quest):
@@ -2325,14 +2325,14 @@ expInfo['miniblock_order'] = str(miniblock_sequence)
 expInfo['starts_with']     = level_A
 
 print(f"\nParticipant {expInfo['participant']} (num={participant_num}, "
-      f"{'odd' if starts_with_level1 else 'even'}): "
+      f"{'odd' if starts_with_low else 'even'}): "
       f"Miniblock order = {miniblock_sequence}")
 
 # ── Step 5: Show test phase instructions (once, after calibration) ────────────
 show_test_phase_instructions()
 
 # ── Step 6: Run 6 miniblocks ──────────────────────────────────────────────────
-# Miniblocks alternate between level_1 and level_3 (order set by parity above).
+# Miniblocks alternate between low and high (order set by parity above).
 # Each miniblock contains CHECK_TEST_TRIALS_PER_LEVEL trials (20 in full mode).
 TOTAL_MINIBLOCKS = 6
 
