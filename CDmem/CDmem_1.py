@@ -756,7 +756,7 @@ SPEED_MULTIPLIER = 1.3    # Multiply trajectory velocities to make shapes move f
 # ── Visual Angle / Stimulus Size Setup ───────────────────────────────────────
 DIST_CM    = 90.0    # Distance from eyes to monitor
 WIDTH_CM   = 53.0    # Physical width of the monitor
-STIM_SZ_DEG = 1.5    # Desired visual angle size of the stimuli in degrees
+STIM_SZ_DEG = 1.7  # Desired visual angle size of the stimuli in degrees
 
 def vis_ang_to_pix(deg, dist_cm, width_cm, win_width_pix):
     """
@@ -782,7 +782,7 @@ IMAGE_SEED   = 42         # Fixed seed for reproducible sampling across runs
 # Number of unique pairs needed for TEST phase = 120 trials (full) or 30 trials (check mode)
 # Since each trial needs 2 UNIQUE images (Target & Distractor), we need 240 object concepts
 # to run 120 trials with NO REPEATS.
-N_IMAGES     = (CHECK_TEST_TRIALS_PER_LEVEL * 6) if CHECK_MODE else 240
+N_IMAGES     = (CHECK_TEST_TRIALS_PER_LEVEL * 6 * 2) if CHECK_MODE else 240
 IMAGE_LOG    = pathlib.Path(__file__).parent / "image_stimuli_log.json"
 
 
@@ -2103,6 +2103,10 @@ def run_memory_test(seen_images, foil_images_list):
         mem_fix.draw(); win.flip()
         core.wait(fix_dur)
 
+        # Reset key label colours to white for every new trial
+        mem_key_A.color = 'white'
+        mem_key_S.color = 'white'
+
         # Draw image + key labels and start timing
         event.clearEvents(eventType='keyboard')
         mem_img_stim.draw()
@@ -2143,9 +2147,25 @@ def run_memory_test(seen_images, foil_images_list):
                     elif key == 'a':
                         mem_response = 'yes'
                         mem_rt       = key_time - item_onset
+                        # Turn selected key green (mirrors test phase behaviour)
+                        mem_key_A.color = 'green'
+                        mem_img_stim.draw()
+                        mem_question.draw()
+                        mem_key_A.draw()
+                        mem_key_S.draw()
+                        win.flip()
+                        core.wait(0.3)
                     elif key == 's':
                         mem_response = 'no'
                         mem_rt       = key_time - item_onset
+                        # Turn selected key green (mirrors test phase behaviour)
+                        mem_key_S.color = 'green'
+                        mem_img_stim.draw()
+                        mem_question.draw()
+                        mem_key_A.draw()
+                        mem_key_S.draw()
+                        win.flip()
+                        core.wait(0.3)
                 core.wait(0.01)
 
         # Accuracy: correct if 'yes' for seen, 'no' for unseen
@@ -2201,10 +2221,10 @@ def show_initial_instructions():
     instructions = [
         """Dear participant, welcome to the study!
 
-This task involves moving objects on the screen, and figuring out which one is under your control. The experiment consists of 6 blocks with 20 trials each.
+This task involves moving images on the screen using your finger on the touchpad, and figuring out which image is under your control. The experiment consists of 6 blocks with 20 trials each.
 
-In each trial, you will see two objects on the screen.
-You will use the touchpad to move the objects. Only one of them will be controlled by your touchpad movements. After a certain duration, you will be asked to press [A] or [S] to report which object you were controlling. Please try to respond accurately.
+In each trial, you will see two images on the screen.
+Please use your right index finger on the touchpad to move the images. One of these images will be moving randomly, and the other one will be partially controlled by your finger movement. After a certain duration, you will be asked to report which image you were controlling, by pressing [A] or [S] on the keyboard. 
 
 After each trial, you will be asked to indicate your feeling of control (on a scale of 1 to 7, where 1 is no control and 7 is full control). Please answer by pressing the corresponding number on the keyboard.
 
@@ -2351,7 +2371,7 @@ for mb_idx, level_name in enumerate(miniblock_sequence):
 
     # Show a break screen between miniblocks (not after the last one)
     if miniblock_num < TOTAL_MINIBLOCKS:
-        msg.text = (f"Miniblock {miniblock_num} of {TOTAL_MINIBLOCKS} complete!\n\n"
+        msg.text = (f"Block {miniblock_num} of {TOTAL_MINIBLOCKS} complete!\n\n"
                     f"You can take a short break.\n\n"
                     f"Press SPACE when you are ready to continue.")
         msg.draw(); win.flip(); wait_keys()
