@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 CDmem Analysis Script
@@ -12,11 +12,15 @@ Located in: CDmem/data/subjects/
 """
 
 import os
+import sys
 import re
 import glob
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 from pathlib import Path
+from scipy.stats import norm
 
 # ============================================================================
 # CONFIGURATION
@@ -24,6 +28,8 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
 DATA_DIR = SCRIPT_DIR / "data" / "subjects"
+OUTPUT_DIR = SCRIPT_DIR / "analysis_output"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ============================================================================
 # DATA LOADING
@@ -362,6 +368,7 @@ def exclude_accuracy_outliers(data):
 
     # --- Step 7: Remove flagged participants from the full dataset ---
     # All rows (calibration and test) for the flagged participants are removed.
+    assert data is not None
     data_clean = data[~data["participant"].isin(excluded_ids)].copy()
 
     return data_clean, excluded_ids, acc_per_px
@@ -599,6 +606,319 @@ def sync_participant_ids(data, recog_data):
 
 
 # ============================================================================
+# RECOGNITION MEMORY ANALYSES (D-PRIME)
+# ============================================================================
+
+def calc_dprime(hr, far, clip_val=0.01):
+    """
+    Calculate d-prime from hit rate (hr) and false alarm rate (far).
+    Includes clipping to avoid infinity when hr=1.0 or far=0.0.
+    """
+    hr_clipped = np.clip(hr, clip_val, 1.0 - clip_val)
+    far_clipped = np.clip(far, clip_val, 1.0 - clip_val)
+    return norm.ppf(hr_clipped) - norm.ppf(far_clipped)
+
+def analyze_recognition(main_data, recog_data):
+    """
+    Calculate recognition performance (HR, FA, d-prime) per participant
+    and per control condition.
+    
+    Returns
+    -------
+    pd.DataFrame
+        Participant-level summary.
+    """
+    # 1. Calculate overall False Alarm rate per participant
+    # Foils have mem_ground_truth == 'unseen'
+    # Responses are in 'mem_response' ('yes'/'no')
+    recog_data = recog_data.copy()
+    recog_data['said_old'] = recog_data['mem_response'].str.lower() == 'yes'
+    
+    foils = recog_data[recog_data['mem_ground_truth'] == 'unseen']
+    if len(foils) == 0:
+        print("[WARNING] No foil ('unseen') trials found in recognition data.")
+        return None
+        
+    fa_rates = foils.groupby('participant')['said_old'].mean().reset_index()
+    fa_rates.rename(columns={'said_old': 'FA_rate'}, inplace=True)
+    
+    # 2. Extract Hit rates per condition
+    # Targets have mem_ground_truth == 'seen'.
+    # We must merge with main_data to know which condition ('low'/'high') the target came from.
+    # The linking variable is the image name. 
+    # Recognition targets are in `mem_filename`. Main data has `img_A_name` and `img_B_name`.
+    # Let's create a lookup table mapping each participant + image name to its control_condition.
+    
+    # Isolate test phase of main data
+    if 'phase' in main_data.columns:
+        test_data = main_data[main_data['phase'] == 'test'].copy()
+    else:
+        test_data = main_data.copy()
+        
+    if 'control_condition' not in test_data.columns:
+        print("[WARNING] control_condition not found in main data, cannot split recognition by condition.")
+        return None
+        
+    # We need to reshape the main data to have one row per image (img_A and img_B)
+    img_a_df = test_data[['participant', 'control_condition', 'img_A_name']].copy()
+    img_a_df.rename(columns={'img_A_name': 'mem_filename'}, inplace=True)
+    
+    img_b_df = test_data[['participant', 'control_condition', 'img_B_name']].copy()
+    img_b_df.rename(columns={'img_B_name': 'mem_filename'}, inplace=True)
+    
+    img_lookup = pd.concat([img_a_df, img_b_df], ignore_index=True)
+    img_lookup.dropna(subset=['mem_filename'], inplace=True)
+    # Deduplicate just in case 
+    img_lookup.drop_duplicates(subset=['participant', 'mem_filename'], inplace=True)
+    
+    # 3. Merge targets with their condition
+    targets = recog_data[recog_data['mem_ground_truth'] == 'seen'].copy()
+    targets = targets.merge(img_lookup, on=['participant', 'mem_filename'], how='left')
+    
+    # Verify merge success
+    unmatched = targets['control_condition'].isna().sum()
+    if unmatched > 0:
+        print(f"[WARNING] {unmatched} recognition targets could not be matched to a control condition.")
+        
+    # Calculate hit rate per participant x condition
+    hit_rates = targets.groupby(['participant', 'control_condition'])['said_old'].mean().reset_index()
+    hit_rates.rename(columns={'said_old': 'Hit_rate'}, inplace=True)
+    
+    # 4. Combine HR and FA to calculate d-prime
+    results = hit_rates.merge(fa_rates, on='participant', how='left')
+    results['d_prime'] = results.apply(lambda row: calc_dprime(row['Hit_rate'], row['FA_rate']), axis=1)
+    
+    return results
+
+
+# ============================================================================
+# DESCRIPTIVE STATISTICS
+# ============================================================================
+
+def print_descriptives(data):
+    """
+    Calculate and print demographic descriptives for the final sample.
+    (N, gender counts/percentages, age mean, SD, min, max)
+    
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Cleaned dataset containing 'participant', 'age', and 'gender'.
+    """
+    # Isolate one row per participant
+    demographics = data.drop_duplicates(subset=["participant"])[["participant", "age", "gender"]].copy()
+    
+    n_total = len(demographics)
+    
+    # -- Gender Statistics --
+    # Normalise gender strings (e.g. 'f' -> 'female' if needed, here we just strip/lower)
+    demographics["gender"] = demographics["gender"].astype(str).str.strip().str.lower()
+    gender_counts = demographics["gender"].value_counts()
+    gender_pcts = demographics["gender"].value_counts(normalize=True) * 100
+    
+    # -- Age Statistics --
+    demographics["age"] = pd.to_numeric(demographics["age"], errors="coerce")
+    age_mean = demographics["age"].mean()
+    age_sd = demographics["age"].std()
+    age_min = demographics["age"].min()
+    age_max = demographics["age"].max()
+    
+    print("=" * 60)
+    print("DESCRIPTIVE STATISTICS (Final Sample)")
+    print("=" * 60)
+    print(f"  Total N = {n_total}\n")
+    
+    print("  Gender:")
+    for g in gender_counts.index:
+        count = gender_counts[g]
+        pct = gender_pcts[g]
+        # Just neatening up 'f' and 'm' if they are used
+        label = "Female" if g == "f" else "Male" if g == "m" else g.capitalize()
+        print(f"    {label:<10} : {count:>3} ({pct:>4.1f}%)")
+        
+    print("\n  Age:")
+    if pd.notna(age_mean):
+        print(f"    Mean (SD)  : {age_mean:.1f} ({age_sd:.1f})")
+        print(f"    Range      : {age_min:.0f} - {age_max:.0f}")
+    else:
+        print("    No valid age data found.")
+    print("=" * 60 + "\n")
+
+
+# ============================================================================
+# EXTENDED SANITY CHECKS & PLOTS
+# ============================================================================
+
+def sanity_check(df):
+    """Compute sanity check statistics for performance and agency ratings."""
+    
+    results = {}
+    
+    # Overall accuracy by control_condition
+    if 'control_condition' in df.columns:
+        accuracy_by_condition = df.groupby('control_condition')['detection_accuracy'].agg(['mean', 'std', 'count'])
+        results['accuracy_by_condition'] = accuracy_by_condition
+    else:
+        results['accuracy'] = df['detection_accuracy'].agg(['mean', 'std', 'count'])
+    
+    # Agency ratings by control_condition
+    if 'agency_rating' in df.columns and df['agency_rating'].notna().any():
+        if 'control_condition' in df.columns:
+            agency_by_condition = df.groupby('control_condition')['agency_rating'].agg(['mean', 'std', 'count'])
+            results['agency_by_condition'] = agency_by_condition
+            
+            # Agency by accuracy (correct vs incorrect)
+            agency_by_accuracy = df.groupby(['control_condition', 'detection_accuracy'])['agency_rating'].agg(['mean', 'std', 'count'])
+            results['agency_by_accuracy'] = agency_by_accuracy
+        else:
+            results['agency'] = df['agency_rating'].agg(['mean', 'std', 'count'])
+            agency_by_accuracy = df.groupby('detection_accuracy')['agency_rating'].agg(['mean', 'std', 'count'])
+            results['agency_by_accuracy'] = agency_by_accuracy
+    
+    # Psychometric function: accuracy as function of control level
+    df_copy = df.copy()
+    df_copy['prop_used'] = pd.to_numeric(df_copy['prop_used'], errors='coerce')
+    # Bins of control levels
+    if df_copy['prop_used'].nunique() > 10:
+        df_copy['prop_bin'] = pd.cut(df_copy['prop_used'], bins=10, duplicates='drop')
+    else:
+        df_copy['prop_bin'] = df_copy['prop_used']
+    
+    if 'control_condition' in df_copy.columns:
+        psychometric = df_copy.groupby(['prop_bin', 'control_condition'], observed=False)['detection_accuracy'].agg(['mean', 'std', 'count'])
+    else:
+        psychometric = df_copy.groupby('prop_bin', observed=False)['detection_accuracy'].agg(['mean', 'std', 'count'])
+    results['psychometric'] = psychometric
+    
+    return results
+
+def plot_sanity_check(df, output_dir):
+    """Create plots for sanity check statistics."""
+    
+    plt.style.use('seaborn-v0_8-whitegrid')
+    sns.set_palette("husl")
+    
+    fig, axes = plt.subplots(2, 2, figsize=(14, 12))
+    df = df.copy()
+    
+    # Ensure variables are numeric
+    df['detection_accuracy'] = pd.to_numeric(df['detection_accuracy'], errors='coerce')
+    df['prop_used'] = pd.to_numeric(df['prop_used'], errors='coerce')
+    if 'agency_rating' in df.columns:
+        df['agency_rating'] = pd.to_numeric(df['agency_rating'], errors='coerce')
+    if 'rt_choice' in df.columns:
+        df['rt_choice'] = pd.to_numeric(df['rt_choice'], errors='coerce')
+    
+    has_condition = 'control_condition' in df.columns
+    
+    # 1. Psychometric function
+    ax = axes[0, 0]
+    if has_condition:
+        for condition in df['control_condition'].dropna().unique():
+            subset = df[df['control_condition'] == condition].copy()
+            if len(subset) == 0: continue
+            
+            # Match MTI binning precisely: Use identical bins calculation where min != max
+            if subset['prop_used'].min() != subset['prop_used'].max():
+                bins = np.linspace(subset['prop_used'].min(), subset['prop_used'].max(), 11)
+                bin_centers = (bins[:-1] + bins[1:]) / 2
+                subset['prop_bin'] = pd.cut(subset['prop_used'], bins=bins, labels=bin_centers)
+                psychometric = subset.groupby('prop_bin', observed=False)['detection_accuracy'].agg(['mean', 'sem']).reset_index()
+                psychometric['prop_bin'] = psychometric['prop_bin'].astype(float)
+                ax.errorbar(psychometric['prop_bin'], psychometric['mean'], 
+                           yerr=psychometric['sem'], label=f'{condition}', marker='o', capsize=3)
+            else:
+                # If all threshold values are exactly identical (which crashes pd.cut), calculate directly
+                psychometric = subset.groupby('prop_used', observed=False)['detection_accuracy'].agg(['mean', 'sem']).reset_index()
+                ax.errorbar(psychometric['prop_used'], psychometric['mean'], 
+                           yerr=psychometric['sem'], label=f'{condition}', marker='o', capsize=3)
+        ax.legend()
+    else:
+        if df['prop_used'].min() != df['prop_used'].max():
+            bins = np.linspace(df['prop_used'].min(), df['prop_used'].max(), 11)
+            bin_centers = (bins[:-1] + bins[1:]) / 2
+            df['prop_bin'] = pd.cut(df['prop_used'], bins=bins, labels=bin_centers)
+            psychometric = df.groupby('prop_bin', observed=False)['detection_accuracy'].agg(['mean', 'sem']).reset_index()
+            psychometric['prop_bin'] = psychometric['prop_bin'].astype(float)
+            ax.errorbar(psychometric['prop_bin'], psychometric['mean'], 
+                       yerr=psychometric['sem'], marker='o', capsize=3)
+        else:
+            psychometric = df.groupby('prop_used', observed=False)['detection_accuracy'].agg(['mean', 'sem']).reset_index()
+            ax.errorbar(psychometric['prop_used'], psychometric['mean'], 
+                       yerr=psychometric['sem'], marker='o', capsize=3)
+            
+    ax.set_xlabel('Control Level (prop self-motion)')
+    ax.set_ylabel('Accuracy')
+    ax.set_title('Psychometric Function')
+    ax.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5)
+    
+    # 2. Accuracy
+    ax = axes[0, 1]
+    if has_condition:
+        accuracy_data = df.groupby('control_condition')['detection_accuracy'].agg(['mean', 'sem']).reset_index()
+        colors = ['#1f77b4', '#ff7f0e'] if len(accuracy_data) <= 2 else None
+        bars = ax.bar(accuracy_data['control_condition'].astype(str), accuracy_data['mean'], 
+                      yerr=accuracy_data['sem'], capsize=5, color=colors)
+        ax.set_xlabel('Control Condition')
+    else:
+        mean_acc = df['detection_accuracy'].mean()
+        sem_acc = df['detection_accuracy'].sem()
+        ax.bar(['Overall'], [mean_acc], yerr=[sem_acc], capsize=5)
+    
+    ax.set_ylabel('Mean Accuracy')
+    ax.set_title('Accuracy')
+    ax.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5, label='Chance')
+    ax.set_ylim([0, 1])
+    
+    # 3. Agency ratings by accuracy
+    ax = axes[1, 0]
+    if 'agency_rating' in df.columns and df['agency_rating'].notna().any():
+        if has_condition:
+            sns.barplot(data=df, x='control_condition', y='agency_rating', hue='detection_accuracy', 
+                       ax=ax, errorbar='se')
+            ax.set_xlabel('Control Condition')
+        else:
+            df['Overall'] = 'Overall'
+            sns.barplot(data=df, x='Overall', y='agency_rating', hue='detection_accuracy', 
+                       ax=ax, errorbar='se')
+            ax.set_xlabel('')
+            
+        ax.set_ylabel('Agency Rating (1-7)')
+        ax.set_title('Agency Ratings by Accuracy')
+        ax.legend(title='Correct (1) / Incorrect (0)')
+    else:
+        ax.text(0.5, 0.5, 'No agency rating data available', 
+               transform=ax.transAxes, ha='center')
+    
+    # 4. RT distribution
+    ax = axes[1, 1]
+    if 'rt_choice' in df.columns and df['rt_choice'].notna().any():
+        df_rt = df[df['rt_choice'] > 0]
+        if has_condition and len(df_rt) > 0:
+            for condition in df_rt['control_condition'].dropna().unique():
+                subset = df_rt[df_rt['control_condition'] == condition]['rt_choice']
+                if len(subset) > 0:
+                    ax.hist(subset, bins=30, alpha=0.5, label=str(condition), density=True)
+            ax.legend()
+        elif len(df_rt) > 0:
+            ax.hist(df_rt['rt_choice'], bins=30, alpha=0.5, density=True)
+        ax.set_xlabel('Reaction Time (s)')
+        ax.set_ylabel('Density')
+        ax.set_title('RT Distribution')
+    else:
+        ax.text(0.5, 0.5, 'No RT data available', 
+               transform=ax.transAxes, ha='center')
+    
+    plt.tight_layout()
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_dir / 'sanity_check.png', dpi=150)
+    plt.close()
+    
+    print("Saved plot: " + str(out_dir / 'sanity_check.png'))
+
+
+# ============================================================================
 # MAIN
 # ============================================================================
 
@@ -615,7 +935,9 @@ if __name__ == "__main__":
 
     if data is None:
         print("No data loaded. Exiting.")
-        exit(1)
+        sys.exit(1)
+    
+    assert data is not None
 
     # ------------------------------------------------------------------
     # 2. Sanity check: print column names and overall shape
@@ -706,3 +1028,60 @@ if __name__ == "__main__":
     final_ids = sorted(data['participant'].unique().tolist())
     print(f"    {final_ids}")
     print("=" * 60)
+    print()
+
+    # ------------------------------------------------------------------
+    # 9. Descriptive Statistics
+    # ------------------------------------------------------------------
+    # Calculated on the final, cleaned dataset so excluded participants
+    # are automatically excluded from the descriptives as well.
+    print_descriptives(data)
+
+    # ------------------------------------------------------------------
+    # 10. Sanity Checks & Plots
+    # ------------------------------------------------------------------
+    print("\n" + "=" * 60)
+    print("SANITY CHECKS & PLOTS")
+    print("=" * 60)
+    
+    # We only want to plot the test phase data since calibration is dynamic/different
+    if 'phase' in data.columns:
+        test_data = data[data['phase'] == 'test'].copy()
+    else:
+        test_data = data.copy()
+        
+    # Ensure variables are numeric
+    test_data['detection_accuracy'] = pd.to_numeric(test_data['detection_accuracy'], errors='coerce')
+    test_data['prop_used'] = pd.to_numeric(test_data['prop_used'], errors='coerce')
+    
+    s_results = sanity_check(test_data)
+    if 'accuracy_by_condition' in s_results:
+        print("\nAccuracy by Condition:")
+        print(s_results['accuracy_by_condition'].to_string())
+        print()
+    
+    plot_sanity_check(test_data, OUTPUT_DIR)
+
+    # ------------------------------------------------------------------
+    # 11. Recognition Memory Analysis
+    # ------------------------------------------------------------------
+    if recog_data is not None:
+        print("\n" + "=" * 60)
+        print("RECOGNITION MEMORY (D-PRIME)")
+        print("=" * 60)
+        
+        mem_results = analyze_recognition(data, recog_data)
+        if mem_results is not None:
+            print("\nPer-participant Hit Rate, FA Rate, and D-prime:")
+            print("-" * 60)
+            print(mem_results.to_string(index=False))
+            print("-" * 60)
+            
+            # Group level summary
+            print("\nGroup Summary:")
+            summary = mem_results.groupby('control_condition')[['Hit_rate', 'FA_rate', 'd_prime']].agg(['mean', 'std'])
+            print(summary.to_string())
+            print("=" * 60 + "\n")
+
+
+

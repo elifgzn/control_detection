@@ -7,24 +7,16 @@ The experiment is divided into 3 phases: **Calibration**, **Test**, and **Memory
 
 ## Trial Count Summary
 
-| Phase | Condition / Mode | Trials | Notes |
-|-------|-----------------|--------|-------|
-| **Calibration** | Full mode | 60–80 | Adaptive stop when alpha SD < 0.20; hard cap at 80 |
-| **Calibration** | Check mode | 6–26 | Same adaptive stop logic |
-| **Test — low** | Full mode | 60 (3 miniblocks × 20) | ~55% accuracy (hardest) |
-| **Test — high** | Full mode | 60 (3 miniblocks × 20) | ~85% accuracy (medium-hard) |
-| **Test — low** | Check mode | 15 (3 miniblocks × 5) | |
-| **Test — high** | Check mode | 15 (3 miniblocks × 5) | |
-| **Test (total)** | Full mode | **120** | 6 miniblocks × 20 trials |
-| **Test (total)** | Check mode | **30** | 6 miniblocks × 5 trials |
-| **Memory test — seen** | Full mode | 120 | Images shown during test phase |
-| **Memory test — foils** | Full mode | 120 | Paired counterparts never shown |
-| **Memory test (total)** | Full mode | **240** | Shuffled together |
-| **Memory test — seen** | Check mode | 30 | Images shown during check mode test |
-| **Memory test — foils** | Check mode | 30 | Paired counterparts never shown |
-| **Memory test (total)** | Check mode | **60** | Shuffled together |
-| **Grand total** | Full mode | **~420** | Calibration mid-range (70) + 120 test + 240 memory |
-| **Grand total** | Check mode | **~106** | Calibration mid-range (16) + 30 test + 60 memory |
+| Phase | Condition | Trials | Notes |
+|-------|----------|--------|-------|
+| **Calibration** | - | 60–80 | Adaptive stop when alpha SD < 0.20; hard cap at 80 |
+| **Test — low** | 55% accuracy | 60 | 3 miniblocks × 20 trials. Show cases 120 images. |
+| **Test — high** | 85% accuracy | 60 | 3 miniblocks × 20 trials. Show cases 120 images. |
+| **Test (total)** | - | **120** | **6 miniblocks × 20 trials. 240 total images shown.** |
+| **Memory test — seen** | Old | 240 | 2 images per trial × 120 test trials |
+| **Memory test — foils** | New | 240 | Paired counterparts never shown |
+| **Memory test (total)** | - | **480** | **Shuffled together** |
+| **Grand total** | - | **~680** | **Calibration mid-range (70) + 120 test + 480 memory** |
 
 ---
 
