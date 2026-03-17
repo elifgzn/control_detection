@@ -1,129 +1,7 @@
 {
   "seed": 42,
-  "n_pairs_sampled": 30,
+  "n_pairs_sampled": 60,
   "test_images": [
-    {
-      "filename": "costume_04s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\costume_04s.jpg"
-    },
-    {
-      "filename": "bedpan_08s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\bedpan_08s.jpg"
-    },
-    {
-      "filename": "lion_22s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\lion_22s.jpg"
-    },
-    {
-      "filename": "juicer1_09s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\juicer1_09s.jpg"
-    },
-    {
-      "filename": "headset_09s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\headset_09s.jpg"
-    },
-    {
-      "filename": "doorknocker_04s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\doorknocker_04s.jpg"
-    },
-    {
-      "filename": "container_04s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\container_04s.jpg"
-    },
-    {
-      "filename": "cigarette_09s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\cigarette_09s.jpg"
-    },
-    {
-      "filename": "sponge_06s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\sponge_06s.jpg"
-    },
-    {
-      "filename": "batter_04s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\batter_04s.jpg"
-    },
-    {
-      "filename": "barrette_09s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\barrette_09s.jpg"
-    },
-    {
-      "filename": "bracelet1_05s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\bracelet1_05s.jpg"
-    },
-    {
-      "filename": "cornhusk_12s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\cornhusk_12s.jpg"
-    },
-    {
-      "filename": "creme_brulee_10s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\creme_brulee_10s.jpg"
-    },
-    {
-      "filename": "ketchup_15s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\ketchup_15s.jpg"
-    },
-    {
-      "filename": "otter_02s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\otter_02s.jpg"
-    },
-    {
-      "filename": "banana_06s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\banana_06s.jpg"
-    },
-    {
-      "filename": "macaroni_11s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\macaroni_11s.jpg"
-    },
-    {
-      "filename": "coin_15s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\coin_15s.jpg"
-    },
-    {
-      "filename": "puppy_06s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\puppy_06s.jpg"
-    },
-    {
-      "filename": "pencil_sharpener_11s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\pencil_sharpener_11s.jpg"
-    },
-    {
-      "filename": "pretzel_07s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\pretzel_07s.jpg"
-    },
-    {
-      "filename": "limousine_01s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\limousine_01s.jpg"
-    },
-    {
-      "filename": "ham_10s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\ham_10s.jpg"
-    },
-    {
-      "filename": "corset_08s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\corset_08s.jpg"
-    },
-    {
-      "filename": "worm_06s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\worm_06s.jpg"
-    },
-    {
-      "filename": "mushroom_08n",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\mushroom_08n.jpg"
-    },
-    {
-      "filename": "wooden_leg_02s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\wooden_leg_02s.jpg"
-    },
-    {
-      "filename": "sleeping_bag_02s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\sleeping_bag_02s.jpg"
-    },
-    {
-      "filename": "suit_06s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\suit_06s.jpg"
-    }
-  ],
-  "recognition_images": [
     {
       "filename": "costume_08s",
       "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\costume_08s.jpg"
@@ -145,8 +23,8 @@
       "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\headset_03s.jpg"
     },
     {
-      "filename": "doorknocker_26s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\doorknocker_26s.jpg"
+      "filename": "doorknocker_04s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\doorknocker_04s.jpg"
     },
     {
       "filename": "container_10s",
@@ -157,28 +35,28 @@
       "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\cigarette_06s.jpg"
     },
     {
-      "filename": "sponge_14s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\sponge_14s.jpg"
+      "filename": "sponge_06s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\sponge_06s.jpg"
     },
     {
-      "filename": "batter_08s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\batter_08s.jpg"
+      "filename": "batter_04s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\batter_04s.jpg"
     },
     {
-      "filename": "barrette_01b",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\barrette_01b.jpg"
+      "filename": "barrette_09s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\barrette_09s.jpg"
     },
     {
       "filename": "bracelet1_12s",
       "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\bracelet1_12s.jpg"
     },
     {
-      "filename": "cornhusk_03s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\cornhusk_03s.jpg"
+      "filename": "cornhusk_12s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\cornhusk_12s.jpg"
     },
     {
-      "filename": "creme_brulee_07s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\creme_brulee_07s.jpg"
+      "filename": "creme_brulee_10s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\creme_brulee_10s.jpg"
     },
     {
       "filename": "ketchup_14s",
@@ -189,20 +67,20 @@
       "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\otter_12s.jpg"
     },
     {
-      "filename": "banana_03s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\banana_03s.jpg"
+      "filename": "banana_06s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\banana_06s.jpg"
     },
     {
-      "filename": "macaroni_13s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\macaroni_13s.jpg"
+      "filename": "macaroni_11s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\macaroni_11s.jpg"
     },
     {
-      "filename": "coin_03s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\coin_03s.jpg"
+      "filename": "coin_15s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\coin_15s.jpg"
     },
     {
-      "filename": "puppy_07s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\puppy_07s.jpg"
+      "filename": "puppy_06s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\puppy_06s.jpg"
     },
     {
       "filename": "pencil_sharpener_10s",
@@ -213,8 +91,8 @@
       "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\pretzel_02s.jpg"
     },
     {
-      "filename": "limousine_10s",
-      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\limousine_10s.jpg"
+      "filename": "limousine_01s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\limousine_01s.jpg"
     },
     {
       "filename": "ham_11s",
@@ -237,12 +115,374 @@
       "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\wooden_leg_08s.jpg"
     },
     {
+      "filename": "sleeping_bag_02s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\sleeping_bag_02s.jpg"
+    },
+    {
+      "filename": "suit_06s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\suit_06s.jpg"
+    },
+    {
+      "filename": "apron_10s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\apron_10s.jpg"
+    },
+    {
+      "filename": "sandbox_10s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\sandbox_10s.jpg"
+    },
+    {
+      "filename": "skewer_09s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\skewer_09s.jpg"
+    },
+    {
+      "filename": "cheesecake_13s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\cheesecake_13s.jpg"
+    },
+    {
+      "filename": "praying_mantis_04s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\praying_mantis_04s.jpg"
+    },
+    {
+      "filename": "hamburger_02s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\hamburger_02s.jpg"
+    },
+    {
+      "filename": "filing_cabinet_09s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\filing_cabinet_09s.jpg"
+    },
+    {
+      "filename": "toad_06s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\toad_06s.jpg"
+    },
+    {
+      "filename": "cheese_07s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\cheese_07s.jpg"
+    },
+    {
+      "filename": "waffle_08s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\waffle_08s.jpg"
+    },
+    {
+      "filename": "sauerkraut_07s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\sauerkraut_07s.jpg"
+    },
+    {
+      "filename": "figurine_08s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\figurine_08s.jpg"
+    },
+    {
+      "filename": "bubble_wrap_11s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\bubble_wrap_11s.jpg"
+    },
+    {
+      "filename": "waffle_iron_03s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\waffle_iron_03s.jpg"
+    },
+    {
+      "filename": "ginger_03s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\ginger_03s.jpg"
+    },
+    {
+      "filename": "breadstick_14s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\breadstick_14s.jpg"
+    },
+    {
+      "filename": "football_05s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\football_05s.jpg"
+    },
+    {
+      "filename": "washing_machine_08s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\washing_machine_08s.jpg"
+    },
+    {
+      "filename": "fingerprint_12s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\fingerprint_12s.jpg"
+    },
+    {
+      "filename": "urinal_10s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\urinal_10s.jpg"
+    },
+    {
+      "filename": "dishrag_08s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\dishrag_08s.jpg"
+    },
+    {
+      "filename": "target_14s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\target_14s.jpg"
+    },
+    {
+      "filename": "beanbag_13s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\beanbag_13s.jpg"
+    },
+    {
+      "filename": "raccoon_01b",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\raccoon_01b.jpg"
+    },
+    {
+      "filename": "hot_tub_06s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\hot_tub_06s.jpg"
+    },
+    {
+      "filename": "light_switch_10s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\light_switch_10s.jpg"
+    },
+    {
+      "filename": "canoe_06s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\canoe_06s.jpg"
+    },
+    {
+      "filename": "gearshift_12n",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\gearshift_12n.jpg"
+    },
+    {
+      "filename": "bowtie_05s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\bowtie_05s.jpg"
+    },
+    {
+      "filename": "locker_12s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\locker_12s.jpg"
+    }
+  ],
+  "recognition_images": [
+    {
+      "filename": "costume_04s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\costume_04s.jpg"
+    },
+    {
+      "filename": "bedpan_08s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\bedpan_08s.jpg"
+    },
+    {
+      "filename": "lion_22s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\lion_22s.jpg"
+    },
+    {
+      "filename": "juicer1_09s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\juicer1_09s.jpg"
+    },
+    {
+      "filename": "headset_09s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\headset_09s.jpg"
+    },
+    {
+      "filename": "doorknocker_26s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\doorknocker_26s.jpg"
+    },
+    {
+      "filename": "container_04s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\container_04s.jpg"
+    },
+    {
+      "filename": "cigarette_09s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\cigarette_09s.jpg"
+    },
+    {
+      "filename": "sponge_14s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\sponge_14s.jpg"
+    },
+    {
+      "filename": "batter_08s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\batter_08s.jpg"
+    },
+    {
+      "filename": "barrette_01b",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\barrette_01b.jpg"
+    },
+    {
+      "filename": "bracelet1_05s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\bracelet1_05s.jpg"
+    },
+    {
+      "filename": "cornhusk_03s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\cornhusk_03s.jpg"
+    },
+    {
+      "filename": "creme_brulee_07s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\creme_brulee_07s.jpg"
+    },
+    {
+      "filename": "ketchup_15s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\ketchup_15s.jpg"
+    },
+    {
+      "filename": "otter_02s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\otter_02s.jpg"
+    },
+    {
+      "filename": "banana_03s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\banana_03s.jpg"
+    },
+    {
+      "filename": "macaroni_13s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\macaroni_13s.jpg"
+    },
+    {
+      "filename": "coin_03s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\coin_03s.jpg"
+    },
+    {
+      "filename": "puppy_07s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\puppy_07s.jpg"
+    },
+    {
+      "filename": "pencil_sharpener_11s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\pencil_sharpener_11s.jpg"
+    },
+    {
+      "filename": "pretzel_07s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\pretzel_07s.jpg"
+    },
+    {
+      "filename": "limousine_10s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\limousine_10s.jpg"
+    },
+    {
+      "filename": "ham_10s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\ham_10s.jpg"
+    },
+    {
+      "filename": "corset_08s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\corset_08s.jpg"
+    },
+    {
+      "filename": "worm_06s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\worm_06s.jpg"
+    },
+    {
+      "filename": "mushroom_08n",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\mushroom_08n.jpg"
+    },
+    {
+      "filename": "wooden_leg_02s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\wooden_leg_02s.jpg"
+    },
+    {
       "filename": "sleeping_bag_12s",
       "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\sleeping_bag_12s.jpg"
     },
     {
       "filename": "suit_14s",
       "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\suit_14s.jpg"
+    },
+    {
+      "filename": "apron_13s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\apron_13s.jpg"
+    },
+    {
+      "filename": "sandbox_06s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\sandbox_06s.jpg"
+    },
+    {
+      "filename": "skewer_01b",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\skewer_01b.jpg"
+    },
+    {
+      "filename": "cheesecake_11s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\cheesecake_11s.jpg"
+    },
+    {
+      "filename": "praying_mantis_20s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\praying_mantis_20s.jpg"
+    },
+    {
+      "filename": "hamburger_10s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\hamburger_10s.jpg"
+    },
+    {
+      "filename": "filing_cabinet_07s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\filing_cabinet_07s.jpg"
+    },
+    {
+      "filename": "toad_16s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\toad_16s.jpg"
+    },
+    {
+      "filename": "cheese_05n",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\cheese_05n.jpg"
+    },
+    {
+      "filename": "waffle_06s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\waffle_06s.jpg"
+    },
+    {
+      "filename": "sauerkraut_03s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\sauerkraut_03s.jpg"
+    },
+    {
+      "filename": "figurine_11s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\figurine_11s.jpg"
+    },
+    {
+      "filename": "bubble_wrap_05s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\bubble_wrap_05s.jpg"
+    },
+    {
+      "filename": "waffle_iron_14s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\waffle_iron_14s.jpg"
+    },
+    {
+      "filename": "ginger_10s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\ginger_10s.jpg"
+    },
+    {
+      "filename": "breadstick_02s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\breadstick_02s.jpg"
+    },
+    {
+      "filename": "football_01b",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\football_01b.jpg"
+    },
+    {
+      "filename": "washing_machine_05s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\washing_machine_05s.jpg"
+    },
+    {
+      "filename": "fingerprint_02s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\fingerprint_02s.jpg"
+    },
+    {
+      "filename": "urinal_12s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\urinal_12s.jpg"
+    },
+    {
+      "filename": "dishrag_10s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\dishrag_10s.jpg"
+    },
+    {
+      "filename": "target_12s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\target_12s.jpg"
+    },
+    {
+      "filename": "beanbag_16s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\beanbag_16s.jpg"
+    },
+    {
+      "filename": "raccoon_06n",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\raccoon_06n.jpg"
+    },
+    {
+      "filename": "hot_tub_07s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\hot_tub_07s.jpg"
+    },
+    {
+      "filename": "light_switch_17s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\light_switch_17s.jpg"
+    },
+    {
+      "filename": "canoe_09s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\canoe_09s.jpg"
+    },
+    {
+      "filename": "gearshift_03n",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\gearshift_03n.jpg"
+    },
+    {
+      "filename": "bowtie_14s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\bowtie_14s.jpg"
+    },
+    {
+      "filename": "locker_08s",
+      "path": "C:\\Users\\elifg\\Desktop\\PHD\\CARA_prep\\stimulus_prep\\chosen_stimuli\\locker_08s.jpg"
     }
   ]
 }
