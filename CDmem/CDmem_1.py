@@ -749,6 +749,7 @@ def mix_direction_only(mouse_dx, mouse_dy, traj_dx, traj_dy, prop):
 # ─────────────────────────────────────────────────────────────────────────────
 
 OFFSET_X         = 300    # Horizontal distance from center to shape start position (px)
+CHOICE_OFFSET_X  = 120    # Stimuli are moved closer to center during response (A/S) phase
 OFFSET_Y         = 150    # Vertical distance from center to shape start position (px)
 LOWPASS          = 0.2    # Low-pass filter weight: lower = less smoothing, more responsive
 SPEED_MULTIPLIER = 1.3    # Multiply trajectory velocities to make shapes move faster
@@ -1098,8 +1099,12 @@ class QuestPlusStaircase:
 
         Parameters
         ----------
-        target_type : str — 'high' (80% target), 'low' (60% target),
-                            or 'neutral' (calibration, ~40% prior mean)
+        target_type : str — which accuracy target this staircase aims for:
+            'low'     — targets ~55% correct; prior centred on a low prop
+                        (logit(0.40)), probing the hard end of the curve
+            'high'    — targets ~85% correct; prior centred on a high prop
+                        (logit(0.80)), probing the easy end of the curve
+            'neutral' — legacy; centred at logit(0.40), not used in main flow
         """
         self.s_grid      = np.linspace(logit(0.05), logit(0.90), 61)
         self.alpha_grid  = np.linspace(logit(0.05), logit(0.90), 61)
@@ -1109,10 +1114,12 @@ class QuestPlusStaircase:
         self.target_type = target_type
 
         if target_type == "high":
-            alpha_mu = logit(0.48)
+            # Prior centred at prop=0.80 — easy region for ~85% correct
+            alpha_mu = logit(0.80)
         elif target_type == "low":
-            alpha_mu = logit(0.33)
-        else:  # 'neutral' — used for calibration
+            # Prior centred at prop=0.40 — hard region for ~55% correct
+            alpha_mu = logit(0.40)
+        else:  # 'neutral' — legacy calibration mode
             alpha_mu = logit(0.40)
         alpha_sd = 1.0
 
@@ -1242,32 +1249,6 @@ class QuestPlusStaircase:
                 best_s    = inv_logit(s_logit)
         return clamp_prop(best_s)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  DIFFICULTY LEVEL CALCULATOR
-#  After QUEST+ calibration, derive the 2 test difficulty levels from the
-#  fitted psychometric function using threshold_for_target():
-#    low (hardest):     threshold that yields ~55% correct
-#    high (medium-hard): threshold that yields ~85% correct
-# ─────────────────────────────────────────────────────────────────────────────
-
-def calculate_difficulty_levels(quest):
-    """
-    Compute the 2 test-phase difficulty levels from the QUEST+ posterior.
-
-    Parameters
-    ----------
-    quest : QuestPlusStaircase — fitted calibration object
-
-    Returns
-    -------
-    dict with keys 'low' (~55% correct, hardest) and
-                   'high' (~85% correct, medium-hard)
-    """
-    return {
-        'low': quest.threshold_for_target(0.55),
-        'high': quest.threshold_for_target(0.85),
-    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1568,16 +1549,15 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
 
     CHOICE_DURATION = 5.0  # Fixed response window (seconds)
 
-    # Reset shapes/images to their starting positions for the choice screen
-    stim_A.pos = start_pos_A
-    stim_B.pos = start_pos_B
-
-    # ── Build A / S key labels positioned below each image ────────────────
-    # Determine which image/shape is on the left side
-    if start_pos_A[0] < 0:   # stim_A is on the left
-        left_img_x, right_img_x = start_pos_A[0], start_pos_B[0]
-    else:                     # stim_B is on the left
-        left_img_x, right_img_x = start_pos_B[0], start_pos_A[0]
+    # Reset stimuli closer to center for the choice screen (maintaining original sides)
+    if start_pos_A[0] < 0:   # stim_A was on the left
+        stim_A.pos = (-CHOICE_OFFSET_X, 0)
+        stim_B.pos = (CHOICE_OFFSET_X, 0)
+        left_img_x, right_img_x = -CHOICE_OFFSET_X, CHOICE_OFFSET_X
+    else:                     # stim_B was on the left
+        stim_A.pos = (CHOICE_OFFSET_X, 0)
+        stim_B.pos = (-CHOICE_OFFSET_X, 0)
+        left_img_x, right_img_x = -CHOICE_OFFSET_X, CHOICE_OFFSET_X
 
     img_y = 0        # vertical centre of images
     # We use IMAGE_SIZE[1] roughly for both squares/dots (which are 40x40) and images
@@ -1646,11 +1626,7 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
                 elif key in key_to_label and response_controlled is None:
                     response_controlled = key_to_label[key]
                     rt_choice  = elapsed
-                    # Convert selected key color to green, draw it, and keep it until trial ends
-                    if key == 'a':
-                        key_label_A_stim.color = 'green'
-                    elif key == 's':
-                        key_label_S_stim.color = 'green'
+                    # Selected key feedback removed (no longer turns green)
             core.wait(0.01)
 
         # Timed out — show "Please answer faster" for 2 s
@@ -1743,8 +1719,7 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
                         _save(); core.quit()
                     else:
                         rating = int(keys[0])
-                        # Visual feedback: turn selected text green and pause for 0.5s
-                        scale_stimuli[rating - 1].color = 'green'
+                        # Visual feedback (green color change) removed
                         msg.draw()
                         scale_line.draw()
                         for tick in scale_ticks:
@@ -1816,40 +1791,47 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  CALIBRATION PHASE RUNNER (QUEST+)
-#  Runs a QUEST+ Bayesian adaptive staircase to estimate the participant's
-#  psychometric function (and hence their 75% accuracy threshold).
+#  Runs a QUEST+ Bayesian adaptive staircase to find the prop (cursor-mix
+#  proportion) that yields a specific accuracy target (55% or 85% correct).
 #
-#  Adaptive stopping (same as MT Inference.py):
-#    • Run at least CHECK_CALIBRATION_TRIALS trials
-#    • Stop when posterior SD < 0.20 AND trials ≥ min
-#    • Hard cap at CHECK_CALIBRATION_TRIALS + 20 trials
+#  Adaptive stopping:
+#    • Run at least min_trials (default 40)
+#    • Stop when posterior SD < 0.20 AND trials ≥ min_trials
+#    • If not converged by min_trials, add up to 20 extra trials (max 60)
+#    • If still not converged after max_trials, show a failure screen and
+#      continue with the best estimate available
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_calibration_quest(num_trials, block_num=0):
+def run_calibration_quest(target_accuracy, num_trials, block_num=0):
     """
-    Run the QUEST+ calibration phase.
+    Run a single QUEST+ calibration staircase targeting a specific accuracy.
 
     Parameters
     ----------
-    num_trials  : int — minimum number of calibration trials (hard cap = +20)
-    block_num   : int — block number for logging (0 = calibration)
+    target_accuracy : float — the proportion correct to calibrate to (0.55 or 0.85)
+    num_trials      : int   — minimum number of calibration trials
+    block_num       : int   — block number for logging (use 0 for first, -1 for second)
 
     Returns
     -------
-    quest     : QuestPlusStaircase — fitted object (use for difficulty levels)
-    threshold : float — estimated 75% accuracy prop
+    quest     : QuestPlusStaircase — fitted object
+    prop      : float — estimated prop (cursor-mix) that yields target_accuracy correct
+    converged : bool  — whether the staircase converged within max_trials
     """
     global global_trial_counter
 
-    quest        = QuestPlusStaircase("neutral")
+    # Select the appropriate prior based on the accuracy target
+    target_type = 'low' if target_accuracy <= 0.60 else 'high'
+    quest        = QuestPlusStaircase(target_type)
     min_trials   = num_trials
     max_trials   = num_trials + 20
     sd_threshold = 0.20
 
-    print(f"Starting QUEST+ calibration (min={min_trials}, max={max_trials} trials, "
-          f"SD threshold={sd_threshold})")
+    print(f"\nStarting QUEST+ calibration (target={target_accuracy:.0%}, "
+          f"min={min_trials}, max={max_trials} trials, SD threshold={sd_threshold})")
 
     trial_num = 0
+    converged = False
     while trial_num < max_trials:
         trial_num            += 1
         global_trial_counter += 1
@@ -1864,7 +1846,7 @@ def run_calibration_quest(num_trials, block_num=0):
 
         # Update QUEST only for valid (non-timeout) responses
         if res.get('response_controlled') != 'timeout':
-            quest.update(s_candidate, int(res.get('accuracy', 0)))
+            quest.update(s_candidate, int(res.get('detection_accuracy', 0)))
 
         # Compute QUEST summary every 10 trials (expensive); otherwise fast SD
         if trial_num % 10 == 0 or trial_num < 10:
@@ -1882,6 +1864,7 @@ def run_calibration_quest(num_trials, block_num=0):
         thisExp.addData('gender',                  expInfo['gender'])
         thisExp.addData('handedness',              expInfo['handedness'])
         thisExp.addData('phase',                   'calibration')
+        thisExp.addData('calib_target',            target_accuracy)   # NEW: which staircase
         thisExp.addData('n_shapes',                2)
         thisExp.addData('block_num',               block_num)
         thisExp.addData('trial_in_block',          trial_num)
@@ -1923,15 +1906,21 @@ def run_calibration_quest(num_trials, block_num=0):
         if trial_num >= min_trials and quest_alpha_sd < sd_threshold:
             print(f"  QUEST+ converged after {trial_num} trials "
                   f"(alpha_sd={quest_alpha_sd:.4f} < {sd_threshold})")
+            converged = True
             break
 
-    threshold = quest.threshold_for_target(0.75)
-    summary   = quest.posterior_summary()
-    print(f"\nCalibration complete:")
-    print(f"  Trials: {trial_num}, alpha_sd: {summary['alpha_sd']:.4f}")
-    print(f"  QUEST+ threshold (75% correct): {threshold:.3f}")
+    # ── Calibration failure screen ────────────────────────────────────────────
+    if not converged:
+        print(f"  WARNING: QUEST+ did NOT converge after {trial_num} trials "
+              f"(alpha_sd={quest_alpha_sd:.4f}). Using best estimate.")
 
-    return quest, threshold
+    prop    = quest.threshold_for_target(target_accuracy)
+    summary = quest.posterior_summary()
+    print(f"\nCalibration complete (target={target_accuracy:.0%}):")
+    print(f"  Trials: {trial_num}, converged: {converged}, alpha_sd: {summary['alpha_sd']:.4f}")
+    print(f"  Calibrated prop (cursor mix for {target_accuracy:.0%} correct): {prop:.3f}")
+
+    return quest, prop, converged
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2147,8 +2136,7 @@ def run_memory_test(seen_images, foil_images_list):
                     elif key == 'a':
                         mem_response = 'yes'
                         mem_rt       = key_time - item_onset
-                        # Turn selected key green (mirrors test phase behaviour)
-                        mem_key_A.color = 'green'
+                        # Selected key feedback removed (no longer turns green)
                         mem_img_stim.draw()
                         mem_question.draw()
                         mem_key_A.draw()
@@ -2158,8 +2146,7 @@ def run_memory_test(seen_images, foil_images_list):
                     elif key == 's':
                         mem_response = 'no'
                         mem_rt       = key_time - item_onset
-                        # Turn selected key green (mirrors test phase behaviour)
-                        mem_key_S.color = 'green'
+                        # Selected key feedback removed (no longer turns green)
                         mem_img_stim.draw()
                         mem_question.draw()
                         mem_key_A.draw()
@@ -2232,9 +2219,9 @@ Please respond as accurately as possible throughout the whole experiment. If uns
 
 Please feel free to ask any questions to the experimenter now.
 
-Before the main experiment, you will practice the task with simple shapes. During the practice block, you will receive feedback on whether your response was correct or incorrect. You won't be asked to indicate your feeling of control.
+Before the main experiment, you will practice the task with simple shapes in two practice blocks. During the practice blocks, you will receive feedback on whether your response was correct or incorrect. You won't be asked to indicate your feeling of control.
 
-Please press SPACE to start the practice block."""
+Please press SPACE to start the practice blocks."""
     ]
 
     for instruction in instructions:
@@ -2292,49 +2279,77 @@ Please press SPACE to start."""
 # ── Step 1: Show initial instructions ────────────────────────────────────────
 show_initial_instructions()
 
-# ── Step 2: Calibration phase ────────────────────────────────────────────────────────────────
-# Run QUEST+ to estimate the participant's psychometric function.
-msg.text = ("Practice Block\n\n"
-            "In this block, you will practice the task.\n"
-            "You will receive feedback after each response.\n\n"
-            "Press SPACE to start.")
-msg.draw(); win.flip(); wait_keys()
-
-quest, threshold_75 = run_calibration_quest(
-    num_trials=CHECK_CALIBRATION_TRIALS,
-    block_num=0  # Block 0 = calibration (test blocks are 1-6)
-)
-
-# Save QUEST+ results to expInfo for reference
-expInfo['quest_threshold_75'] = threshold_75
-expInfo['quest_alpha_sd']     = quest.get_threshold_sd()
-
-# we don't need this because we integrate it in the test phase instructions
-# # Show calibration completion screen
-# msg.text = """Practice complete!
-
-# You can take a short break now.
-
-# Please press SPACE to continue to the main experiment."""
-# msg.draw(); win.flip(); wait_keys()
-
-# ── Step 3: Calculate control conditions ────────────────────────────────────────────────
-# Derive low (~55% correct) and high (~85% correct) via QUEST+ posterior.
-levels = calculate_difficulty_levels(quest)
-
-print(f"\nControl conditions (QUEST+, threshold={threshold_75:.3f}):")
-for name, val in levels.items():
-    print(f"  {name}: prop={val:.3f}")
-
-# ── Step 4: Determine miniblock order by participant parity ───────────────────
-# Odd participant number  → starts with low: [low, high, low, high, low, high]
-# Even participant number → starts with high: [high, low, high, low, high, low]
+# ── Step 2: Two-stage calibration ──────────────────────────────────────────────
+# Run two QUEST+ staircases: one targeting 55% correct (low control condition)
+# and one targeting 85% correct (high control condition).
+# Order is counterbalanced by participant parity (same logic as test miniblocks):
+#   Odd  participant → Practice block 1 = 55%, Practice block 2 = 85%
+#   Even participant → Practice block 1 = 85%, Practice block 2 = 55%
 try:
     participant_num = int(expInfo["participant"])
 except ValueError:
-    # If participant ID is not a plain number, derive one from its hash
     participant_num = int(hashlib.sha256(expInfo["participant"].encode()).hexdigest(), 16)
 
+starts_low_first = (participant_num % 2 == 1)   # odd → 55% block first
+
+if starts_low_first:
+    calib_sequence = [
+        (0.55, 0,  "Practice Block 1 of 2"),
+        (0.85, -1, "Practice Block 2 of 2"),
+    ]
+else:
+    calib_sequence = [
+        (0.85, -1, "Practice Block 1 of 2"),
+        (0.55, 0,  "Practice Block 2 of 2"),
+    ]
+
+prop_55 = None
+prop_85 = None
+
+for calib_idx, (calib_target, calib_block_num, calib_label) in enumerate(calib_sequence):
+    # Show opening screen for the first calibration block only
+    # (The second block starts directly after the between-block break screen)
+    if calib_idx == 0:
+        msg.text = (f"{calib_label}\n\n"
+                    "In this block, you will practice the task.\n"
+                    "You will receive feedback after each response.\n\n"
+                    "Press SPACE to start.")
+        msg.draw(); win.flip(); wait_keys()
+
+    quest_calib, prop_calib, converged_calib = run_calibration_quest(
+        target_accuracy=calib_target,
+        num_trials=CHECK_CALIBRATION_TRIALS,
+        block_num=calib_block_num
+    )
+
+    # Store calibrated prop under the correct condition label
+    if calib_target <= 0.60:
+        prop_55 = prop_calib
+        expInfo['quest_prop_low']  = prop_55
+        expInfo['quest_low_converged'] = converged_calib
+    else:
+        prop_85 = prop_calib
+        expInfo['quest_prop_high'] = prop_85
+        expInfo['quest_high_converged'] = converged_calib
+
+    # Between-block message (shown only after the FIRST calibration block)
+    if calib_idx == 0:
+        msg.text = ("Well done — practice block 1 is now complete!\n\n"
+                    "You can take a short break now.\n\n"
+                    "Please press SPACE to continue with Practice block 2.")
+        msg.draw(); win.flip(); wait_keys()
+
+# Assemble difficulty levels from the two directly calibrated props
+levels = {'low': prop_55, 'high': prop_85}
+
+print(f"\nControl conditions (directly calibrated):")
+print(f"  low  (55% target): prop={levels['low']:.3f}")
+print(f"  high (85% target): prop={levels['high']:.3f}")
+
+# ── Step 3: Determine miniblock order by participant parity ───────────────────
+# Odd participant number  → starts with low: [low, high, low, high, low, high]
+# Even participant number → starts with high: [high, low, high, low, high, low]
+# participant_num already computed above (same variable)
 starts_with_low = (participant_num % 2 == 1)   # odd → low first
 level_A = 'low' if starts_with_low else 'high'
 level_B = 'high' if starts_with_low else 'low'
@@ -2362,7 +2377,7 @@ for mb_idx, level_name in enumerate(miniblock_sequence):
 
     # Run all trials for this miniblock
     run_test_block_for_level(
-        threshold_75=threshold_75,
+        threshold_75=prop_value,  # calibrated prop for this condition (logged for reference)
         level_name=level_name,
         prop_value=prop_value,
         num_trials=CHECK_TEST_TRIALS_PER_LEVEL,
@@ -2413,7 +2428,8 @@ print(f"EXPERIMENT COMPLETE")
 print(f"Total Duration: {tot_mins} minutes {tot_secs} seconds")
 print(f"============================================================")
 print(f"  Total trajectories used: {final_used}")
-print(f"  QUEST+ threshold (75%): {threshold_75:.3f}")
+print(f"  Low  prop (55% target): {levels['low']:.3f}")
+print(f"  High prop (85% target): {levels['high']:.3f}")
 print(f"  Miniblock order: {miniblock_sequence}")
 
 msg.text = f"""Thank you for participating!
