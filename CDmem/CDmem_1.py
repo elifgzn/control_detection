@@ -2066,13 +2066,13 @@ def run_memory_test(seen_images, foil_images_list):
         text="Have you seen this object during the experiment before?",
         pos=(0, int(-win.size[1] * 0.18)), color='white', height=26, wrapWidth=1000, bold=True
     )
-    # Key labels: A = Old (left), S = New (right)
-    mem_key_A = visual.TextStim(
-        win, text="A\nOld", pos=(-int(win.size[0] * 0.05), int(-win.size[1] * 0.25)),
+    # Key labels: Y = Yes (left), N = No (right)
+    mem_key_Y = visual.TextStim(
+        win, text="Y\nYes", pos=(-int(win.size[0] * 0.05), int(-win.size[1] * 0.25)),
         height=30, color='white', bold=True, alignText='center'
     )
-    mem_key_S = visual.TextStim(
-        win, text="S\nNew", pos=(int(win.size[0] * 0.05), int(-win.size[1] * 0.25)),
+    mem_key_N = visual.TextStim(
+        win, text="N\nNo", pos=(int(win.size[0] * 0.05), int(-win.size[1] * 0.25)),
         height=30, color='white', bold=True, alignText='center'
     )
 
@@ -2093,15 +2093,15 @@ def run_memory_test(seen_images, foil_images_list):
         core.wait(fix_dur)
 
         # Reset key label colours to white for every new trial
-        mem_key_A.color = 'white'
-        mem_key_S.color = 'white'
+        mem_key_Y.color = 'white'
+        mem_key_N.color = 'white'
 
         # Draw image + key labels and start timing
         event.clearEvents(eventType='keyboard')
         mem_img_stim.draw()
         mem_question.draw()
-        mem_key_A.draw()
-        mem_key_S.draw()
+        mem_key_Y.draw()
+        mem_key_N.draw()
         win.flip()
         item_onset = core.getTime()
 
@@ -2117,7 +2117,7 @@ def run_memory_test(seen_images, foil_images_list):
             _screenshots_saved.add('memory_test')
             print(f"[Screenshot] Saved: {fname}")
 
-        # Wait for A or S (no time limit)
+        # Wait for Y or N (no time limit)
         mem_response = None
         mem_rt       = np.nan
 
@@ -2128,29 +2128,29 @@ def run_memory_test(seen_images, foil_images_list):
             mem_rt       = sim_rt
         else:
             while mem_response is None:
-                keys = event.getKeys(['a', 's', 'escape'], timeStamped=True)
+                keys = event.getKeys(['y', 'n', 'escape'], timeStamped=True)
                 if keys:
                     key, key_time = keys[0]
                     if key == 'escape':
                         _save(); core.quit()
-                    elif key == 'a':
+                    elif key == 'y':
                         mem_response = 'yes'
                         mem_rt       = key_time - item_onset
-                        # Selected key feedback removed (no longer turns green)
+                        # Turn selected key feedback removed (no longer turns green)
                         mem_img_stim.draw()
                         mem_question.draw()
-                        mem_key_A.draw()
-                        mem_key_S.draw()
+                        mem_key_Y.draw()
+                        mem_key_N.draw()
                         win.flip()
                         core.wait(0.3)
-                    elif key == 's':
+                    elif key == 'n':
                         mem_response = 'no'
                         mem_rt       = key_time - item_onset
-                        # Selected key feedback removed (no longer turns green)
+                        # Turn selected key feedback removed (no longer turns green)
                         mem_img_stim.draw()
                         mem_question.draw()
-                        mem_key_A.draw()
-                        mem_key_S.draw()
+                        mem_key_Y.draw()
+                        mem_key_N.draw()
                         win.flip()
                         core.wait(0.3)
                 core.wait(0.01)
@@ -2402,7 +2402,7 @@ msg.text = """
 The main experiment is now complete. One last part! 
 
 You will now see a series of objects on the screen, one at a time.
-For each object, decide whether you saw it during the experiment (old) or not (new). If you have seen the object before (old), press [A]. If you have not seen the object before (new), press [S].
+For each object, decide whether you saw it during the experiment (Yes) or not (No). If you have seen the object before (Yes), press [Y]. If you have not seen the object before (No), press [N].
 
 Please try to respond as accurately as possible. If unsure, make your best guess.
 
