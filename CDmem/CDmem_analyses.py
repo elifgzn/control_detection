@@ -16,10 +16,15 @@ TODO:
 
 import os
 import sys
+
+# Set R_HOME for pymer4/rpy2 on Windows
+os.environ["R_HOME"] = r"C:\Program Files\R\R-4.5.2"
+
 import re
 import glob
 import numpy as np
 import pandas as pd
+import polars as pl
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
@@ -27,7 +32,7 @@ from scipy import stats
 from scipy.stats import norm
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
-from pymer4.models import Lmer
+from pymer4.models import lmer, glmer
 
 # ============================================================================
 # CONFIGURATION
@@ -625,54 +630,61 @@ def calc_dprime(hr, far, clip_val=0.01):
 def analyze_recognition(main_data, recog_data):
     """
     Calculate recognition performance (HR, FA, d-prime) per participant
-    and per control condition.
+    and per control condition (including uncontrolled items).
     
     Returns
     -------
     pd.DataFrame
         Participant-level summary.
+    pd.DataFrame
+        Trial-level recognition data with condition labels.
     """
     # 1. Calculate overall False Alarm rate per participant
-    # Foils have mem_ground_truth == 'unseen'
-    # Responses are in 'mem_response' ('yes'/'no')
     recog_data = recog_data.copy()
     recog_data['said_old'] = recog_data['mem_response'].str.lower() == 'yes'
     
     foils = recog_data[recog_data['mem_ground_truth'] == 'unseen']
     if len(foils) == 0:
         print("[WARNING] No foil ('unseen') trials found in recognition data.")
-        return None
+        return None, None
         
     fa_rates = foils.groupby('participant')['said_old'].mean().reset_index()
     fa_rates.rename(columns={'said_old': 'FA_rate'}, inplace=True)
     
-    # 2. Extract Hit rates per condition
-    # Targets have mem_ground_truth == 'seen'.
-    # We must merge with main_data to know which condition ('low'/'high') the target came from.
-    # The linking variable is the image name. 
-    # Recognition targets are in `mem_filename`. Main data has `img_A_name` and `img_B_name`.
-    # Let's create a lookup table mapping each participant + image name to its control_condition.
-    
-    # Isolate test phase of main data
+    # 2. Extract Hit rates per condition (High, Low, Uncontrolled)
     if 'phase' in main_data.columns:
         test_data = main_data[main_data['phase'] == 'test'].copy()
     else:
         test_data = main_data.copy()
         
-    if 'control_condition' not in test_data.columns:
-        print("[WARNING] control_condition not found in main data, cannot split recognition by condition.")
-        return None
+    if 'control_condition' not in test_data.columns or 'true_controlled' not in test_data.columns:
+        print("[WARNING] Required columns not found in main data for recognition split.")
+        return None, None
         
-    # We need to reshape the main data to have one row per image (img_A and img_B)
-    img_a_df = test_data[['participant', 'control_condition', 'img_A_name']].copy()
-    img_a_df.rename(columns={'img_A_name': 'mem_filename'}, inplace=True)
+    # Create a lookup table mapping each participant + image name to its condition
+    img_lookups = []
+    for _, row in test_data.iterrows():
+        px = row['participant']
+        cond = row['control_condition']
+        target_img = row['true_controlled'] # e.g. 'img_A' or 'img_B'
+        
+        # Controlled item
+        img_lookups.append({
+            'participant': px,
+            'mem_filename': row['img_A_name' if target_img == 'img_A' else 'img_B_name'],
+            'control_condition': cond,
+            'is_controlled': 'yes'
+        })
+        # Uncontrolled item
+        img_lookups.append({
+            'participant': px,
+            'mem_filename': row['img_B_name' if target_img == 'img_A' else 'img_A_name'],
+            'control_condition': 'uncontrolled',
+            'is_controlled': 'no'
+        })
     
-    img_b_df = test_data[['participant', 'control_condition', 'img_B_name']].copy()
-    img_b_df.rename(columns={'img_B_name': 'mem_filename'}, inplace=True)
-    
-    img_lookup = pd.concat([img_a_df, img_b_df], ignore_index=True)
+    img_lookup = pd.DataFrame(img_lookups)
     img_lookup.dropna(subset=['mem_filename'], inplace=True)
-    # Deduplicate just in case 
     img_lookup.drop_duplicates(subset=['participant', 'mem_filename'], inplace=True)
     
     # 3. Merge targets with their condition
@@ -682,9 +694,10 @@ def analyze_recognition(main_data, recog_data):
     # Verify merge success
     unmatched = targets['control_condition'].isna().sum()
     if unmatched > 0:
-        print(f"[WARNING] {unmatched} recognition targets could not be matched to a control condition.")
+        print(f"[WARNING] {unmatched} recognition targets could not be matched to a condition.")
         
     # Calculate hit rate per participant x condition
+    # Conditions: 'high', 'low', 'uncontrolled'
     hit_rates = targets.groupby(['participant', 'control_condition'])['said_old'].mean().reset_index()
     hit_rates.rename(columns={'said_old': 'Hit_rate'}, inplace=True)
     
@@ -794,9 +807,12 @@ def run_analysis_3_glmm(targets):
     print(f"  Trials: {len(df)} | Participants: {df['participant'].nunique()}")
 
     try:
-        model = Lmer(
+        # pymer4 v0.8.0+ requires polars DataFrame
+        df_pl = pl.from_pandas(df)
+        
+        model = glmer(
             "said_old_int ~ control_numeric + (1 | participant)",
-            data=df,
+            data=df_pl,
             family="binomial"
         )
         result = model.fit()
@@ -807,10 +823,66 @@ def run_analysis_3_glmm(targets):
         print(f"  [ERROR] GLMM failed: {e}")
         return None
 
-# ------------------------------------------------------------------------------
-# ANALYSIS 4: GEE with item_type x control interaction
-# ------------------------------------------------------------------------------
-# [PLACEHOLDER] To be implemented (requires statsmodels)
+def run_analysis_4_interaction_glmm(targets, recog_data):
+    """
+    Perform a trial-level GLMM (Binomial, logit link) on ALL trials (targets + foils).
+    Model: said_old ~ item_type * control_condition + (1 | participant)
+    
+     item_type: Target (+0.5) vs. Foil (-0.5)
+     control_condition: High (+0.5) vs. Low (-0.5)
+    
+    For foils, we assign a 'dummy' control condition (50/50 split) to allow
+    the interaction term to be estimated without bias (matching power_sims).
+    """
+    if targets is None or recog_data is None:
+        return None
+
+    # 1. Prepare foils
+    foils = recog_data[recog_data['mem_ground_truth'] == 'unseen'].copy()
+    if len(foils) == 0:
+        print("[WARNING] No foil data for Analysis 4.")
+        return None
+        
+    foils['said_old_int'] = (foils['mem_response'].str.lower() == 'yes').astype(int)
+    foils['item_type'] = -0.5
+    
+    # Dummy control assignment for foils: alternating trials (balanced)
+    # Using overall_trial_num ensures stability across runs
+    foils = foils.sort_values(['participant', 'overall_trial_num'])
+    # Assign 0.5 to even, -0.5 to odd indices per participant
+    foils['control_numeric'] = foils.groupby('participant').cumcount().apply(lambda x: 0.5 if x % 2 == 0 else -0.5)
+
+    # 2. Prepare targets
+    targets_df = targets.copy()
+    targets_df['said_old_int'] = targets_df['said_old'].astype(int)
+    targets_df['item_type'] = 0.5
+    targets_df['control_numeric'] = targets_df['control_condition'].map({'high': 0.5, 'low': -0.5})
+    
+    # 3. Combine
+    cols = ['participant', 'said_old_int', 'item_type', 'control_numeric']
+    df = pd.concat([targets_df[cols], foils[cols]], ignore_index=True)
+    df = df.dropna()
+
+    if len(df) == 0:
+        print("[WARNING] No valid trials for Analysis 4.")
+        return None
+
+    print("\nAnalysis 4: GLMM Interaction (item_type x control) on all trials...")
+    print(f"  Trials: {len(df)} (T={len(targets_df)}, F={len(foils)}) | Pxs: {df['participant'].nunique()}")
+
+    try:
+        df_pl = pl.from_pandas(df)
+        model = glmer(
+            "said_old_int ~ item_type * control_numeric + (1 | participant)",
+            data=df_pl,
+            family="binomial"
+        )
+        result = model.fit()
+        print(result)
+        return model
+    except Exception as e:
+        print(f"  [ERROR] GLMM Analysis 4 failed: {e}")
+        return None
 
 
 # ==============================================================================
@@ -818,27 +890,157 @@ def run_analysis_3_glmm(targets):
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# SUPPLEMENTARY 1: One-way repeated measures ANOVA on d-prime
+# SUPPLEMENTARY 1: One-way repeated-measures ANOVA on d-prime
 # ------------------------------------------------------------------------------
-# (Conditions: high control, low control, uncontrolled)
-# [PLACEHOLDER] To be implemented
+
+def run_supp_analysis_1_dprime_anova(mem_results):
+    """
+    Perform a one-way ANOVA on d-prime (High vs. Low vs. Uncontrolled).
+    Note: Standard scipy f_oneway handles group comparisons.
+    """
+    if mem_results is None: return
+    
+    pivoted = mem_results.pivot(index='participant', columns='control_condition', values='d_prime')
+    cols = ['high', 'low', 'uncontrolled']
+    if not all(c in pivoted.columns for c in cols):
+        print("[WARNING] Missing conditions for Supp Analysis 1 (d-prime ANOVA).")
+        return
+        
+    df_anova = pivoted[cols].dropna()
+    if len(df_anova) < 1:
+        print("[WARNING] No participants with all 3 conditions for Supp Analysis 1.")
+        return
+
+    f_stat, p_val = stats.f_oneway(df_anova['high'], df_anova['low'], df_anova['uncontrolled'])
+    
+    print("\nSupplementary Analysis 1: One-way ANOVA on d-prime...")
+    print(f"  Conditions: High, Low, Uncontrolled (N={len(df_anova)})")
+    print(f"  F = {f_stat:.3f}, p = {p_val:.4f}")
+    return f_stat, p_val
 
 # ------------------------------------------------------------------------------
-# SUPPLEMENTARY 2: One-way repeated measures ANOVA on hit rates
+# SUPPLEMENTARY 2: One-way repeated-measures ANOVA on hit rates
 # ------------------------------------------------------------------------------
-# (Conditions: high control, low control, uncontrolled)
-# [PLACEHOLDER] To be implemented
+
+def run_supp_analysis_2_hitrate_anova(mem_results):
+    """
+    Perform a one-way ANOVA on hit rates (High vs. Low vs. Uncontrolled).
+    """
+    if mem_results is None: return
+    
+    pivoted = mem_results.pivot(index='participant', columns='control_condition', values='Hit_rate')
+    cols = ['high', 'low', 'uncontrolled']
+    if not all(c in pivoted.columns for c in cols):
+        print("[WARNING] Missing conditions for Supp Analysis 2 (Hit rate ANOVA).")
+        return
+        
+    df_anova = pivoted[cols].dropna()
+    if len(df_anova) < 1:
+        print("[WARNING] No participants with all 3 conditions for Supp Analysis 2.")
+        return
+
+    f_stat, p_val = stats.f_oneway(df_anova['high'], df_anova['low'], df_anova['uncontrolled'])
+    
+    print("\nSupplementary Analysis 2: One-way ANOVA on hit rates...")
+    print(f"  Conditions: High, Low, Uncontrolled (N={len(df_anova)})")
+    print(f"  F = {f_stat:.3f}, p = {p_val:.4f}")
+    return f_stat, p_val
 
 # ------------------------------------------------------------------------------
-# SUPPLEMENTARY 3: GEE on all old items (3-level control_type predictor)
+# SUPPLEMENTARY 3: GLMM on all old items (3-level control_condition)
 # ------------------------------------------------------------------------------
-# [PLACEHOLDER] To be implemented
+
+def run_supp_analysis_3_glmm_three_levels(targets):
+    """
+    Perform a trial-level GLMM on all target items with 3 control levels.
+    Model: said_old ~ control_condition + (1 | participant)
+    Where control_condition = {high, low, uncontrolled}
+    """
+    if targets is None or len(targets) == 0:
+        return None
+
+    df = targets.copy()
+    df['said_old_int'] = df['said_old'].astype(int)
+    
+    # Use 'uncontrolled' as the reference level
+    df['control_condition'] = pd.Categorical(df['control_condition'], categories=['uncontrolled', 'low', 'high'])
+
+    print("\nSupplementary Analysis 3: GLMM (3-level control) on all old items...")
+    print(f"  Trials: {len(df)} | Participants: {df['participant'].nunique()}")
+
+    try:
+        df_pl = pl.from_pandas(df)
+        model = glmer(
+            "said_old_int ~ control_condition + (1 | participant)",
+            data=df_pl,
+            family="binomial"
+        )
+        result = model.fit()
+        print(result)
+        return model
+    except Exception as e:
+        print(f"  [ERROR] Supp GLMM 3 failed: {e}")
+        return None
 
 # ------------------------------------------------------------------------------
-# SUPPLEMENTARY 4: GEE with item_type x control interaction
+# SUPPLEMENTARY 4: GLMM with item_type x control interaction
 # ------------------------------------------------------------------------------
-# (Three-level control, no foil dummy assignment needed)
-# [PLACEHOLDER] To be implemented
+
+def run_supp_analysis_4_interaction_glmm_three_levels(targets, recog_data):
+    """
+    Perform a trial-level GLMM interaction on ALL trials with 3 control levels.
+    Model: said_old ~ item_type * control_type + (1 | participant)
+    
+    item_type: Target (+0.5) vs. Foil (0.5)
+    control_type: 3 levels for old items, and foils assigned to balanced dummy groups.
+    """
+    if targets is None or recog_data is None:
+        return None
+
+    # 1. Prepare foils
+    foils = recog_data[recog_data['mem_ground_truth'] == 'unseen'].copy()
+    if len(foils) == 0:
+        return None
+        
+    foils['said_old_int'] = (foils['mem_response'].str.lower() == 'yes').astype(int)
+    foils['item_is_old'] = 0
+    
+    # Dummy assignment for foils: split across all 3 'old' conditions to balance the model
+    # (High, Low, Uncontrolled)
+    foils = foils.sort_values(['participant', 'overall_trial_num'])
+    cond_map = {0: 'high', 1: 'low', 2: 'uncontrolled'}
+    foils['control_type'] = foils.groupby('participant').cumcount().apply(lambda x: cond_map[x % 3])
+
+    # 2. Prepare all old items
+    old_items = targets.copy()
+    old_items['said_old_int'] = old_items['said_old'].astype(int)
+    old_items['item_is_old'] = 1
+    old_items.rename(columns={'control_condition': 'control_type'}, inplace=True)
+    
+    # 3. Combine
+    cols = ['participant', 'said_old_int', 'item_is_old', 'control_type']
+    df = pd.concat([old_items[cols], foils[cols]], ignore_index=True)
+    df = df.dropna()
+    
+    # Set references
+    df['control_type'] = pd.Categorical(df['control_type'], categories=['uncontrolled', 'low', 'high'])
+
+    print("\nSupplementary Analysis 4: GLMM Interaction (item_is_old x control_type)...")
+    print(f"  Trials: {len(df)} (Old={len(old_items)}, Foils={len(foils)})")
+
+    try:
+        df_pl = pl.from_pandas(df)
+        model = glmer(
+            "said_old_int ~ item_is_old * control_type + (1 | participant)",
+            data=df_pl,
+            family="binomial"
+        )
+        result = model.fit()
+        print(result)
+        return model
+    except Exception as e:
+        print(f"  [ERROR] Supp GLMM 4 failed: {e}")
+        return None
 
 
 def print_stat_results(res):
@@ -865,6 +1067,21 @@ def run_recognition_stats(mem_results, targets):
     
     # Primary Analysis 3 - GLMM
     run_analysis_3_glmm(targets)
+    
+    # Primary Analysis 4 - GLMM Interaction
+    run_analysis_4_interaction_glmm(targets, recog_data)
+
+    print("\n" + "-" * 60)
+    print("SUPPLEMENTARY ANALYSES (Including Uncontrolled Items)")
+    print("-" * 60)
+
+    # Supp Analysis 1 & 2 - ANOVA
+    run_supp_analysis_1_dprime_anova(mem_results)
+    run_supp_analysis_2_hitrate_anova(mem_results)
+
+    # Supp Analysis 3 & 4 - GLMM
+    run_supp_analysis_3_glmm_three_levels(targets)
+    run_supp_analysis_4_interaction_glmm_three_levels(targets, recog_data)
     
     print("\n" + "=" * 60)
 
