@@ -7,8 +7,11 @@ CDmem Analysis Script
 Analysis script for the CDmem (Control Detection + Memory) experiment.
 Loads all subject data files and performs various analyses.
 
-Data file naming convention: CDmem_{participant}_{session}_{block}.csv
+Data file naming convention: CDmem_1_{participant}.csv
 Located in: CDmem/data/subjects/
+
+TODO:
+- add cd accuracy analysis - check simon's code?
 """
 
 import os
@@ -20,7 +23,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
+from scipy import stats
 from scipy.stats import norm
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+from pymer4.models import Lmer
 
 # ============================================================================
 # CONFIGURATION
@@ -39,11 +46,11 @@ def load_all_data(data_dir=DATA_DIR):
     """
     Load all CDmem subject data files and combine into a single DataFrame.
 
-    File naming pattern: CDmem_{participant}_{session}_{block}.csv
-    (e.g. CDmem_1_1_1.csv for participant 1, CDmem_1_2_1.csv for participant 2)
+    File naming pattern: CDmem_1_{participant}.csv
+    (e.g. CDmem_1_99.csv for participant 99)
 
     The function deliberately excludes:
-      - CDmem_1_1.csv style files (only 2 numeric parts â€” intermediate output)
+      - CDmem_test.csv style files (intermediate output)
       - CDmem_*_kinematics.csv  (kinematics data â€” separate analysis)
       - CDmem_*_recognition.csv (recognition data â€” separate analysis)
 
@@ -63,16 +70,17 @@ def load_all_data(data_dir=DATA_DIR):
     """
 
     # Glob all CSVs that start with "CDmem_" then apply strict regex so we
-    # only match files with exactly 3 underscore-separated numeric parts.
+    # only match files with exactly two underscore-separated numeric parts
+    # where the first part is '1' (e.g. CDmem_1_99.csv).
     pattern = str(data_dir / "CDmem_*.csv")
     all_files = glob.glob(pattern)
 
     # Regex breakdown:
     #   ^          â€” start of filename
-    #   CDmem_     â€” literal prefix
-    #   \d+_\d+_\d+ â€” exactly three groups of digits separated by underscores
+    #   CDmem_1_   â€” literal prefix
+    #   \d+        â€” participant ID
     #   \.csv$     â€” ends with .csv
-    strict_pattern = re.compile(r"^CDmem_\d+_\d+_\d+\.csv$")
+    strict_pattern = re.compile(r"^CDmem_1_\d+\.csv$")
     all_files = [
         f for f in all_files
         if strict_pattern.match(os.path.basename(f))
@@ -605,10 +613,6 @@ def sync_participant_ids(data, recog_data):
     return data_synced, recog_synced
 
 
-# ============================================================================
-# RECOGNITION MEMORY ANALYSES (D-PRIME)
-# ============================================================================
-
 def calc_dprime(hr, far, clip_val=0.01):
     """
     Calculate d-prime from hit rate (hr) and false alarm rate (far).
@@ -688,7 +692,181 @@ def analyze_recognition(main_data, recog_data):
     results = hit_rates.merge(fa_rates, on='participant', how='left')
     results['d_prime'] = results.apply(lambda row: calc_dprime(row['Hit_rate'], row['FA_rate']), axis=1)
     
+    return results, targets
+
+# ==============================================================================
+# RECOGNITION MEMORY ANALYSES
+# ==============================================================================
+
+# ==============================================================================
+# PRIMARY ANALYSES (High vs. Low Control)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# ANALYSIS 1: Paired t-test on d-prime
+# ------------------------------------------------------------------------------
+
+def run_analysis_1_dprime_ttest(mem_results):
+    """
+    Perform a paired t-test comparing d-prime between high and low control conditions.
+    """
+    pivoted = mem_results.pivot(index='participant', columns='control_condition', values='d_prime')
+    
+    # Check if we have both conditions for at least some participants
+    if 'high' not in pivoted.columns or 'low' not in pivoted.columns:
+        print("[WARNING] Missing condition data for d-prime t-test.")
+        return None
+        
+    # Drop participants who don't have both conditions
+    pivoted = pivoted.dropna(subset=['high', 'low'])
+    
+    t_stat, p_val = stats.ttest_rel(pivoted['high'], pivoted['low'])
+    
+    results = {
+        'analysis': 'Analysis 1: d-prime paired t-test',
+        't_stat': t_stat,
+        'p_val': p_val,
+        'mean_high': pivoted['high'].mean(),
+        'mean_low': pivoted['low'].mean(),
+        'sd_high': pivoted['high'].std(),
+        'sd_low': pivoted['low'].std(),
+        'n': len(pivoted)
+    }
     return results
+
+# ------------------------------------------------------------------------------
+# ANALYSIS 2: Paired t-test on hit rates
+# ------------------------------------------------------------------------------
+
+def run_analysis_2_hitrate_ttest(mem_results):
+    """
+    Perform a paired t-test comparing hit rates between high and low control conditions.
+    """
+    pivoted = mem_results.pivot(index='participant', columns='control_condition', values='Hit_rate')
+    
+    if 'high' not in pivoted.columns or 'low' not in pivoted.columns:
+        print("[WARNING] Missing condition data for hit rate t-test.")
+        return None
+        
+    pivoted = pivoted.dropna(subset=['high', 'low'])
+    
+    t_stat, p_val = stats.ttest_rel(pivoted['high'], pivoted['low'])
+    
+    results = {
+        'analysis': 'Analysis 2: Hit rate paired t-test',
+        't_stat': t_stat,
+        'p_val': p_val,
+        'mean_high': pivoted['high'].mean(),
+        'mean_low': pivoted['low'].mean(),
+        'sd_high': pivoted['high'].std(),
+        'sd_low': pivoted['low'].std(),
+        'n': len(pivoted)
+    }
+    return results
+
+# ------------------------------------------------------------------------------
+# ANALYSIS 3: GLMM on target trials only
+# ------------------------------------------------------------------------------
+
+def run_analysis_3_glmm(targets):
+    """
+    Perform a trial-level GLMM (Binomial, logit link) on target (old) trials only.
+    Model: said_old ~ control_condition + (1 | participant)
+    
+    Uses pymer4 (wraps R's lme4::glmer) for proper GLMM estimation.
+    """
+    if targets is None or len(targets) == 0:
+        print("[WARNING] No target data for GLMM.")
+        return None
+
+    df = targets.copy()
+    df['said_old_int'] = df['said_old'].astype(int)
+    
+    # Contrast-code: +0.5 = high, -0.5 = low
+    df['control_numeric'] = df['control_condition'].map({'high': 0.5, 'low': -0.5})
+    df = df.dropna(subset=['said_old_int', 'control_numeric', 'participant'])
+
+    if len(df) == 0:
+        print("[WARNING] No valid trials after preprocessing.")
+        return None
+
+    print("\nAnalysis 3: GLMM (Binomial, logit link) on target trials...")
+    print(f"  Trials: {len(df)} | Participants: {df['participant'].nunique()}")
+
+    try:
+        model = Lmer(
+            "said_old_int ~ control_numeric + (1 | participant)",
+            data=df,
+            family="binomial"
+        )
+        result = model.fit()
+        print(result)
+        return model
+
+    except Exception as e:
+        print(f"  [ERROR] GLMM failed: {e}")
+        return None
+
+# ------------------------------------------------------------------------------
+# ANALYSIS 4: GEE with item_type x control interaction
+# ------------------------------------------------------------------------------
+# [PLACEHOLDER] To be implemented (requires statsmodels)
+
+
+# ==============================================================================
+# SUPPLEMENTARY ANALYSES (Including Uncontrolled Items)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# SUPPLEMENTARY 1: One-way repeated measures ANOVA on d-prime
+# ------------------------------------------------------------------------------
+# (Conditions: high control, low control, uncontrolled)
+# [PLACEHOLDER] To be implemented
+
+# ------------------------------------------------------------------------------
+# SUPPLEMENTARY 2: One-way repeated measures ANOVA on hit rates
+# ------------------------------------------------------------------------------
+# (Conditions: high control, low control, uncontrolled)
+# [PLACEHOLDER] To be implemented
+
+# ------------------------------------------------------------------------------
+# SUPPLEMENTARY 3: GEE on all old items (3-level control_type predictor)
+# ------------------------------------------------------------------------------
+# [PLACEHOLDER] To be implemented
+
+# ------------------------------------------------------------------------------
+# SUPPLEMENTARY 4: GEE with item_type x control interaction
+# ------------------------------------------------------------------------------
+# (Three-level control, no foil dummy assignment needed)
+# [PLACEHOLDER] To be implemented
+
+
+def print_stat_results(res):
+    """Helper to print formatted statistical results."""
+    if res is None: return
+    print(f"\n{res['analysis']}:")
+    print(f"  t({res['n']-1}) = {res['t_stat']:.3f}, p = {res['p_val']:.4f}")
+    print(f"  Mean (SD) High: {res['mean_high']:.3f} ({res['sd_high']:.3f})")
+    print(f"  Mean (SD) Low:  {res['mean_low']:.3f} ({res['sd_low']:.3f})")
+
+def run_recognition_stats(mem_results, targets):
+    """Run all recognition statistical analyses."""
+    print("\n" + "=" * 60)
+    print("RECOGNITION STATISTICAL ANALYSES")
+    print("=" * 60)
+    
+    # Primary Analysis 1
+    res1 = run_analysis_1_dprime_ttest(mem_results)
+    print_stat_results(res1)
+    
+    # Primary Analysis 2
+    res2 = run_analysis_2_hitrate_ttest(mem_results)
+    print_stat_results(res2)
+    
+    # Primary Analysis 3 - GLMM
+    run_analysis_3_glmm(targets)
+    
+    print("\n" + "=" * 60)
 
 
 # ============================================================================
@@ -743,6 +921,53 @@ def print_descriptives(data):
     else:
         print("    No valid age data found.")
     print("=" * 60 + "\n")
+
+
+# ============================================================================
+# DATA INTEGRITY CHECKS
+# ============================================================================
+
+def check_image_uniqueness(data):
+    """
+    Confirm that all images shown during the test phase were unique
+    within and across the img_A_name and img_B_name columns.
+    """
+    if 'phase' not in data.columns or 'img_A_name' not in data.columns or 'img_B_name' not in data.columns:
+        print("[WARNING] Missing columns for image uniqueness check (img_A_name or img_B_name).")
+        return
+
+    test_data = data[data['phase'] == 'test'].copy()
+    if len(test_data) == 0:
+        print("[WARNING] No test phase trials found for image uniqueness check.")
+        return
+
+    # Collect all image names from both columns across all selected participants
+    img_a = test_data['img_A_name'].dropna().tolist()
+    img_b = test_data['img_B_name'].dropna().tolist()
+    all_images = img_a + img_b
+
+    n_total = len(all_images)
+    n_unique = len(set(all_images))
+
+    print("\n" + "=" * 60)
+    print("IMAGE UNIQUENESS CHECK (Test Phase)")
+    print("=" * 60)
+    print(f"  Total image presentations : {n_total}")
+    print(f"  Unique image names         : {n_unique}")
+
+    if n_total == n_unique:
+        print("  â†’ SUCCESS: All images shown during the test phase were different.")
+    else:
+        n_dupes = n_total - n_unique
+        print(f"  â†’ FAILURE: Found {n_dupes} duplicate image presentation(s)!")
+        
+        # Identify the duplicates
+        from collections import Counter
+        counts = Counter(all_images)
+        duplicates = [img for img, count in counts.items() if count > 1]
+        for d in duplicates:
+            print(f"     Duplicate: {d} (shown {counts[d]} times)")
+    print("=" * 60)
 
 
 # ============================================================================
@@ -949,6 +1174,13 @@ if __name__ == "__main__":
     for i, col in enumerate(data.columns, start=1):
         print(f"  {i:>3}. {col}")
 
+    # ------------------------------------------------------------------
+    # 2b. Image Uniqueness Check
+    # ------------------------------------------------------------------
+    # Verifies that every image shown in 'test' phase (img_A_name and img_B_name)
+    # is different within and across trials.
+    check_image_uniqueness(data)
+
     print("\n" + "=" * 60)
     print("DATAFRAME SHAPE  (raw, before exclusions)")
     print("=" * 60)
@@ -1070,7 +1302,7 @@ if __name__ == "__main__":
         print("RECOGNITION MEMORY (D-PRIME)")
         print("=" * 60)
         
-        mem_results = analyze_recognition(data, recog_data)
+        mem_results, targets = analyze_recognition(data, recog_data)
         if mem_results is not None:
             print("\nPer-participant Hit Rate, FA Rate, and D-prime:")
             print("-" * 60)
@@ -1081,7 +1313,8 @@ if __name__ == "__main__":
             print("\nGroup Summary:")
             summary = mem_results.groupby('control_condition')[['Hit_rate', 'FA_rate', 'd_prime']].agg(['mean', 'std'])
             print(summary.to_string())
-            print("=" * 60 + "\n")
+        # 11b. Statistical Analyses
+        run_recognition_stats(mem_results, targets)
 
 
 
