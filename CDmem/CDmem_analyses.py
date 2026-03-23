@@ -12,6 +12,7 @@ Located in: CDmem/data/subjects/
 
 TODO:
 - add cd accuracy analysis - check simon's code?
+- add RT analyses
 """
 
 import os
@@ -32,6 +33,7 @@ from scipy import stats
 from scipy.stats import norm
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
+from statsmodels.stats.anova import AnovaRM
 from pymer4.models import lmer, glmer
 
 # ============================================================================
@@ -56,8 +58,8 @@ def load_all_data(data_dir=DATA_DIR):
 
     The function deliberately excludes:
       - CDmem_test.csv style files (intermediate output)
-      - CDmem_*_kinematics.csv  (kinematics data â€” separate analysis)
-      - CDmem_*_recognition.csv (recognition data â€” separate analysis)
+      - CDmem_*_kinematics.csv  (kinematics data - separate analysis)
+      - CDmem_*_recognition.csv (recognition data - separate analysis)
 
     As new participants complete the study and their CSV is placed in the
     data folder, they are automatically included on the next run.
@@ -74,17 +76,9 @@ def load_all_data(data_dir=DATA_DIR):
         Combined DataFrame of all loaded participants, or None if no files found.
     """
 
-    # Glob all CSVs that start with "CDmem_" then apply strict regex so we
-    # only match files with exactly two underscore-separated numeric parts
-    # where the first part is '1' (e.g. CDmem_1_99.csv).
     pattern = str(data_dir / "CDmem_*.csv")
     all_files = glob.glob(pattern)
 
-    # Regex breakdown:
-    #   ^          â€” start of filename
-    #   CDmem_1_   â€” literal prefix
-    #   \d+        â€” participant ID
-    #   \.csv$     â€” ends with .csv
     strict_pattern = re.compile(r"^CDmem_1_\d+\.csv$")
     all_files = [
         f for f in all_files
@@ -99,8 +93,6 @@ def load_all_data(data_dir=DATA_DIR):
     for f in sorted(all_files):
         print(f"  {os.path.basename(f)}")
 
-    # Load each file individually and tag with its source filename so we can
-    # trace back which file any given row came from (useful for debugging).
     dfs = []
     for f in sorted(all_files):
         try:
@@ -114,29 +106,18 @@ def load_all_data(data_dir=DATA_DIR):
         print("[ERROR] No files could be loaded.")
         return None
 
-    # Stack all individual participant DataFrames into one master DataFrame.
-    # ignore_index=True resets the index so it runs 0 â†’ N-1 across all rows.
     data = pd.concat(dfs, ignore_index=True)
-    print(f"\nLoaded {len(dfs)} file(s) â†’ {len(data)} total rows combined.\n")
+    print(f"\nLoaded {len(dfs)} file(s) -> {len(data)} total rows combined.\n")
     return data
 
 
 # ============================================================================
-# EXCLUSION CRITERION 1 â€” TIMEOUT RATE
+# EXCLUSION CRITERION 1 - TIMEOUT RATE
 # ============================================================================
 #
 # Criterion (Haridi et al., 2025):
 #   A participant is excluded if 50% or more of their TEST-PHASE trials in
 #   EITHER control condition (low or high) are timeout trials.
-#
-# Rationale:
-#   A very high timeout rate in any one condition indicates that the participant
-#   stopped engaging with the task. Their data are therefore considered
-#   unreliable and removed entirely from the dataset.
-#
-# Scope:
-#   Only test-phase trials are evaluated. Calibration-phase timeouts reflect
-#   the staircase adaptation process and are handled separately.
 #
 # Relevant columns:
 #   'phase'             : 'calibration' or 'test'
@@ -153,10 +134,6 @@ def exclude_timeout_participants(data):
     Exclude participants whose timeout rate in the test phase reaches or
     exceeds TIMEOUT_THRESHOLD in either the 'low' or 'high' control condition.
 
-    Designed to work with any number of participants: it groups the full
-    combined DataFrame by participant and condition, so no code changes
-    are needed as the sample grows.
-
     Parameters
     ----------
     data : pd.DataFrame
@@ -170,44 +147,29 @@ def exclude_timeout_participants(data):
         List of participant IDs excluded by this criterion.
     """
 
-    # --- Step 1: Isolate test-phase trials ---
-    # The timeout criterion is applied only to the test phase. During
-    # calibration, QUEST adjusts difficulty trial by trial, so occasional
-    # timeouts are expected and do not warrant exclusion.
     test_data = data[data["phase"] == "test"].copy()
 
-    # --- Step 2: Normalise the is_timeout column to proper booleans ---
-    # PsychoPy can serialise booleans as Python True/False or as the strings
-    # 'True'/'False'. We standardise to bool so .sum() counts them correctly.
     test_data["is_timeout"] = test_data["is_timeout"].map(
         lambda x: str(x).strip().lower() == "true"
     )
 
-    # --- Step 3: Compute timeout rate per participant Ã-- condition ---
-    # Group by participant and control_condition.
-    # 'count' gives the total number of trials; 'sum' counts True (== 1).
     timeout_stats = (
         test_data
         .groupby(["participant", "control_condition"])["is_timeout"]
         .agg(
-            total_trials="count",    # total test-phase trials in this condition
-            timeout_trials="sum"     # how many of those were timeouts
+            total_trials="count",
+            timeout_trials="sum"
         )
         .reset_index()
     )
 
-    # timeout_rate = proportion of trials that timed out
     timeout_stats["timeout_rate"] = (
         timeout_stats["timeout_trials"] / timeout_stats["total_trials"]
     )
 
-    # --- Step 4: Flag participants exceeding the threshold in ANY condition ---
-    # "either condition" means: timeout_rate >= threshold in 'low' OR in 'high'
-    # triggers removal of ALL of that participant's data.
     flagged = timeout_stats[timeout_stats["timeout_rate"] >= TIMEOUT_THRESHOLD]
     excluded_ids = flagged["participant"].unique().tolist()
 
-    # --- Step 5: Print a transparent, detailed report ---
     print("=" * 60)
     print("EXCLUSION CRITERION 1: Timeout Rate")
     print(f"  Threshold : >= {TIMEOUT_THRESHOLD * 100:.0f}% timeouts in either condition")
@@ -215,10 +177,9 @@ def exclude_timeout_participants(data):
     print("=" * 60)
 
     if len(excluded_ids) == 0:
-        print("  â†’ No participants excluded by this criterion.\n")
+        print("  -> No participants excluded by this criterion.\n")
     else:
-        print(f"  â†’ {len(excluded_ids)} participant(s) excluded:\n")
-        # Show the specific condition and rate that triggered each exclusion
+        print(f"  -> {len(excluded_ids)} participant(s) excluded:\n")
         for _, row in flagged.iterrows():
             print(
                 f"     Participant {row['participant']} | "
@@ -228,9 +189,6 @@ def exclude_timeout_participants(data):
             )
         print()
 
-    # --- Step 6: Remove flagged participants from the FULL dataset ---
-    # We drop all rows for those participants â€” including calibration trials â€”
-    # because an excluded participant should not contribute any data.
     data_clean = data[~data["participant"].isin(excluded_ids)].copy()
 
     return data_clean, excluded_ids
@@ -246,20 +204,6 @@ def exclude_timeout_participants(data):
 #   A participant is excluded if their accuracy in EITHER condition is more
 #   than 2.5 standard deviations away from the GROUP mean.
 #
-# Rationale:
-#   Although the QUEST staircase converges each participant toward their
-#   personal threshold, group-level outliers indicate that calibration failed
-#   (e.g., threshold not reached) or that the participant misunderstood the
-#   task. A relative SD criterion (rather than fixed bounds) keeps the cutoff
-#   adaptive to the actual spread in the sample.
-#
-# Important note on sample size:
-#   The group mean and SD are estimated from all currently-loaded participants
-#   (after Criterion 1 has already been applied). With small samples the
-#   estimates are noisy; the criterion becomes more precise as N grows.
-#   This is expected behaviour and consistent with typical psychophysics
-#   exclusion pipelines.
-#
 # Relevant columns:
 #   'phase'              : we look only at test-phase trials
 #   'control_condition'  : 'low' or 'high'
@@ -267,14 +211,11 @@ def exclude_timeout_participants(data):
 #   'participant'        : unique participant identifier
 # ============================================================================
 
-# Expected (target) accuracy per condition â€” defined by QUEST staircase targets
 EXPECTED_ACCURACY = {
-    "low":  0.55,   # 55% low control condition
-    "high": 0.85,   # 85% high control condition
+    "low":  0.55,
+    "high": 0.85,
 }
 
-# Outlier cutoff: participants more than this many SDs from the group mean
-# are excluded. Applied separately for each condition.
 ACCURACY_SD_THRESHOLD = 2.5
 
 
@@ -283,35 +224,20 @@ def exclude_accuracy_outliers(data):
     Exclude participants whose mean test-phase accuracy in either control
     condition deviates more than ACCURACY_SD_THRESHOLD SDs from the group mean.
 
-    The criterion is computed separately for the 'low' and 'high' conditions.
-    Exclusion in either condition removes the participant's data entirely.
-
     Parameters
     ----------
     data : pd.DataFrame
-        Dataset after previous exclusion steps (all phases, all participants
-        remaining after Criterion 1).
+        Dataset after previous exclusion steps.
 
     Returns
     -------
     data_clean : pd.DataFrame
-        Dataset with accuracy-outlier participants fully removed.
     excluded_ids : list
-        Participant IDs excluded by this criterion.
     report_df : pd.DataFrame
-        Full accuracy table (all participants Ã-- conditions) with z-scores â€”
-        useful for reporting in the methods section or supplementary materials.
     """
 
-    # --- Step 1: Isolate test-phase trials ---
-    # Accuracy is only meaningful for the test phase. During calibration,
-    # QUEST intentionally varies difficulty, so accuracy is expected to
-    # fluctuate and should not be used for exclusion.
     test_data = data[data["phase"] == "test"].copy()
 
-    # --- Step 2: Compute per-participant mean accuracy per condition ---
-    # detection_accuracy is coded as 1 (correct) or 0 (incorrect).
-    # .mean() on a 0/1 column = proportion correct = accuracy.
     acc_per_px = (
         test_data
         .groupby(["participant", "control_condition"])["detection_accuracy"]
@@ -320,10 +246,6 @@ def exclude_accuracy_outliers(data):
         .rename(columns={"detection_accuracy": "mean_accuracy"})
     )
 
-    # --- Step 3: Compute group-level mean and SD per condition ---
-    # These statistics describe the distribution of accuracies across all
-    # participants currently in the dataset. pandas .std() uses ddof=1 by
-    # default, giving the unbiased sample standard deviation.
     group_stats = (
         acc_per_px
         .groupby("control_condition")["mean_accuracy"]
@@ -331,26 +253,16 @@ def exclude_accuracy_outliers(data):
         .reset_index()
     )
 
-    # Merge group stats back onto the per-participant table so each row
-    # carries its condition's group_mean and group_sd alongside mean_accuracy.
     acc_per_px = acc_per_px.merge(group_stats, on="control_condition")
 
-    # --- Step 4: Compute z-score for each participant Ã-- condition cell ---
-    # z = (participant_accuracy - group_mean) / group_SD
-    #   z > +2.5  â†’ unusually high accuracy (e.g., ceiling, possible cheating)
-    #   z < -2.5  â†’ unusually low accuracy (e.g., calibration failure)
-    # Either direction triggers exclusion.
     acc_per_px["z_score"] = (
         (acc_per_px["mean_accuracy"] - acc_per_px["group_mean"])
         / acc_per_px["group_sd"]
     )
 
-    # --- Step 5: Flag participants with |z| > threshold in ANY condition ---
-    # Being an outlier in one condition is sufficient to exclude the participant.
     flagged = acc_per_px[acc_per_px["z_score"].abs() > ACCURACY_SD_THRESHOLD]
     excluded_ids = flagged["participant"].unique().tolist()
 
-    # --- Step 6: Print a detailed, human-readable report ---
     print("=" * 60)
     print("EXCLUSION CRITERION 2: Accuracy Outliers")
     print(f"  Threshold : |z| > {ACCURACY_SD_THRESHOLD} SD from group mean")
@@ -359,8 +271,6 @@ def exclude_accuracy_outliers(data):
           f"high = {EXPECTED_ACCURACY['high']*100:.0f}%")
     print("=" * 60)
 
-    # Print the full table so the researcher can inspect every participant's
-    # accuracy and z-score. Excluded participants are marked with ***.
     print("\n  Per-participant accuracy by condition (with group z-scores):\n")
     print(f"  {'Participant':<15} {'Condition':<10} {'Accuracy':>10} "
           f"{'Group Mean':>12} {'Group SD':>10} {'z-score':>9}")
@@ -375,12 +285,10 @@ def exclude_accuracy_outliers(data):
 
     print()
     if len(excluded_ids) == 0:
-        print("  â†’ No participants excluded by this criterion.\n")
+        print("  -> No participants excluded by this criterion.\n")
     else:
-        print(f"  â†’ {len(excluded_ids)} participant(s) excluded: {excluded_ids}\n")
+        print(f"  -> {len(excluded_ids)} participant(s) excluded: {excluded_ids}\n")
 
-    # --- Step 7: Remove flagged participants from the full dataset ---
-    # All rows (calibration and test) for the flagged participants are removed.
     assert data is not None
     data_clean = data[~data["participant"].isin(excluded_ids)].copy()
 
@@ -396,28 +304,16 @@ def load_recognition_data(data_dir=DATA_DIR):
     Load all CDmem recognition CSV files and combine into a single DataFrame.
 
     File naming pattern: CDmem_{participant}_{session}_{block}_recognition.csv
-    (e.g. CDmem_1_1_1_recognition.csv, CDmem_1_2_1_recognition.csv)
-
-    Recognition data is kept in a SEPARATE DataFrame (recog_data) from the
-    main task data because the two have different trial structures, columns,
-    and exclusion criteria.
-
-    As new participants complete the study and their recognition CSV is placed
-    in the data folder, they are automatically included on the next run.
 
     Parameters
     ----------
     data_dir : Path
-        Directory to search for CSV files (same folder as main data).
 
     Returns
     -------
     pd.DataFrame or None
-        Combined recognition DataFrame across all participants, or None.
     """
 
-    # Glob for files ending in _recognition.csv.
-    # The * before _recognition captures the full CDmem_px_session_block prefix.
     pattern = str(data_dir / "CDmem_*_recognition.csv")
     all_files = glob.glob(pattern)
 
@@ -433,7 +329,6 @@ def load_recognition_data(data_dir=DATA_DIR):
     for f in sorted(all_files):
         try:
             df = pd.read_csv(f)
-            # Tag with source filename for traceability
             df["source_file"] = os.path.basename(f)
             dfs.append(df)
         except Exception as e:
@@ -444,78 +339,47 @@ def load_recognition_data(data_dir=DATA_DIR):
         return None
 
     recog_data = pd.concat(dfs, ignore_index=True)
-    print(f"\nLoaded {len(dfs)} recognition file(s) â†’ {len(recog_data)} total rows.\n")
+    print(f"\nLoaded {len(dfs)} recognition file(s) -> {len(recog_data)} total rows.\n")
     return recog_data
 
 
 # ============================================================================
-# RECOGNITION EXCLUSION LONG RT TRIALS
+# RECOGNITION EXCLUSION: LONG RT TRIALS
 # ============================================================================
 #
 # Criterion (Haridi et al., 2025):
 #   Recognition trials with a response time (mem_rt) longer than 20 seconds
 #   are excluded at the TRIAL level (not the participant level).
-#
-# Rationale:
-#   Extremely long RTs in a recognition task typically reflect mind-wandering,
-#   distraction, or task disengagement on that specific trial rather than a
-#   systematic problem with the participant. Removing these trials prevents
-#   them from distorting condition means without unnecessarily discarding the
-#   participant's remaining valid data.
-#
-# Relevant columns:
-#   'mem_rt'      : response time in seconds for each recognition trial
-#   'participant' : unique participant identifier (for the report)
 # ============================================================================
 
-RT_CUTOFF_SECONDS = 20.0   # Haridi et al., 2025
+RT_CUTOFF_SECONDS = 20.0
 
 
 def exclude_long_rt_trials(recog_data):
     """
     Remove individual recognition trials where mem_rt exceeds RT_CUTOFF_SECONDS.
 
-    This is a trial-level exclusion (not participant-level): only the outlier
-    trials are dropped; the participant's remaining trials are kept.
-
-    Designed to work with any number of participants â€” it operates on the
-    full combined recognition DataFrame, so no code changes are needed as
-    the sample grows.
-
     Parameters
     ----------
     recog_data : pd.DataFrame
-        Full recognition dataset (all participants, all trials).
 
     Returns
     -------
     recog_clean : pd.DataFrame
-        Recognition dataset with long-RT trials removed.
     n_excluded_trials : int
-        Number of individual trials removed.
     exclusion_details : pd.DataFrame
-        Table of each removed trial (participant, trial number, RT) for
-        reporting and inspection.
     """
 
-    # --- Step 1: Convert mem_rt to numeric ---
-    # Read from CSV, the column should already be float, but we coerce
-    # defensively in case any non-numeric values crept in (e.g., empty cells).
     recog_data = recog_data.copy()
     recog_data["mem_rt"] = pd.to_numeric(recog_data["mem_rt"], errors="coerce")
 
-    # --- Step 2: Identify long-RT trials ---
-    # A trial is flagged if mem_rt > RT_CUTOFF_SECONDS OR if mem_rt is NaN
-    # (missing RT is also not a valid response and should be dropped).
     long_rt_mask = recog_data["mem_rt"] > RT_CUTOFF_SECONDS
     missing_rt_mask = recog_data["mem_rt"].isna()
     exclude_mask = long_rt_mask | missing_rt_mask
 
-    # --- Step 3: Store details of excluded trials for the report ---
     exclusion_details = recog_data[exclude_mask][["participant", "overall_trial_num", "mem_rt"]].copy()
     n_excluded_trials = len(exclusion_details)
 
-    # --- Step 4: Print a detailed report ---
     print("=" * 60)
     print("RECOGNITION EXCLUSION: Long RT Trials")
     print(f"  RT cutoff : > {RT_CUTOFF_SECONDS:.0f} s")
@@ -523,10 +387,9 @@ def exclude_long_rt_trials(recog_data):
     print("=" * 60)
 
     if n_excluded_trials == 0:
-        print("  â†’ No trials excluded by this criterion.\n")
+        print("  -> No trials excluded by this criterion.\n")
     else:
-        print(f"  â†’ {n_excluded_trials} trial(s) excluded:\n")
-        # Show each removed trial so the researcher can verify
+        print(f"  -> {n_excluded_trials} trial(s) excluded:\n")
         for _, row in exclusion_details.iterrows():
             print(
                 f"     Participant {row['participant']} | "
@@ -535,8 +398,6 @@ def exclude_long_rt_trials(recog_data):
             )
         print()
 
-    # --- Step 5: Remove the flagged trials ---
-    # We keep ~mask so that only valid (short-RT) trials remain.
     recog_clean = recog_data[~exclude_mask].copy()
 
     return recog_clean, n_excluded_trials, exclusion_details
@@ -545,35 +406,15 @@ def exclude_long_rt_trials(recog_data):
 # ============================================================================
 # CROSS-DATASET PARTICIPANT SYNCHRONISATION
 # ============================================================================
-#
-# After all exclusions have been applied independently to the main task data
-# and the recognition data, the two datasets may contain different participant
-# sets. For example:
-#   - A participant excluded from main data (timeout / accuracy) should also
-#     be dropped from recog_data.
-#   - A participant missing from recog_data entirely (file never collected, or
-#     corrupted) should also be removed from main data.
-#
-# This function computes the INTERSECTION of participant IDs in both datasets
-# and retains only those participants in both DataFrames.
-# ============================================================================
 
 def sync_participant_ids(data, recog_data):
     """
     Ensure both DataFrames contain exactly the same set of participant IDs.
 
-    Any participant present in one DataFrame but not the other is removed
-    from the DataFrame that does contain them, and the reason is reported.
-
-    Applied as a final cross-dataset consistency step, AFTER all independent
-    exclusion criteria have been run on each dataset.
-
     Parameters
     ----------
     data : pd.DataFrame
-        Main task data (already filtered by timeout / accuracy criteria).
     recog_data : pd.DataFrame
-        Recognition data (already filtered by RT criterion).
 
     Returns
     -------
@@ -581,20 +422,12 @@ def sync_participant_ids(data, recog_data):
     recog_synced : pd.DataFrame
     """
 
-    # --- Step 1: Get participant sets from each dataset ---
     main_pxs  = set(data['participant'].unique())
     recog_pxs = set(recog_data['participant'].unique())
-
-    # --- Step 2: Compute the intersection ---
     common_pxs = main_pxs & recog_pxs
-
-    # --- Step 3: Identify asymmetric participants ---
-    # In main but not in recognition -> drop from main data
     only_in_main  = main_pxs  - recog_pxs
-    # In recognition but not in main -> drop from recog_data
     only_in_recog = recog_pxs - main_pxs
 
-    # --- Step 4: Print synchronisation report ---
     print("=" * 60)
     print("CROSS-DATASET PARTICIPANT SYNCHRONISATION")
     print("=" * 60)
@@ -611,105 +444,197 @@ def sync_participant_ids(data, recog_data):
             print(f"    {sorted(only_in_recog)}")
         print(f"  Participants retained in both: {sorted(common_pxs)}\n")
 
-    # --- Step 5: Filter both DataFrames to the common participant set ---
     data_synced  = data[data['participant'].isin(common_pxs)].copy()
     recog_synced = recog_data[recog_data['participant'].isin(common_pxs)].copy()
 
     return data_synced, recog_synced
 
 
+# ============================================================================
+# HELPER: d-prime calculation
+# ============================================================================
+
 def calc_dprime(hr, far, clip_val=0.01):
     """
     Calculate d-prime from hit rate (hr) and false alarm rate (far).
     Includes clipping to avoid infinity when hr=1.0 or far=0.0.
     """
-    hr_clipped = np.clip(hr, clip_val, 1.0 - clip_val)
+    hr_clipped  = np.clip(hr,  clip_val, 1.0 - clip_val)
     far_clipped = np.clip(far, clip_val, 1.0 - clip_val)
     return norm.ppf(hr_clipped) - norm.ppf(far_clipped)
+
+
+# ============================================================================
+# HELPER: fit GLMM with maximal random effects, fall back to intercept-only
+# ============================================================================
+
+def fit_glmm_with_fallback(formula_maximal, formula_minimal, data_pl, family="binomial"):
+    """
+    Attempt to fit a GLMM with maximal random effects structure.
+    If the model produces a singular fit warning, fall back to a random-intercept
+    only model and report which structure was used.
+
+    Singular fit is detected by checking whether any random-effect variance
+    components are estimated at (or very near) zero.
+
+    Parameters
+    ----------
+    formula_maximal : str
+        Full model formula including random slopes (e.g. "(1 + x | subj)").
+    formula_minimal : str
+        Fallback formula with random intercept only (e.g. "(1 | subj)").
+    data_pl : pl.DataFrame
+        Data in Polars format (required by pymer4 >= 0.8).
+    family : str
+        Model family (default: "binomial").
+
+    Returns
+    -------
+    model : fitted pymer4 model
+    random_structure_used : str
+        Either "maximal" or "intercept-only", for transparent reporting.
+    """
+    print(f"  Attempting maximal model: {formula_maximal}")
+    try:
+        model = glmer(formula_maximal, data=data_pl, family=family)
+        result = model.fit()
+
+        # Check for singular fit: any variance component near zero
+        singular = False
+        if hasattr(model, 'ranef_var') and model.ranef_var is not None:
+            variances = model.ranef_var.select(pl.col("^Var.*$")).to_numpy().flatten()
+            if np.any(variances < 1e-6):
+                singular = True
+
+        if singular:
+            print("  [WARNING] Singular fit detected in maximal model.")
+            print("  Falling back to random-intercept-only model.")
+            raise ValueError("Singular fit")
+
+        print("  -> Maximal random effects model converged without singular fit.")
+        print(result)
+        return model, "maximal"
+
+    except Exception as e:
+        if "Singular fit" not in str(e):
+            print(f"  [WARNING] Maximal model failed ({e}). Falling back to intercept-only.")
+
+    print(f"  Fitting intercept-only model: {formula_minimal}")
+    try:
+        model = glmer(formula_minimal, data=data_pl, family=family)
+        result = model.fit()
+        print("  -> Intercept-only model used (report this in methods).")
+        print(result)
+        return model, "intercept-only"
+    except Exception as e:
+        print(f"  [ERROR] Intercept-only model also failed: {e}")
+        return None, None
+
+
+# ============================================================================
+# RECOGNITION DATA PREPARATION
+# ============================================================================
 
 def analyze_recognition(main_data, recog_data):
     """
     Calculate recognition performance (HR, FA, d-prime) per participant
     and per control condition (including uncontrolled items).
-    
+
     Returns
     -------
-    pd.DataFrame
-        Participant-level summary.
-    pd.DataFrame
-        Trial-level recognition data with condition labels.
+    mem_results : pd.DataFrame
+        Participant-level summary (primary: high vs. low).
+    targets : pd.DataFrame
+        Trial-level recognition data for old items with condition labels.
+    supp_mem_results : pd.DataFrame
+        Participant-level summary for 2x2 (trial_level x item_type).
     """
-    # 1. Calculate overall False Alarm rate per participant
     recog_data = recog_data.copy()
     recog_data['said_old'] = recog_data['mem_response'].str.lower() == 'yes'
-    
+
+    # --- False alarm rates per participant ---
     foils = recog_data[recog_data['mem_ground_truth'] == 'unseen']
     if len(foils) == 0:
         print("[WARNING] No foil ('unseen') trials found in recognition data.")
-        return None, None
-        
+        return None, None, None
+
     fa_rates = foils.groupby('participant')['said_old'].mean().reset_index()
     fa_rates.rename(columns={'said_old': 'FA_rate'}, inplace=True)
-    
-    # 2. Extract Hit rates per condition (High, Low, Uncontrolled)
+
+    # --- Hit rates per condition ---
     if 'phase' in main_data.columns:
         test_data = main_data[main_data['phase'] == 'test'].copy()
     else:
         test_data = main_data.copy()
-        
+
     if 'control_condition' not in test_data.columns or 'true_controlled' not in test_data.columns:
         print("[WARNING] Required columns not found in main data for recognition split.")
-        return None, None
-        
-    # Create a lookup table mapping each participant + image name to its condition
+        return None, None, None
+
+    # Build image -> condition lookup
     img_lookups = []
     for _, row in test_data.iterrows():
-        px = row['participant']
-        cond = row['control_condition']
-        target_img = row['true_controlled'] # e.g. 'img_A' or 'img_B'
-        
-        # Controlled item
+        px       = row['participant']
+        cond     = row['control_condition']
+        target_img = row['true_controlled']
+
         img_lookups.append({
-            'participant': px,
-            'mem_filename': row['img_A_name' if target_img == 'img_A' else 'img_B_name'],
+            'participant':      px,
+            'mem_filename':     row['img_A_name' if target_img == 'img_A' else 'img_B_name'],
             'control_condition': cond,
-            'is_controlled': 'yes'
+            'trial_level':      cond,
+            'item_type':        'controlled',
+            'is_controlled':    'yes'
         })
-        # Uncontrolled item
         img_lookups.append({
-            'participant': px,
-            'mem_filename': row['img_B_name' if target_img == 'img_A' else 'img_A_name'],
+            'participant':      px,
+            'mem_filename':     row['img_B_name' if target_img == 'img_A' else 'img_A_name'],
             'control_condition': 'uncontrolled',
-            'is_controlled': 'no'
+            'trial_level':      cond,
+            'item_type':        'uncontrolled',
+            'is_controlled':    'no'
         })
-    
+
     img_lookup = pd.DataFrame(img_lookups)
     img_lookup.dropna(subset=['mem_filename'], inplace=True)
     img_lookup.drop_duplicates(subset=['participant', 'mem_filename'], inplace=True)
-    
-    # 3. Merge targets with their condition
+
+    # Merge targets with condition labels
     targets = recog_data[recog_data['mem_ground_truth'] == 'seen'].copy()
     targets = targets.merge(img_lookup, on=['participant', 'mem_filename'], how='left')
-    
-    # Verify merge success
+
     unmatched = targets['control_condition'].isna().sum()
     if unmatched > 0:
         print(f"[WARNING] {unmatched} recognition targets could not be matched to a condition.")
-        
-    # Calculate hit rate per participant x condition
-    # Conditions: 'high', 'low', 'uncontrolled'
-    hit_rates = targets.groupby(['participant', 'control_condition'])['said_old'].mean().reset_index()
-    hit_rates.rename(columns={'said_old': 'Hit_rate'}, inplace=True)
-    
-    # 4. Combine HR and FA to calculate d-prime
-    results = hit_rates.merge(fa_rates, on='participant', how='left')
-    results['d_prime'] = results.apply(lambda row: calc_dprime(row['Hit_rate'], row['FA_rate']), axis=1)
-    
-    return results, targets
 
-# ==============================================================================
-# RECOGNITION MEMORY ANALYSES
-# ==============================================================================
+    # --- Primary: hit rate per participant x condition (high / low / uncontrolled) ---
+    hit_rates = (
+        targets
+        .groupby(['participant', 'control_condition'])['said_old']
+        .mean()
+        .reset_index()
+        .rename(columns={'said_old': 'Hit_rate'})
+    )
+    results = hit_rates.merge(fa_rates, on='participant', how='left')
+    results['d_prime'] = results.apply(
+        lambda row: calc_dprime(row['Hit_rate'], row['FA_rate']), axis=1
+    )
+
+    # --- Supplementary: 2x2 hit rate per participant x trial_level x item_type ---
+    hit_rates_supp = (
+        targets
+        .groupby(['participant', 'trial_level', 'item_type'])['said_old']
+        .mean()
+        .reset_index()
+        .rename(columns={'said_old': 'Hit_rate'})
+    )
+    results_supp = hit_rates_supp.merge(fa_rates, on='participant', how='left')
+    results_supp['d_prime'] = results_supp.apply(
+        lambda row: calc_dprime(row['Hit_rate'], row['FA_rate']), axis=1
+    )
+
+    return results, targets, results_supp
+
 
 # ==============================================================================
 # PRIMARY ANALYSES (High vs. Low Control)
@@ -721,31 +646,33 @@ def analyze_recognition(main_data, recog_data):
 
 def run_analysis_1_dprime_ttest(mem_results):
     """
-    Perform a paired t-test comparing d-prime between high and low control conditions.
+    Paired t-test comparing d-prime between high and low control conditions.
     """
+    if mem_results is None:
+        print("[WARNING] mem_results is None. Skipping Analysis 1.")
+        return None
+
     pivoted = mem_results.pivot(index='participant', columns='control_condition', values='d_prime')
-    
-    # Check if we have both conditions for at least some participants
+
     if 'high' not in pivoted.columns or 'low' not in pivoted.columns:
         print("[WARNING] Missing condition data for d-prime t-test.")
         return None
-        
-    # Drop participants who don't have both conditions
+
     pivoted = pivoted.dropna(subset=['high', 'low'])
-    
+
     t_stat, p_val = stats.ttest_rel(pivoted['high'], pivoted['low'])
-    
-    results = {
-        'analysis': 'Analysis 1: d-prime paired t-test',
-        't_stat': t_stat,
-        'p_val': p_val,
-        'mean_high': pivoted['high'].mean(),
-        'mean_low': pivoted['low'].mean(),
-        'sd_high': pivoted['high'].std(),
-        'sd_low': pivoted['low'].std(),
-        'n': len(pivoted)
+
+    return {
+        'analysis':   'Analysis 1: d-prime paired t-test',
+        't_stat':     t_stat,
+        'p_val':      p_val,
+        'mean_high':  pivoted['high'].mean(),
+        'mean_low':   pivoted['low'].mean(),
+        'sd_high':    pivoted['high'].std(),
+        'sd_low':     pivoted['low'].std(),
+        'n':          len(pivoted)
     }
-    return results
+
 
 # ------------------------------------------------------------------------------
 # ANALYSIS 2: Paired t-test on hit rates
@@ -753,115 +680,131 @@ def run_analysis_1_dprime_ttest(mem_results):
 
 def run_analysis_2_hitrate_ttest(mem_results):
     """
-    Perform a paired t-test comparing hit rates between high and low control conditions.
+    Paired t-test comparing hit rates between high and low control conditions.
     """
+    if mem_results is None:
+        print("[WARNING] mem_results is None. Skipping Analysis 2.")
+        return None
+
     pivoted = mem_results.pivot(index='participant', columns='control_condition', values='Hit_rate')
-    
+
     if 'high' not in pivoted.columns or 'low' not in pivoted.columns:
         print("[WARNING] Missing condition data for hit rate t-test.")
         return None
-        
+
     pivoted = pivoted.dropna(subset=['high', 'low'])
-    
+
     t_stat, p_val = stats.ttest_rel(pivoted['high'], pivoted['low'])
-    
-    results = {
-        'analysis': 'Analysis 2: Hit rate paired t-test',
-        't_stat': t_stat,
-        'p_val': p_val,
-        'mean_high': pivoted['high'].mean(),
-        'mean_low': pivoted['low'].mean(),
-        'sd_high': pivoted['high'].std(),
-        'sd_low': pivoted['low'].std(),
-        'n': len(pivoted)
+
+    return {
+        'analysis':   'Analysis 2: Hit rate paired t-test',
+        't_stat':     t_stat,
+        'p_val':      p_val,
+        'mean_high':  pivoted['high'].mean(),
+        'mean_low':   pivoted['low'].mean(),
+        'sd_high':    pivoted['high'].std(),
+        'sd_low':     pivoted['low'].std(),
+        'n':          len(pivoted)
     }
-    return results
+
 
 # ------------------------------------------------------------------------------
-# ANALYSIS 3: GLMM on target trials only
+# ANALYSIS 3: GLMM on target trials only (High vs. Low)
 # ------------------------------------------------------------------------------
 
 def run_analysis_3_glmm(targets):
     """
-    Perform a trial-level GLMM (Binomial, logit link) on target (old) trials only.
-    Model: said_old ~ control_condition + (1 | participant)
-    
-    Uses pymer4 (wraps R's lme4::glmer) for proper GLMM estimation.
+    Trial-level GLMM (Binomial, logit link) on target (old) trials only.
+
+    Model formula:
+      Maximal : said_old_int ~ control_c + (1 + control_c | participant)
+      Fallback: said_old_int ~ control_c + (1 | participant)
+
+    control_c is contrast-coded: High = +0.5, Low = -0.5.
+    The maximal model is attempted first; if singular, falls back to
+    intercept-only and reports which was used.
     """
     if targets is None or len(targets) == 0:
-        print("[WARNING] No target data for GLMM.")
+        print("[WARNING] No target data for Analysis 3. Skipping.")
         return None
 
     df = targets.copy()
     df['said_old_int'] = df['said_old'].astype(int)
-    
-    # Contrast-code: +0.5 = high, -0.5 = low
-    df['control_numeric'] = df['control_condition'].map({'high': 0.5, 'low': -0.5})
-    df = df.dropna(subset=['said_old_int', 'control_numeric', 'participant'])
+
+    # Contrast code: High = +0.5, Low = -0.5
+    df['control_c'] = df['control_condition'].map({'high': 0.5, 'low': -0.5})
+    df = df.dropna(subset=['said_old_int', 'control_c', 'participant'])
 
     if len(df) == 0:
-        print("[WARNING] No valid trials after preprocessing.")
+        print("[WARNING] No valid trials after preprocessing for Analysis 3.")
         return None
 
-    print("\nAnalysis 3: GLMM (Binomial, logit link) on target trials...")
+    print("\nAnalysis 3: GLMM (Binomial, logit link) on target trials (High vs Low)...")
     print(f"  Trials: {len(df)} | Participants: {df['participant'].nunique()}")
+    print(f"  Contrast coding: High = +0.5, Low = -0.5")
 
-    try:
-        # pymer4 v0.8.0+ requires polars DataFrame
-        df_pl = pl.from_pandas(df)
-        
-        model = glmer(
-            "said_old_int ~ control_numeric + (1 | participant)",
-            data=df_pl,
-            family="binomial"
-        )
-        result = model.fit()
-        print(result)
-        return model
+    df_pl = pl.from_pandas(df)
 
-    except Exception as e:
-        print(f"  [ERROR] GLMM failed: {e}")
-        return None
+    model, structure = fit_glmm_with_fallback(
+        formula_maximal="said_old_int ~ control_c + (1 + control_c | participant)",
+        formula_minimal="said_old_int ~ control_c + (1 | participant)",
+        data_pl=df_pl,
+        family="binomial"
+    )
+    if model is not None:
+        print(f"  [REPORT] Random effects structure used: {structure}")
+    return model
+
+
+# ------------------------------------------------------------------------------
+# ANALYSIS 4: GLMM Interaction (item_type x control) on all trials
+# ------------------------------------------------------------------------------
 
 def run_analysis_4_interaction_glmm(targets, recog_data):
     """
-    Perform a trial-level GLMM (Binomial, logit link) on ALL trials (targets + foils).
-    Model: said_old ~ item_type * control_condition + (1 | participant)
-    
-     item_type: Target (+0.5) vs. Foil (-0.5)
-     control_condition: High (+0.5) vs. Low (-0.5)
-    
-    For foils, we assign a 'dummy' control condition (50/50 split) to allow
-    the interaction term to be estimated without bias (matching power_sims).
+    Trial-level GLMM (Binomial, logit link) on ALL trials (targets + foils).
+
+    Model formula:
+      Maximal : said_old_int ~ item_type_c * control_c + (1 + item_type_c * control_c | participant)
+      Fallback: said_old_int ~ item_type_c * control_c + (1 | participant)
+
+    item_type_c  : Target = +0.5, Foil = -0.5 (contrast-coded)
+    control_c    : High   = +0.5, Low  = -0.5 (contrast-coded)
+
+    NOTE: For foils, control_c is assigned via a balanced alternating split
+    (even trials = +0.5, odd = -0.5) because foils have no experimental
+    condition. This dummy assignment is balanced by design so it does not
+    systematically bias the foil main effect, but the control_c term for
+    foils is not experimentally meaningful. The interaction is therefore
+    driven primarily by the target trials. This should be noted in reporting.
     """
     if targets is None or recog_data is None:
+        print("[WARNING] Missing data for Analysis 4. Skipping.")
         return None
 
-    # 1. Prepare foils
+    # Prepare foils with balanced dummy control assignment
     foils = recog_data[recog_data['mem_ground_truth'] == 'unseen'].copy()
     if len(foils) == 0:
         print("[WARNING] No foil data for Analysis 4.")
         return None
-        
-    foils['said_old_int'] = (foils['mem_response'].str.lower() == 'yes').astype(int)
-    foils['item_type'] = -0.5
-    
-    # Dummy control assignment for foils: alternating trials (balanced)
-    # Using overall_trial_num ensures stability across runs
-    foils = foils.sort_values(['participant', 'overall_trial_num'])
-    # Assign 0.5 to even, -0.5 to odd indices per participant
-    foils['control_numeric'] = foils.groupby('participant').cumcount().apply(lambda x: 0.5 if x % 2 == 0 else -0.5)
 
-    # 2. Prepare targets
+    foils['said_old_int'] = (foils['mem_response'].str.lower() == 'yes').astype(int)
+    foils['item_type_c']  = -0.5
+    foils = foils.sort_values(['participant', 'overall_trial_num'])
+    foils['control_c'] = (
+        foils.groupby('participant').cumcount()
+        .apply(lambda x: 0.5 if x % 2 == 0 else -0.5)
+    )
+
+    # Prepare targets with real contrast codes
     targets_df = targets.copy()
     targets_df['said_old_int'] = targets_df['said_old'].astype(int)
-    targets_df['item_type'] = 0.5
-    targets_df['control_numeric'] = targets_df['control_condition'].map({'high': 0.5, 'low': -0.5})
-    
-    # 3. Combine
-    cols = ['participant', 'said_old_int', 'item_type', 'control_numeric']
-    df = pd.concat([targets_df[cols], foils[cols]], ignore_index=True)
-    df = df.dropna()
+    targets_df['item_type_c']  = 0.5
+    targets_df['control_c']    = targets_df['control_condition'].map({'high': 0.5, 'low': -0.5})
+
+    cols = ['participant', 'said_old_int', 'item_type_c', 'control_c']
+    df   = pd.concat([targets_df[cols], foils[cols]], ignore_index=True)
+    df   = df.dropna()
 
     if len(df) == 0:
         print("[WARNING] No valid trials for Analysis 4.")
@@ -869,220 +812,379 @@ def run_analysis_4_interaction_glmm(targets, recog_data):
 
     print("\nAnalysis 4: GLMM Interaction (item_type x control) on all trials...")
     print(f"  Trials: {len(df)} (T={len(targets_df)}, F={len(foils)}) | Pxs: {df['participant'].nunique()}")
+    print(f"  Contrast coding: Target=+0.5/Foil=-0.5, High=+0.5/Low=-0.5")
+    print(f"  NOTE: control_c for foils is a balanced dummy assignment (not experimental).")
 
+    df_pl = pl.from_pandas(df)
+
+    model, structure = fit_glmm_with_fallback(
+        formula_maximal="said_old_int ~ item_type_c * control_c + (1 + item_type_c * control_c | participant)",
+        formula_minimal="said_old_int ~ item_type_c * control_c + (1 | participant)",
+        data_pl=df_pl,
+        family="binomial"
+    )
+    if model is not None:
+        print(f"  [REPORT] Random effects structure used: {structure}")
+    return model
+
+
+# ==============================================================================
+# SUPPLEMENTARY ANALYSES (2x2: Trial Level x Item Type)
+# ==============================================================================
+
+def _check_2x2_completeness(df, subject_col='participant',
+                             factor1='trial_level', factor2='item_type'):
+    """
+    Return the subset of participants who have exactly one observation in each
+    of the four cells of the 2x2 design. Uses per-cell grouping rather than a
+    simple row count, which would pass malformed data silently.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+    subject_col : str
+    factor1, factor2 : str
+
+    Returns
+    -------
+    valid_subjs : pd.Index
+    df_valid : pd.DataFrame
+    """
+    valid_mask = (
+        df.groupby(subject_col)
+        .apply(lambda x: x.groupby([factor1, factor2]).ngroups == 4)
+    )
+    valid_subjs = valid_mask[valid_mask].index
+    df_valid    = df[df[subject_col].isin(valid_subjs)]
+    return valid_subjs, df_valid
+
+
+# ------------------------------------------------------------------------------
+# SUPPLEMENTARY 1: 2x2 Repeated-Measures ANOVA on d-prime
+# ------------------------------------------------------------------------------
+
+def run_supp_analysis_1_dprime_2x2_anova(supp_mem_results):
+    """
+    2x2 RM ANOVA on d-prime: Trial Level (High vs Low) x Item Type (Controlled vs Uncontrolled).
+    """
+    if supp_mem_results is None:
+        print("[WARNING] supp_mem_results is None. Skipping Supp Analysis 1.")
+        return None
+
+    df_anova = supp_mem_results.dropna(subset=['d_prime', 'trial_level', 'item_type'])
+    valid_subjs, df_anova = _check_2x2_completeness(df_anova)
+
+    if len(valid_subjs) < 2:
+        print("[WARNING] Not enough participants with all 4 cells for Supp Analysis 1.")
+        return None
+
+    print(f"\nSupplementary Analysis 1: 2x2 RM ANOVA on d-prime (N={len(valid_subjs)})...")
     try:
-        df_pl = pl.from_pandas(df)
-        model = glmer(
-            "said_old_int ~ item_type * control_numeric + (1 | participant)",
-            data=df_pl,
-            family="binomial"
+        anova = AnovaRM(
+            data=df_anova, depvar='d_prime',
+            subject='participant', within=['trial_level', 'item_type']
         )
-        result = model.fit()
-        print(result)
-        return model
+        res = anova.fit()
+        print(res.summary())
+        return res
     except Exception as e:
-        print(f"  [ERROR] GLMM Analysis 4 failed: {e}")
+        print(f"  [ERROR] AnovaRM failed: {e}")
         return None
 
 
-# ==============================================================================
-# SUPPLEMENTARY ANALYSES (Including Uncontrolled Items)
-# ==============================================================================
-
 # ------------------------------------------------------------------------------
-# SUPPLEMENTARY 1: One-way repeated-measures ANOVA on d-prime
+# SUPPLEMENTARY 2: 2x2 Repeated-Measures ANOVA on hit rates
 # ------------------------------------------------------------------------------
 
-def run_supp_analysis_1_dprime_anova(mem_results):
+def run_supp_analysis_2_hitrate_2x2_anova(supp_mem_results):
     """
-    Perform a one-way ANOVA on d-prime (High vs. Low vs. Uncontrolled).
-    Note: Standard scipy f_oneway handles group comparisons.
-    """
-    if mem_results is None: return
-    
-    pivoted = mem_results.pivot(index='participant', columns='control_condition', values='d_prime')
-    cols = ['high', 'low', 'uncontrolled']
-    if not all(c in pivoted.columns for c in cols):
-        print("[WARNING] Missing conditions for Supp Analysis 1 (d-prime ANOVA).")
-        return
-        
-    df_anova = pivoted[cols].dropna()
-    if len(df_anova) < 1:
-        print("[WARNING] No participants with all 3 conditions for Supp Analysis 1.")
-        return
+    2x2 RM ANOVA on hit rates: Trial Level (High vs Low) x Item Type (Controlled vs Uncontrolled).
 
-    f_stat, p_val = stats.f_oneway(df_anova['high'], df_anova['low'], df_anova['uncontrolled'])
-    
-    print("\nSupplementary Analysis 1: One-way ANOVA on d-prime...")
-    print(f"  Conditions: High, Low, Uncontrolled (N={len(df_anova)})")
-    print(f"  F = {f_stat:.3f}, p = {p_val:.4f}")
-    return f_stat, p_val
+    Note: Hit rates are bounded [0,1]; the linear model assumption of AnovaRM
+    is approximate. The GLMM in Supp Analysis 3 is the primary trial-level test;
+    this ANOVA is retained as a summary-statistic complement.
+    """
+    if supp_mem_results is None:
+        print("[WARNING] supp_mem_results is None. Skipping Supp Analysis 2.")
+        return None
+
+    df_anova = supp_mem_results.dropna(subset=['Hit_rate', 'trial_level', 'item_type'])
+    valid_subjs, df_anova = _check_2x2_completeness(df_anova)
+
+    if len(valid_subjs) < 2:
+        print("[WARNING] Not enough participants with all 4 cells for Supp Analysis 2.")
+        return None
+
+    print(f"\nSupplementary Analysis 2: 2x2 RM ANOVA on hit rates (N={len(valid_subjs)})...")
+    try:
+        anova = AnovaRM(
+            data=df_anova, depvar='Hit_rate',
+            subject='participant', within=['trial_level', 'item_type']
+        )
+        res = anova.fit()
+        print(res.summary())
+        return res
+    except Exception as e:
+        print(f"  [ERROR] AnovaRM failed: {e}")
+        return None
+
 
 # ------------------------------------------------------------------------------
-# SUPPLEMENTARY 2: One-way repeated-measures ANOVA on hit rates
+# SUPPLEMENTARY 3: 2x2 GLMM on all old items (targets only)
 # ------------------------------------------------------------------------------
 
-def run_supp_analysis_2_hitrate_anova(mem_results):
+def run_supp_analysis_3_glmm_2x2(targets):
     """
-    Perform a one-way ANOVA on hit rates (High vs. Low vs. Uncontrolled).
-    """
-    if mem_results is None: return
-    
-    pivoted = mem_results.pivot(index='participant', columns='control_condition', values='Hit_rate')
-    cols = ['high', 'low', 'uncontrolled']
-    if not all(c in pivoted.columns for c in cols):
-        print("[WARNING] Missing conditions for Supp Analysis 2 (Hit rate ANOVA).")
-        return
-        
-    df_anova = pivoted[cols].dropna()
-    if len(df_anova) < 1:
-        print("[WARNING] No participants with all 3 conditions for Supp Analysis 2.")
-        return
+    Trial-level 2x2 GLMM on target (old) items.
 
-    f_stat, p_val = stats.f_oneway(df_anova['high'], df_anova['low'], df_anova['uncontrolled'])
-    
-    print("\nSupplementary Analysis 2: One-way ANOVA on hit rates...")
-    print(f"  Conditions: High, Low, Uncontrolled (N={len(df_anova)})")
-    print(f"  F = {f_stat:.3f}, p = {p_val:.4f}")
-    return f_stat, p_val
+    Model formula:
+      Maximal : said_old_int ~ trial_level_c * item_type_c + (1 + trial_level_c * item_type_c | participant)
+      Fallback: said_old_int ~ trial_level_c * item_type_c + (1 | participant)
 
-# ------------------------------------------------------------------------------
-# SUPPLEMENTARY 3: GLMM on all old items (3-level control_condition)
-# ------------------------------------------------------------------------------
+    trial_level_c : High = +0.5, Low = -0.5 (contrast-coded)
+    item_type_c   : Controlled = +0.5, Uncontrolled = -0.5 (contrast-coded)
 
-def run_supp_analysis_3_glmm_three_levels(targets):
-    """
-    Perform a trial-level GLMM on all target items with 3 control levels.
-    Model: said_old ~ control_condition + (1 | participant)
-    Where control_condition = {high, low, uncontrolled}
+    Main effects are interpretable at the grand mean (not at a reference level).
+    The interaction tests whether the trial-level control effect differs between
+    controlled and uncontrolled items.
     """
     if targets is None or len(targets) == 0:
+        print("[WARNING] targets is None or empty. Skipping Supp Analysis 3.")
         return None
 
     df = targets.copy()
     df['said_old_int'] = df['said_old'].astype(int)
-    
-    # Use 'uncontrolled' as the reference level
-    df['control_condition'] = pd.Categorical(df['control_condition'], categories=['uncontrolled', 'low', 'high'])
 
-    print("\nSupplementary Analysis 3: GLMM (3-level control) on all old items...")
-    print(f"  Trials: {len(df)} | Participants: {df['participant'].nunique()}")
+    # Contrast codes
+    df['trial_level_c'] = df['trial_level'].map({'high': 0.5, 'low': -0.5})
+    df['item_type_c']   = df['item_type'].map({'controlled': 0.5, 'uncontrolled': -0.5})
 
-    try:
-        df_pl = pl.from_pandas(df)
-        model = glmer(
-            "said_old_int ~ control_condition + (1 | participant)",
-            data=df_pl,
-            family="binomial"
-        )
-        result = model.fit()
-        print(result)
-        return model
-    except Exception as e:
-        print(f"  [ERROR] Supp GLMM 3 failed: {e}")
+    df = df.dropna(subset=['said_old_int', 'trial_level_c', 'item_type_c', 'participant'])
+
+    if len(df) == 0:
+        print("[WARNING] No valid trials after preprocessing for Supp Analysis 3.")
         return None
 
+    print("\nSupplementary Analysis 3: 2x2 GLMM on all old items...")
+    print(f"  Trials: {len(df)} | Participants: {df['participant'].nunique()}")
+    print(f"  Contrast coding: High=+0.5/Low=-0.5, Controlled=+0.5/Uncontrolled=-0.5")
+
+    df_pl = pl.from_pandas(df)
+
+    model, structure = fit_glmm_with_fallback(
+        formula_maximal="said_old_int ~ trial_level_c * item_type_c + (1 + trial_level_c * item_type_c | participant)",
+        formula_minimal="said_old_int ~ trial_level_c * item_type_c + (1 | participant)",
+        data_pl=df_pl,
+        family="binomial"
+    )
+    if model is not None:
+        print(f"  [REPORT] Random effects structure used: {structure}")
+    return model
+
+
 # ------------------------------------------------------------------------------
-# SUPPLEMENTARY 4: GLMM with item_type x control interaction
+# SUPPLEMENTARY 4: GLMM Interaction (Is_Old x Trial_Level x Item_Type)
 # ------------------------------------------------------------------------------
 
-def run_supp_analysis_4_interaction_glmm_three_levels(targets, recog_data):
+def run_supp_analysis_4_glmm_foils(targets, recog_data):
     """
-    Perform a trial-level GLMM interaction on ALL trials with 3 control levels.
-    Model: said_old ~ item_type * control_type + (1 | participant)
-    
-    item_type: Target (+0.5) vs. Foil (0.5)
-    control_type: 3 levels for old items, and foils assigned to balanced dummy groups.
+    Trial-level GLMM on ALL trials (targets + foils) with 3-way interaction.
+
+    Model formula:
+      Maximal : said_old_int ~ item_is_old_c * trial_level_c * item_type_c + (1 + item_is_old_c | participant)
+      Fallback: said_old_int ~ item_is_old_c * trial_level_c * item_type_c + (1 | participant)
+
+    item_is_old_c : Old = +0.5, Foil = -0.5 (contrast-coded)
+    trial_level_c : High = +0.5, Low = -0.5 (contrast-coded)
+    item_type_c   : Controlled = +0.5, Uncontrolled = -0.5 (contrast-coded)
+
+    NOTE: For foils, trial_level_c and item_type_c are assigned via a balanced
+    rotating dummy scheme (cycling through all 4 combinations). These assignments
+    are not experimentally meaningful for foils. The interaction terms involving
+    item_is_old_c are the theoretically relevant estimates; they test whether the
+    2x2 target structure differs from the foil baseline.
     """
     if targets is None or recog_data is None:
+        print("[WARNING] Missing data for Supp Analysis 4. Skipping.")
         return None
 
-    # 1. Prepare foils
+    # Prepare foils with balanced dummy 2x2 assignment
     foils = recog_data[recog_data['mem_ground_truth'] == 'unseen'].copy()
     if len(foils) == 0:
+        print("[WARNING] No foil data for Supp Analysis 4.")
         return None
-        
-    foils['said_old_int'] = (foils['mem_response'].str.lower() == 'yes').astype(int)
-    foils['item_is_old'] = 0
-    
-    # Dummy assignment for foils: split across all 3 'old' conditions to balance the model
-    # (High, Low, Uncontrolled)
+
+    foils['said_old_int']  = (foils['mem_response'].str.lower() == 'yes').astype(int)
+    foils['item_is_old_c'] = -0.5
     foils = foils.sort_values(['participant', 'overall_trial_num'])
-    cond_map = {0: 'high', 1: 'low', 2: 'uncontrolled'}
-    foils['control_type'] = foils.groupby('participant').cumcount().apply(lambda x: cond_map[x % 3])
 
-    # 2. Prepare all old items
+    # Cycle through 4 cells: (high, controlled), (high, uncontrolled),
+    #                         (low, controlled),  (low, uncontrolled)
+    lvl_map  = {0: 0.5, 1: 0.5, 2: -0.5, 3: -0.5}   # high/high/low/low
+    type_map = {0: 0.5, 1: -0.5, 2: 0.5, 3: -0.5}    # ctrl/unctrl/ctrl/unctrl
+    foils['trial_level_c'] = (
+        foils.groupby('participant').cumcount()
+        .apply(lambda x: lvl_map[x % 4])
+    )
+    foils['item_type_c'] = (
+        foils.groupby('participant').cumcount()
+        .apply(lambda x: type_map[x % 4])
+    )
+
+    # Prepare targets with real contrast codes
     old_items = targets.copy()
-    old_items['said_old_int'] = old_items['said_old'].astype(int)
-    old_items['item_is_old'] = 1
-    old_items.rename(columns={'control_condition': 'control_type'}, inplace=True)
-    
-    # 3. Combine
-    cols = ['participant', 'said_old_int', 'item_is_old', 'control_type']
+    old_items['said_old_int']  = old_items['said_old'].astype(int)
+    old_items['item_is_old_c'] = 0.5
+    old_items['trial_level_c'] = old_items['trial_level'].map({'high': 0.5, 'low': -0.5})
+    old_items['item_type_c']   = old_items['item_type'].map({'controlled': 0.5, 'uncontrolled': -0.5})
+
+    cols = ['participant', 'said_old_int', 'item_is_old_c', 'trial_level_c', 'item_type_c']
+
+    # Assert all required columns are present before concatenating
+    for c in cols:
+        assert c in old_items.columns, f"Missing column in old_items: {c}"
+        assert c in foils.columns,     f"Missing column in foils: {c}"
+
     df = pd.concat([old_items[cols], foils[cols]], ignore_index=True)
-    df = df.dropna()
-    
-    # Set references
-    df['control_type'] = pd.Categorical(df['control_type'], categories=['uncontrolled', 'low', 'high'])
+    df = df.dropna(subset=cols)
 
-    print("\nSupplementary Analysis 4: GLMM Interaction (item_is_old x control_type)...")
-    print(f"  Trials: {len(df)} (Old={len(old_items)}, Foils={len(foils)})")
-
-    try:
-        df_pl = pl.from_pandas(df)
-        model = glmer(
-            "said_old_int ~ item_is_old * control_type + (1 | participant)",
-            data=df_pl,
-            family="binomial"
-        )
-        result = model.fit()
-        print(result)
-        return model
-    except Exception as e:
-        print(f"  [ERROR] Supp GLMM 4 failed: {e}")
+    if len(df) == 0:
+        print("[WARNING] No valid trials for Supp Analysis 4.")
         return None
 
+    print("\nSupplementary Analysis 4: GLMM Interaction (Is_Old x Trial_Level x Item_Type)...")
+    print(f"  Trials: {len(df)} (Old={len(old_items)}, Foils={len(foils)})")
+    print(f"  Contrast coding: Old=+0.5/Foil=-0.5, High=+0.5/Low=-0.5, Ctrl=+0.5/Unctrl=-0.5")
+    print(f"  NOTE: trial_level_c and item_type_c for foils are balanced dummy assignments.")
+
+    df_pl = pl.from_pandas(df)
+
+    model, structure = fit_glmm_with_fallback(
+        formula_maximal="said_old_int ~ item_is_old_c * trial_level_c * item_type_c + (1 + item_is_old_c | participant)",
+        formula_minimal="said_old_int ~ item_is_old_c * trial_level_c * item_type_c + (1 | participant)",
+        data_pl=df_pl,
+        family="binomial"
+    )
+    if model is not None:
+        print(f"  [REPORT] Random effects structure used: {structure}")
+    return model
+
+
+# ------------------------------------------------------------------------------
+# SUPPLEMENTARY 5: False Alarm Rate Manipulation Check
+# ------------------------------------------------------------------------------
+
+def run_supp_analysis_5_fa_check(recog_data):
+    """
+    Sanity check: verify that false alarm (FA) rates are low and do not differ
+    significantly from zero, confirming that participants were not systematically
+    biased toward responding 'old' to new items.
+
+    A significant FA rate would indicate a response bias problem that could
+    inflate hit rates and distort d-prime estimates.
+
+    Tests:
+      1. One-sample t-test: FA rate vs. 0 (are participants above chance bias?)
+      2. Descriptive summary per participant.
+
+    Parameters
+    ----------
+    recog_data : pd.DataFrame
+        Full (cleaned) recognition dataset.
+    """
+    if recog_data is None:
+        print("[WARNING] recog_data is None. Skipping Supp Analysis 5.")
+        return None
+
+    foils = recog_data[recog_data['mem_ground_truth'] == 'unseen'].copy()
+    if len(foils) == 0:
+        print("[WARNING] No foil trials found. Skipping Supp Analysis 5.")
+        return None
+
+    foils['said_old'] = foils['mem_response'].str.lower() == 'yes'
+
+    fa_per_px = foils.groupby('participant')['said_old'].mean().reset_index()
+    fa_per_px.rename(columns={'said_old': 'FA_rate'}, inplace=True)
+
+    group_mean = fa_per_px['FA_rate'].mean()
+    group_sd   = fa_per_px['FA_rate'].std()
+    group_min  = fa_per_px['FA_rate'].min()
+    group_max  = fa_per_px['FA_rate'].max()
+
+    # One-sample t-test against 0
+    t_stat, p_val = stats.ttest_1samp(fa_per_px['FA_rate'], popmean=0)
+
+    print("\nSupplementary Analysis 5: False Alarm Rate Manipulation Check")
+    print("=" * 60)
+    print(f"  N participants : {len(fa_per_px)}")
+    print(f"  FA rate M (SD) : {group_mean:.3f} ({group_sd:.3f})")
+    print(f"  FA rate range  : {group_min:.3f} - {group_max:.3f}")
+    print(f"\n  One-sample t-test (FA rate vs. 0):")
+    print(f"    t({len(fa_per_px)-1}) = {t_stat:.3f}, p = {p_val:.4f}")
+    if p_val < 0.05:
+        print("    -> FA rate is significantly above 0. Check for response bias.")
+    else:
+        print("    -> FA rate does not significantly differ from 0. No evidence of response bias.")
+
+    print("\n  Per-participant FA rates:")
+    for _, row in fa_per_px.sort_values('participant').iterrows():
+        print(f"    Participant {row['participant']}: FA = {row['FA_rate']:.3f}")
+
+    return fa_per_px
+
+
+# ============================================================================
+# PRINT HELPERS
+# ============================================================================
 
 def print_stat_results(res):
-    """Helper to print formatted statistical results."""
-    if res is None: return
+    """Print formatted t-test results."""
+    if res is None:
+        return
     print(f"\n{res['analysis']}:")
     print(f"  t({res['n']-1}) = {res['t_stat']:.3f}, p = {res['p_val']:.4f}")
     print(f"  Mean (SD) High: {res['mean_high']:.3f} ({res['sd_high']:.3f})")
     print(f"  Mean (SD) Low:  {res['mean_low']:.3f} ({res['sd_low']:.3f})")
 
-def run_recognition_stats(mem_results, targets):
-    """Run all recognition statistical analyses."""
+
+def run_recognition_stats(mem_results, targets, supp_mem_results, recog_data):
+    """
+    Run all recognition statistical analyses.
+
+    Parameters
+    ----------
+    mem_results      : pd.DataFrame  Primary participant-level results.
+    targets          : pd.DataFrame  Trial-level target data.
+    supp_mem_results : pd.DataFrame  Supplementary 2x2 participant-level results.
+    recog_data       : pd.DataFrame  Full (cleaned) recognition data including foils.
+                                     Passed explicitly to avoid reliance on global scope.
+    """
     print("\n" + "=" * 60)
     print("RECOGNITION STATISTICAL ANALYSES")
     print("=" * 60)
-    
-    # Primary Analysis 1
+
+    # --- Primary ---
     res1 = run_analysis_1_dprime_ttest(mem_results)
     print_stat_results(res1)
-    
-    # Primary Analysis 2
+
     res2 = run_analysis_2_hitrate_ttest(mem_results)
     print_stat_results(res2)
-    
-    # Primary Analysis 3 - GLMM
+
     run_analysis_3_glmm(targets)
-    
-    # Primary Analysis 4 - GLMM Interaction
+
     run_analysis_4_interaction_glmm(targets, recog_data)
 
+    # --- Supplementary ---
     print("\n" + "-" * 60)
-    print("SUPPLEMENTARY ANALYSES (Including Uncontrolled Items)")
+    print("SUPPLEMENTARY ANALYSES (2x2 Factorial + FA Check)")
     print("-" * 60)
 
-    # Supp Analysis 1 & 2 - ANOVA
-    run_supp_analysis_1_dprime_anova(mem_results)
-    run_supp_analysis_2_hitrate_anova(mem_results)
+    run_supp_analysis_1_dprime_2x2_anova(supp_mem_results)
+    run_supp_analysis_2_hitrate_2x2_anova(supp_mem_results)
+    run_supp_analysis_3_glmm_2x2(targets)
+    run_supp_analysis_4_glmm_foils(targets, recog_data)
+    run_supp_analysis_5_fa_check(recog_data)
 
-    # Supp Analysis 3 & 4 - GLMM
-    run_supp_analysis_3_glmm_three_levels(targets)
-    run_supp_analysis_4_interaction_glmm_three_levels(targets, recog_data)
-    
     print("\n" + "=" * 60)
 
 
@@ -1092,45 +1194,37 @@ def run_recognition_stats(mem_results, targets):
 
 def print_descriptives(data):
     """
-    Calculate and print demographic descriptives for the final sample.
+    Print demographic descriptives for the final sample.
     (N, gender counts/percentages, age mean, SD, min, max)
-    
-    Parameters
-    ----------
-    data : pd.DataFrame
-        Cleaned dataset containing 'participant', 'age', and 'gender'.
     """
-    # Isolate one row per participant
-    demographics = data.drop_duplicates(subset=["participant"])[["participant", "age", "gender"]].copy()
-    
+    demographics = data.drop_duplicates(subset=["participant"])[
+        ["participant", "age", "gender"]
+    ].copy()
+
     n_total = len(demographics)
-    
-    # -- Gender Statistics --
-    # Normalise gender strings (e.g. 'f' -> 'female' if needed, here we just strip/lower)
+
     demographics["gender"] = demographics["gender"].astype(str).str.strip().str.lower()
     gender_counts = demographics["gender"].value_counts()
-    gender_pcts = demographics["gender"].value_counts(normalize=True) * 100
-    
-    # -- Age Statistics --
+    gender_pcts   = demographics["gender"].value_counts(normalize=True) * 100
+
     demographics["age"] = pd.to_numeric(demographics["age"], errors="coerce")
     age_mean = demographics["age"].mean()
-    age_sd = demographics["age"].std()
-    age_min = demographics["age"].min()
-    age_max = demographics["age"].max()
-    
+    age_sd   = demographics["age"].std()
+    age_min  = demographics["age"].min()
+    age_max  = demographics["age"].max()
+
     print("=" * 60)
     print("DESCRIPTIVE STATISTICS (Final Sample)")
     print("=" * 60)
     print(f"  Total N = {n_total}\n")
-    
+
     print("  Gender:")
     for g in gender_counts.index:
         count = gender_counts[g]
-        pct = gender_pcts[g]
-        # Just neatening up 'f' and 'm' if they are used
+        pct   = gender_pcts[g]
         label = "Female" if g == "f" else "Male" if g == "m" else g.capitalize()
         print(f"    {label:<10} : {count:>3} ({pct:>4.1f}%)")
-        
+
     print("\n  Age:")
     if pd.notna(age_mean):
         print(f"    Mean (SD)  : {age_mean:.1f} ({age_sd:.1f})")
@@ -1149,8 +1243,10 @@ def check_image_uniqueness(data):
     Confirm that all images shown during the test phase were unique
     within and across the img_A_name and img_B_name columns.
     """
-    if 'phase' not in data.columns or 'img_A_name' not in data.columns or 'img_B_name' not in data.columns:
-        print("[WARNING] Missing columns for image uniqueness check (img_A_name or img_B_name).")
+    if ('phase' not in data.columns
+            or 'img_A_name' not in data.columns
+            or 'img_B_name' not in data.columns):
+        print("[WARNING] Missing columns for image uniqueness check.")
         return
 
     test_data = data[data['phase'] == 'test'].copy()
@@ -1158,12 +1254,11 @@ def check_image_uniqueness(data):
         print("[WARNING] No test phase trials found for image uniqueness check.")
         return
 
-    # Collect all image names from both columns across all selected participants
     img_a = test_data['img_A_name'].dropna().tolist()
     img_b = test_data['img_B_name'].dropna().tolist()
     all_images = img_a + img_b
 
-    n_total = len(all_images)
+    n_total  = len(all_images)
     n_unique = len(set(all_images))
 
     print("\n" + "=" * 60)
@@ -1173,165 +1268,183 @@ def check_image_uniqueness(data):
     print(f"  Unique image names         : {n_unique}")
 
     if n_total == n_unique:
-        print("  â†’ SUCCESS: All images shown during the test phase were different.")
+        print("  -> SUCCESS: All images shown during the test phase were different.")
     else:
-        n_dupes = n_total - n_unique
-        print(f"  â†’ FAILURE: Found {n_dupes} duplicate image presentation(s)!")
-        
-        # Identify the duplicates
         from collections import Counter
-        counts = Counter(all_images)
+        n_dupes    = n_total - n_unique
+        counts     = Counter(all_images)
         duplicates = [img for img, count in counts.items() if count > 1]
+        print(f"  -> FAILURE: Found {n_dupes} duplicate image presentation(s)!")
         for d in duplicates:
             print(f"     Duplicate: {d} (shown {counts[d]} times)")
     print("=" * 60)
 
 
 # ============================================================================
-# EXTENDED SANITY CHECKS & PLOTS
+# SANITY CHECKS & PLOTS
 # ============================================================================
 
 def sanity_check(df):
     """Compute sanity check statistics for performance and agency ratings."""
-    
+
     results = {}
-    
-    # Overall accuracy by control_condition
+
     if 'control_condition' in df.columns:
-        accuracy_by_condition = df.groupby('control_condition')['detection_accuracy'].agg(['mean', 'std', 'count'])
-        results['accuracy_by_condition'] = accuracy_by_condition
+        results['accuracy_by_condition'] = (
+            df.groupby('control_condition')['detection_accuracy']
+            .agg(['mean', 'std', 'count'])
+        )
     else:
         results['accuracy'] = df['detection_accuracy'].agg(['mean', 'std', 'count'])
-    
-    # Agency ratings by control_condition
+
     if 'agency_rating' in df.columns and df['agency_rating'].notna().any():
         if 'control_condition' in df.columns:
-            agency_by_condition = df.groupby('control_condition')['agency_rating'].agg(['mean', 'std', 'count'])
-            results['agency_by_condition'] = agency_by_condition
-            
-            # Agency by accuracy (correct vs incorrect)
-            agency_by_accuracy = df.groupby(['control_condition', 'detection_accuracy'])['agency_rating'].agg(['mean', 'std', 'count'])
-            results['agency_by_accuracy'] = agency_by_accuracy
+            results['agency_by_condition'] = (
+                df.groupby('control_condition')['agency_rating']
+                .agg(['mean', 'std', 'count'])
+            )
+            results['agency_by_accuracy'] = (
+                df.groupby(['control_condition', 'detection_accuracy'])['agency_rating']
+                .agg(['mean', 'std', 'count'])
+            )
         else:
             results['agency'] = df['agency_rating'].agg(['mean', 'std', 'count'])
-            agency_by_accuracy = df.groupby('detection_accuracy')['agency_rating'].agg(['mean', 'std', 'count'])
-            results['agency_by_accuracy'] = agency_by_accuracy
-    
-    # Psychometric function: accuracy as function of control level
+            results['agency_by_accuracy'] = (
+                df.groupby('detection_accuracy')['agency_rating']
+                .agg(['mean', 'std', 'count'])
+            )
+
     df_copy = df.copy()
     df_copy['prop_used'] = pd.to_numeric(df_copy['prop_used'], errors='coerce')
-    # Bins of control levels
     if df_copy['prop_used'].nunique() > 10:
         df_copy['prop_bin'] = pd.cut(df_copy['prop_used'], bins=10, duplicates='drop')
     else:
         df_copy['prop_bin'] = df_copy['prop_used']
-    
+
     if 'control_condition' in df_copy.columns:
-        psychometric = df_copy.groupby(['prop_bin', 'control_condition'], observed=False)['detection_accuracy'].agg(['mean', 'std', 'count'])
+        results['psychometric'] = (
+            df_copy.groupby(['prop_bin', 'control_condition'], observed=False)
+            ['detection_accuracy'].agg(['mean', 'std', 'count'])
+        )
     else:
-        psychometric = df_copy.groupby('prop_bin', observed=False)['detection_accuracy'].agg(['mean', 'std', 'count'])
-    results['psychometric'] = psychometric
-    
+        results['psychometric'] = (
+            df_copy.groupby('prop_bin', observed=False)
+            ['detection_accuracy'].agg(['mean', 'std', 'count'])
+        )
+
     return results
+
 
 def plot_sanity_check(df, output_dir):
     """Create plots for sanity check statistics."""
-    
+
     plt.style.use('seaborn-v0_8-whitegrid')
     sns.set_palette("husl")
-    
+
     fig, axes = plt.subplots(2, 2, figsize=(14, 12))
     df = df.copy()
-    
-    # Ensure variables are numeric
+
     df['detection_accuracy'] = pd.to_numeric(df['detection_accuracy'], errors='coerce')
-    df['prop_used'] = pd.to_numeric(df['prop_used'], errors='coerce')
+    df['prop_used']          = pd.to_numeric(df['prop_used'],          errors='coerce')
     if 'agency_rating' in df.columns:
         df['agency_rating'] = pd.to_numeric(df['agency_rating'], errors='coerce')
     if 'rt_choice' in df.columns:
         df['rt_choice'] = pd.to_numeric(df['rt_choice'], errors='coerce')
-    
+
     has_condition = 'control_condition' in df.columns
-    
+
     # 1. Psychometric function
     ax = axes[0, 0]
     if has_condition:
         for condition in df['control_condition'].dropna().unique():
             subset = df[df['control_condition'] == condition].copy()
-            if len(subset) == 0: continue
-            
-            # Match MTI binning precisely: Use identical bins calculation where min != max
+            if len(subset) == 0:
+                continue
             if subset['prop_used'].min() != subset['prop_used'].max():
-                bins = np.linspace(subset['prop_used'].min(), subset['prop_used'].max(), 11)
+                bins        = np.linspace(subset['prop_used'].min(), subset['prop_used'].max(), 11)
                 bin_centers = (bins[:-1] + bins[1:]) / 2
                 subset['prop_bin'] = pd.cut(subset['prop_used'], bins=bins, labels=bin_centers)
-                psychometric = subset.groupby('prop_bin', observed=False)['detection_accuracy'].agg(['mean', 'sem']).reset_index()
+                psychometric = (
+                    subset.groupby('prop_bin', observed=False)['detection_accuracy']
+                    .agg(['mean', 'sem']).reset_index()
+                )
                 psychometric['prop_bin'] = psychometric['prop_bin'].astype(float)
-                ax.errorbar(psychometric['prop_bin'], psychometric['mean'], 
-                           yerr=psychometric['sem'], label=f'{condition}', marker='o', capsize=3)
+                ax.errorbar(psychometric['prop_bin'], psychometric['mean'],
+                            yerr=psychometric['sem'], label=f'{condition}',
+                            marker='o', capsize=3)
             else:
-                # If all threshold values are exactly identical (which crashes pd.cut), calculate directly
-                psychometric = subset.groupby('prop_used', observed=False)['detection_accuracy'].agg(['mean', 'sem']).reset_index()
-                ax.errorbar(psychometric['prop_used'], psychometric['mean'], 
-                           yerr=psychometric['sem'], label=f'{condition}', marker='o', capsize=3)
+                psychometric = (
+                    subset.groupby('prop_used', observed=False)['detection_accuracy']
+                    .agg(['mean', 'sem']).reset_index()
+                )
+                ax.errorbar(psychometric['prop_used'], psychometric['mean'],
+                            yerr=psychometric['sem'], label=f'{condition}',
+                            marker='o', capsize=3)
         ax.legend()
     else:
         if df['prop_used'].min() != df['prop_used'].max():
-            bins = np.linspace(df['prop_used'].min(), df['prop_used'].max(), 11)
+            bins        = np.linspace(df['prop_used'].min(), df['prop_used'].max(), 11)
             bin_centers = (bins[:-1] + bins[1:]) / 2
             df['prop_bin'] = pd.cut(df['prop_used'], bins=bins, labels=bin_centers)
-            psychometric = df.groupby('prop_bin', observed=False)['detection_accuracy'].agg(['mean', 'sem']).reset_index()
+            psychometric = (
+                df.groupby('prop_bin', observed=False)['detection_accuracy']
+                .agg(['mean', 'sem']).reset_index()
+            )
             psychometric['prop_bin'] = psychometric['prop_bin'].astype(float)
-            ax.errorbar(psychometric['prop_bin'], psychometric['mean'], 
-                       yerr=psychometric['sem'], marker='o', capsize=3)
+            ax.errorbar(psychometric['prop_bin'], psychometric['mean'],
+                        yerr=psychometric['sem'], marker='o', capsize=3)
         else:
-            psychometric = df.groupby('prop_used', observed=False)['detection_accuracy'].agg(['mean', 'sem']).reset_index()
-            ax.errorbar(psychometric['prop_used'], psychometric['mean'], 
-                       yerr=psychometric['sem'], marker='o', capsize=3)
-            
+            psychometric = (
+                df.groupby('prop_used', observed=False)['detection_accuracy']
+                .agg(['mean', 'sem']).reset_index()
+            )
+            ax.errorbar(psychometric['prop_used'], psychometric['mean'],
+                        yerr=psychometric['sem'], marker='o', capsize=3)
+
     ax.set_xlabel('Control Level (prop self-motion)')
     ax.set_ylabel('Accuracy')
     ax.set_title('Psychometric Function')
     ax.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5)
-    
-    # 2. Accuracy
+
+    # 2. Accuracy by condition
     ax = axes[0, 1]
     if has_condition:
-        accuracy_data = df.groupby('control_condition')['detection_accuracy'].agg(['mean', 'sem']).reset_index()
+        accuracy_data = (
+            df.groupby('control_condition')['detection_accuracy']
+            .agg(['mean', 'sem']).reset_index()
+        )
         colors = ['#1f77b4', '#ff7f0e'] if len(accuracy_data) <= 2 else None
-        bars = ax.bar(accuracy_data['control_condition'].astype(str), accuracy_data['mean'], 
-                      yerr=accuracy_data['sem'], capsize=5, color=colors)
+        ax.bar(accuracy_data['control_condition'].astype(str), accuracy_data['mean'],
+               yerr=accuracy_data['sem'], capsize=5, color=colors)
         ax.set_xlabel('Control Condition')
     else:
-        mean_acc = df['detection_accuracy'].mean()
-        sem_acc = df['detection_accuracy'].sem()
-        ax.bar(['Overall'], [mean_acc], yerr=[sem_acc], capsize=5)
-    
+        ax.bar(['Overall'], [df['detection_accuracy'].mean()],
+               yerr=[df['detection_accuracy'].sem()], capsize=5)
+
     ax.set_ylabel('Mean Accuracy')
     ax.set_title('Accuracy')
     ax.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5, label='Chance')
     ax.set_ylim([0, 1])
-    
+
     # 3. Agency ratings by accuracy
     ax = axes[1, 0]
     if 'agency_rating' in df.columns and df['agency_rating'].notna().any():
         if has_condition:
-            sns.barplot(data=df, x='control_condition', y='agency_rating', hue='detection_accuracy', 
-                       ax=ax, errorbar='se')
+            sns.barplot(data=df, x='control_condition', y='agency_rating',
+                        hue='detection_accuracy', ax=ax, errorbar='se')
             ax.set_xlabel('Control Condition')
         else:
             df['Overall'] = 'Overall'
-            sns.barplot(data=df, x='Overall', y='agency_rating', hue='detection_accuracy', 
-                       ax=ax, errorbar='se')
+            sns.barplot(data=df, x='Overall', y='agency_rating',
+                        hue='detection_accuracy', ax=ax, errorbar='se')
             ax.set_xlabel('')
-            
         ax.set_ylabel('Agency Rating (1-7)')
         ax.set_title('Agency Ratings by Accuracy')
         ax.legend(title='Correct (1) / Incorrect (0)')
     else:
-        ax.text(0.5, 0.5, 'No agency rating data available', 
-               transform=ax.transAxes, ha='center')
-    
+        ax.text(0.5, 0.5, 'No agency rating data available',
+                transform=ax.transAxes, ha='center')
+
     # 4. RT distribution
     ax = axes[1, 1]
     if 'rt_choice' in df.columns and df['rt_choice'].notna().any():
@@ -1348,15 +1461,14 @@ def plot_sanity_check(df, output_dir):
         ax.set_ylabel('Density')
         ax.set_title('RT Distribution')
     else:
-        ax.text(0.5, 0.5, 'No RT data available', 
-               transform=ax.transAxes, ha='center')
-    
+        ax.text(0.5, 0.5, 'No RT data available',
+                transform=ax.transAxes, ha='center')
+
     plt.tight_layout()
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_dir / 'sanity_check.png', dpi=150)
     plt.close()
-    
     print("Saved plot: " + str(out_dir / 'sanity_check.png'))
 
 
@@ -1369,20 +1481,16 @@ if __name__ == "__main__":
     # ------------------------------------------------------------------
     # 1. Load data
     # ------------------------------------------------------------------
-    # Reads every CDmem_{px}_{session}_{block}.csv from data/subjects/ and
-    # concatenates them into a single DataFrame.
-    # Adding a new participant's file to the folder is sufficient to include
-    # them on the next run â€” no code changes needed.
     data = load_all_data()
 
     if data is None:
         print("No data loaded. Exiting.")
         sys.exit(1)
-    
+
     assert data is not None
 
     # ------------------------------------------------------------------
-    # 2. Sanity check: print column names and overall shape
+    # 2. Print column names and overall shape
     # ------------------------------------------------------------------
     print("=" * 60)
     print("COLUMN NAMES")
@@ -1394,8 +1502,6 @@ if __name__ == "__main__":
     # ------------------------------------------------------------------
     # 2b. Image Uniqueness Check
     # ------------------------------------------------------------------
-    # Verifies that every image shown in 'test' phase (img_A_name and img_B_name)
-    # is different within and across trials.
     check_image_uniqueness(data)
 
     print("\n" + "=" * 60)
@@ -1407,29 +1513,18 @@ if __name__ == "__main__":
     print("=" * 60 + "\n")
 
     # ------------------------------------------------------------------
-    # 3. Exclusion criterion 1 â€” Timeout rate
+    # 3. Exclusion criterion 1 - Timeout rate
     # ------------------------------------------------------------------
-    # Participants with >= 50% timeouts in either condition are removed.
-    # This is applied first so that disengaged participants do not distort
-    # the group accuracy statistics used in criterion 2.
-    # Reference: Haridi et al., 2025
     data, excluded_timeout = exclude_timeout_participants(data)
 
     # ------------------------------------------------------------------
-    # 4. Exclusion criterion 2 â€” Accuracy outliers
+    # 4. Exclusion criterion 2 - Accuracy outliers
     # ------------------------------------------------------------------
-    # Participants whose accuracy is > 2.5 SD from the group mean in
-    # either the low (expected 55%) or high (expected 85%) condition are
-    # removed. Applied after criterion 1 so group stats are not skewed
-    # by non-engaged participants.
     data, excluded_accuracy, accuracy_report = exclude_accuracy_outliers(data)
 
     # ------------------------------------------------------------------
-    # 5. Load recognition data (separate DataFrame: recog_data)
+    # 5. Load recognition data
     # ------------------------------------------------------------------
-    # Recognition trials have a different structure from the main task
-    # (different columns, no control_condition, etc.) so they live in
-    # their own DataFrame throughout the analysis pipeline.
     print("\n" + "=" * 60)
     print("LOADING RECOGNITION DATA")
     print("=" * 60)
@@ -1438,20 +1533,14 @@ if __name__ == "__main__":
     if recog_data is None:
         print("No recognition data loaded. Skipping recognition analyses.")
     else:
-        # ---------------------------------------------------------------
-        # 6. Recognition exclusion â€” long RTs (> 20 s)
-        # ---------------------------------------------------------------
-        # This is a trial-level exclusion: only the individual outlier
-        # trials are dropped; the participant's other trials are kept.
-        # Reference: Haridi et al., 2025
+        # ------------------------------------------------------------------
+        # 6. Recognition exclusion - long RTs (> 20 s)
+        # ------------------------------------------------------------------
         recog_data, n_rt_excluded, rt_exclusion_details = exclude_long_rt_trials(recog_data)
 
     # ------------------------------------------------------------------
     # 7. Cross-dataset synchronisation
     # ------------------------------------------------------------------
-    # After all independent per-dataset exclusions are done, make sure
-    # both DataFrames share exactly the same participant IDs.
-    # Any participant only in one dataset is removed from that dataset.
     if recog_data is not None:
         data, recog_data = sync_participant_ids(data, recog_data)
     else:
@@ -1474,16 +1563,12 @@ if __name__ == "__main__":
         print(f"    Trials remaining         : {len(recog_data)}")
         print(f"    Participants remaining    : {recog_data['participant'].nunique()}")
     print("  [Final participant IDs in both datasets]")
-    final_ids = sorted(data['participant'].unique().tolist())
-    print(f"    {final_ids}")
-    print("=" * 60)
-    print()
+    print(f"    {sorted(data['participant'].unique().tolist())}")
+    print("=" * 60 + "\n")
 
     # ------------------------------------------------------------------
     # 9. Descriptive Statistics
     # ------------------------------------------------------------------
-    # Calculated on the final, cleaned dataset so excluded participants
-    # are automatically excluded from the descriptives as well.
     print_descriptives(data)
 
     # ------------------------------------------------------------------
@@ -1492,23 +1577,17 @@ if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("SANITY CHECKS & PLOTS")
     print("=" * 60)
-    
-    # We only want to plot the test phase data since calibration is dynamic/different
-    if 'phase' in data.columns:
-        test_data = data[data['phase'] == 'test'].copy()
-    else:
-        test_data = data.copy()
-        
-    # Ensure variables are numeric
+
+    test_data = data[data['phase'] == 'test'].copy() if 'phase' in data.columns else data.copy()
     test_data['detection_accuracy'] = pd.to_numeric(test_data['detection_accuracy'], errors='coerce')
-    test_data['prop_used'] = pd.to_numeric(test_data['prop_used'], errors='coerce')
-    
+    test_data['prop_used']          = pd.to_numeric(test_data['prop_used'],          errors='coerce')
+
     s_results = sanity_check(test_data)
     if 'accuracy_by_condition' in s_results:
         print("\nAccuracy by Condition:")
         print(s_results['accuracy_by_condition'].to_string())
         print()
-    
+
     plot_sanity_check(test_data, OUTPUT_DIR)
 
     # ------------------------------------------------------------------
@@ -1518,20 +1597,28 @@ if __name__ == "__main__":
         print("\n" + "=" * 60)
         print("RECOGNITION MEMORY (D-PRIME)")
         print("=" * 60)
-        
-        mem_results, targets = analyze_recognition(data, recog_data)
+
+        mem_results, targets, supp_mem_results = analyze_recognition(data, recog_data)
+
         if mem_results is not None:
-            print("\nPer-participant Hit Rate, FA Rate, and D-prime:")
+            print("\nPer-participant Hit Rate, FA Rate, and D-prime (Primary):")
             print("-" * 60)
             print(mem_results.to_string(index=False))
             print("-" * 60)
-            
-            # Group level summary
-            print("\nGroup Summary:")
-            summary = mem_results.groupby('control_condition')[['Hit_rate', 'FA_rate', 'd_prime']].agg(['mean', 'std'])
+
+            print("\nGroup Summary (Primary):")
+            summary = mem_results.groupby('control_condition')[
+                ['Hit_rate', 'FA_rate', 'd_prime']
+            ].agg(['mean', 'std'])
             print(summary.to_string())
+
+            if supp_mem_results is not None:
+                print("\nGroup Summary (Supplementary 2x2):")
+                summary_supp = supp_mem_results.groupby(
+                    ['trial_level', 'item_type']
+                )[['Hit_rate', 'd_prime']].agg(['mean', 'std'])
+                print(summary_supp.to_string())
+
         # 11b. Statistical Analyses
-        run_recognition_stats(mem_results, targets)
-
-
-
+        # recog_data is passed explicitly as a parameter to avoid global scope reliance
+        run_recognition_stats(mem_results, targets, supp_mem_results, recog_data)
