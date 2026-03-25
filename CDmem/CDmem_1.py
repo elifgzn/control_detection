@@ -2063,7 +2063,7 @@ def run_memory_test(seen_images, foil_images_list):
     # Question text sits below the image
     mem_question = visual.TextStim(
         win,
-        text="Have you seen this object during the experiment before?",
+        text="Have you seen this image during the experiment before?",
         pos=(0, int(-win.size[1] * 0.18)), color='white', height=26, wrapWidth=1000, bold=True
     )
     # Key labels: Y = Yes (left), N = No (right)
@@ -2188,13 +2188,23 @@ def run_memory_test(seen_images, foil_images_list):
             'mem_trigger_resp':  mem_trigger_resp
         })
 
-        # Optional mid-test break every 100 items
+        # Optional mid-test break every 100 items (timed: 30 s max)
         if item_num % 100 == 0 and item_num < len(mem_items):
-            msg.text = (f"Memory test: {item_num} of {len(mem_items)} done.\n\n"
-                        f"Take a short break if needed.\n\n"
-                        f"Press SPACE to continue.")
-            msg.draw(); win.flip()
-            wait_keys(['space', 'escape'])
+            BREAK_DURATION = 30.0
+            break_clock = core.Clock()
+            event.clearEvents(eventType='keyboard')
+            while break_clock.getTime() < BREAK_DURATION:
+                remaining = int(BREAK_DURATION - break_clock.getTime()) + 1
+                msg.text = (f"Take a short break if needed.\n\n"
+                            f"The experiment will continue automatically in {remaining} s.\n\n"
+                            f"Press SPACE to continue earlier.")
+                msg.draw(); win.flip()
+                keys = event.getKeys(['space', 'escape'])
+                if 'escape' in keys:
+                    _save(); core.quit()
+                if 'space' in keys:
+                    break
+                core.wait(0.1)
 
     print(f"Memory test complete. {len(mem_items)} items judged.")
 

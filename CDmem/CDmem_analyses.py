@@ -41,7 +41,8 @@ from pymer4.models import lmer, glmer
 # ============================================================================
 
 SCRIPT_DIR = Path(__file__).parent
-DATA_DIR = SCRIPT_DIR / "data" / "subjects"
+# DATA_DIR = SCRIPT_DIR / "data" / "subjects"
+DATA_DIR = Path(r"C:\Users\elifg\Desktop\PHD\control_detection\pilot_data")
 OUTPUT_DIR = SCRIPT_DIR / "analysis_output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -314,8 +315,15 @@ def load_recognition_data(data_dir=DATA_DIR):
     pd.DataFrame or None
     """
 
-    pattern = str(data_dir / "CDmem_*_recognition.csv")
+    pattern = str(Path(data_dir) / "CDmem_*_recognition.csv")
     all_files = glob.glob(pattern)
+
+    # Keep only files matching the canonical pattern: CDmem_1_<number>_recognition.csv
+    strict_pattern = re.compile(r"^CDmem_1_\d+_recognition\.csv$")
+    all_files = [
+        f for f in all_files
+        if strict_pattern.match(os.path.basename(f))
+    ]
 
     if not all_files:
         print(f"[ERROR] No recognition files found in: {data_dir}")
@@ -782,7 +790,12 @@ def run_analysis_4_interaction_glmm(targets, recog_data):
         print("[WARNING] Missing data for Analysis 4. Skipping.")
         return None
 
-    # Prepare foils with balanced dummy control assignment
+    # Prepare foils with balanced dummy control assignment.
+    # Foils were never shown during the control task and have no genuine
+    # condition. We split them equally (first half +0.5, second half -0.5)
+    # per participant. Because the FA rate is identical for both dummy
+    # conditions by construction, this does not bias the interaction
+    # estimate — but it is an approximation (see allpossible_power_CDmem.py).
     foils = recog_data[recog_data['mem_ground_truth'] == 'unseen'].copy()
     if len(foils) == 0:
         print("[WARNING] No foil data for Analysis 4.")
@@ -791,10 +804,18 @@ def run_analysis_4_interaction_glmm(targets, recog_data):
     foils['said_old_int'] = (foils['mem_response'].str.lower() == 'yes').astype(int)
     foils['item_type_c']  = -0.5
     foils = foils.sort_values(['participant', 'overall_trial_num'])
-    foils['control_c'] = (
-        foils.groupby('participant').cumcount()
-        .apply(lambda x: 0.5 if x % 2 == 0 else -0.5)
-    )
+
+    def _assign_foil_control_c(px_df):
+        """First half of foils per participant get +0.5, second half -0.5."""
+        n = len(px_df)
+        half = n // 2
+        codes = np.array([0.5] * half + [-0.5] * (n - half))
+        return pd.Series(codes, index=px_df.index)
+
+    foils['_rank'] = foils.groupby('participant').cumcount()
+    foils['_n']    = foils.groupby('participant')['_rank'].transform('count')
+    foils['control_c'] = np.where(foils['_rank'] < foils['_n'] // 2, 0.5, -0.5)
+    foils.drop(columns=['_rank', '_n'], inplace=True)
 
     # Prepare targets with real contrast codes
     targets_df = targets.copy()
@@ -1008,7 +1029,12 @@ def run_supp_analysis_4_glmm_foils(targets, recog_data):
         print("[WARNING] Missing data for Supp Analysis 4. Skipping.")
         return None
 
-    # Prepare foils with balanced dummy 2x2 assignment
+    # Prepare foils with balanced dummy 2x2 assignment.
+    # Foils are split into four equal batches per participant, one for each
+    # cell of the 2x2: (high, controlled), (high, uncontrolled),
+    # (low, controlled), (low, uncontrolled). Because the FA rate is the same
+    # across all four dummy cells by construction, this does not bias the
+    # 3-way interaction estimate (see allpossible_power_CDmem.py, Supp 4).
     foils = recog_data[recog_data['mem_ground_truth'] == 'unseen'].copy()
     if len(foils) == 0:
         print("[WARNING] No foil data for Supp Analysis 4.")
@@ -1018,18 +1044,22 @@ def run_supp_analysis_4_glmm_foils(targets, recog_data):
     foils['item_is_old_c'] = -0.5
     foils = foils.sort_values(['participant', 'overall_trial_num'])
 
-    # Cycle through 4 cells: (high, controlled), (high, uncontrolled),
-    #                         (low, controlled),  (low, uncontrolled)
-    lvl_map  = {0: 0.5, 1: 0.5, 2: -0.5, 3: -0.5}   # high/high/low/low
-    type_map = {0: 0.5, 1: -0.5, 2: 0.5, 3: -0.5}    # ctrl/unctrl/ctrl/unctrl
-    foils['trial_level_c'] = (
-        foils.groupby('participant').cumcount()
-        .apply(lambda x: lvl_map[x % 4])
+    foils['_rank'] = foils.groupby('participant').cumcount()
+    foils['_n']    = foils.groupby('participant')['_rank'].transform('count')
+    foils['_q']    = foils['_n'] // 4
+    foils['trial_level_c'] = np.select(
+        [foils['_rank'] < foils['_q'],
+         foils['_rank'] < foils['_q'] * 2,
+         foils['_rank'] < foils['_q'] * 3],
+        [0.5, 0.5, -0.5], default=-0.5
     )
-    foils['item_type_c'] = (
-        foils.groupby('participant').cumcount()
-        .apply(lambda x: type_map[x % 4])
+    foils['item_type_c'] = np.select(
+        [foils['_rank'] < foils['_q'],
+         foils['_rank'] < foils['_q'] * 2,
+         foils['_rank'] < foils['_q'] * 3],
+        [0.5, -0.5, 0.5], default=-0.5
     )
+    foils.drop(columns=['_rank', '_n', '_q'], inplace=True)
 
     # Prepare targets with real contrast codes
     old_items = targets.copy()
@@ -1241,11 +1271,15 @@ def print_descriptives(data):
 def check_image_uniqueness(data):
     """
     Confirm that all images shown during the test phase were unique
-    within and across the img_A_name and img_B_name columns.
+    *within each participant* across the img_A_name and img_B_name columns.
+
+    Uniqueness is evaluated per participant so that the same image appearing
+    for two different participants does not falsely trigger a failure.
     """
     if ('phase' not in data.columns
             or 'img_A_name' not in data.columns
-            or 'img_B_name' not in data.columns):
+            or 'img_B_name' not in data.columns
+            or 'participant' not in data.columns):
         print("[WARNING] Missing columns for image uniqueness check.")
         return
 
@@ -1254,29 +1288,28 @@ def check_image_uniqueness(data):
         print("[WARNING] No test phase trials found for image uniqueness check.")
         return
 
-    img_a = test_data['img_A_name'].dropna().tolist()
-    img_b = test_data['img_B_name'].dropna().tolist()
-    all_images = img_a + img_b
-
-    n_total  = len(all_images)
-    n_unique = len(set(all_images))
-
     print("\n" + "=" * 60)
-    print("IMAGE UNIQUENESS CHECK (Test Phase)")
+    print("IMAGE UNIQUENESS CHECK (Test Phase, per participant)")
     print("=" * 60)
-    print(f"  Total image presentations : {n_total}")
-    print(f"  Unique image names         : {n_unique}")
 
-    if n_total == n_unique:
-        print("  -> SUCCESS: All images shown during the test phase were different.")
-    else:
+    any_failure = False
+    for px, px_df in test_data.groupby('participant'):
         from collections import Counter
-        n_dupes    = n_total - n_unique
-        counts     = Counter(all_images)
-        duplicates = [img for img, count in counts.items() if count > 1]
-        print(f"  -> FAILURE: Found {n_dupes} duplicate image presentation(s)!")
-        for d in duplicates:
-            print(f"     Duplicate: {d} (shown {counts[d]} times)")
+        img_a = px_df['img_A_name'].dropna().tolist()
+        img_b = px_df['img_B_name'].dropna().tolist()
+        all_images = img_a + img_b
+        n_total  = len(all_images)
+        n_unique = len(set(all_images))
+        if n_total != n_unique:
+            counts     = Counter(all_images)
+            duplicates = [img for img, cnt in counts.items() if cnt > 1]
+            print(f"  FAILURE - Participant {px}: {n_total - n_unique} duplicate(s)")
+            for d in duplicates:
+                print(f"    Duplicate: {d} (shown {counts[d]} times)")
+            any_failure = True
+
+    if not any_failure:
+        print("  -> SUCCESS: All images were unique within every participant.")
     print("=" * 60)
 
 
@@ -1499,6 +1532,10 @@ if __name__ == "__main__":
     for i, col in enumerate(data.columns, start=1):
         print(f"  {i:>3}. {col}")
 
+    print("\nFirst 10 rows:")
+    print(data.head(10).to_string())
+    print()
+
     # ------------------------------------------------------------------
     # 2b. Image Uniqueness Check
     # ------------------------------------------------------------------
@@ -1525,6 +1562,7 @@ if __name__ == "__main__":
     # ------------------------------------------------------------------
     # 5. Load recognition data
     # ------------------------------------------------------------------
+    n_rt_excluded = 0  # default; overwritten inside the else-block below
     print("\n" + "=" * 60)
     print("LOADING RECOGNITION DATA")
     print("=" * 60)
@@ -1533,6 +1571,13 @@ if __name__ == "__main__":
     if recog_data is None:
         print("No recognition data loaded. Skipping recognition analyses.")
     else:
+        print(f"\nRecognition column names (total: {len(recog_data.columns)}):")
+        for i, col in enumerate(recog_data.columns, start=1):
+            print(f"  {i:>3}. {col}")
+        print("\nFirst 10 rows of recognition data:")
+        print(recog_data.head(10).to_string())
+        print()
+
         # ------------------------------------------------------------------
         # 6. Recognition exclusion - long RTs (> 20 s)
         # ------------------------------------------------------------------
