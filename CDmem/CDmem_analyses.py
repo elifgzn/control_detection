@@ -1265,6 +1265,107 @@ def print_descriptives(data):
 
 
 # ============================================================================
+# CALIBRATION CONVERGENCE REPORT
+# ============================================================================
+
+def report_calibration_convergence(data):
+    """
+    Extract and print calibration phase convergence information for all participants.
+    """
+    if 'phase' not in data.columns:
+        print("[WARNING] 'phase' column missing. Cannot report calibration convergence.")
+        return
+
+    calib_data = data[data['phase'] == 'calibration'].copy()
+    if len(calib_data) == 0:
+        print("[WARNING] No calibration phase trials found.")
+        return
+
+    print("\n" + "=" * 60)
+    print("CALIBRATION CONVERGENCE")
+    print("=" * 60)
+    print("\n| Participant | Target | Trials | Converged | Final Alpha SD |")
+    print("|-------------|--------|--------|-----------|----------------|")
+
+    # We expect 'calib_target' to be approx 0.55 (low) and 0.85 (high)
+    for px, px_df in calib_data.groupby('participant'):
+        for target, target_df in px_df.groupby('calib_target'):
+            n_trials = len(target_df)
+            
+            if target < 0.7:
+                cond_label = f"Low ({target:.2f})"
+                is_converged = target_df['quest_low_converged'].iloc[-1]
+            else:
+                cond_label = f"High ({target:.2f})"
+                is_converged = target_df['quest_high_converged'].iloc[-1]
+            
+            final_alpha_sd = target_df['quest_alpha_sd'].iloc[-1]
+            
+            print(f"| {px:<11} | {cond_label:<6} | {n_trials:<6} | {str(is_converged):<9} | {final_alpha_sd:<14.3f} |")
+    print()
+
+
+def plot_calibration_convergence(data, output_dir):
+    """
+    Plot the trajectory of QUEST alpha_sd over calibration trials.
+    """
+    if 'phase' not in data.columns or 'quest_alpha_sd' not in data.columns:
+        return
+        
+    calib_data = data[data['phase'] == 'calibration'].copy()
+    if len(calib_data) == 0:
+        return
+
+    calib_data['trial_in_block'] = pd.to_numeric(calib_data['trial_in_block'], errors='coerce')
+    calib_data['quest_alpha_sd'] = pd.to_numeric(calib_data['quest_alpha_sd'], errors='coerce')
+    calib_data['calib_target_label'] = np.where(calib_data['calib_target'] < 0.7, 'Low (~0.55)', 'High (~0.85)')
+    
+    plt.style.use('seaborn-v0_8-whitegrid')
+    sns.set_palette("husl")
+    plt.figure(figsize=(8, 6))
+
+    # Plot average trajectory with error bands
+    sns.lineplot(
+        data=calib_data, 
+        x='trial_in_block', 
+        y='quest_alpha_sd', 
+        hue='calib_target_label', 
+        marker='o',
+        errorbar='se'
+    )
+    
+    # Plot individual trajectories very lightly
+    for px in calib_data['participant'].unique():
+        px_data = calib_data[calib_data['participant'] == px]
+        sns.lineplot(
+            data=px_data, 
+            x='trial_in_block', 
+            y='quest_alpha_sd', 
+            hue='calib_target_label', 
+            alpha=0.15, 
+            legend=False
+        )
+
+    plt.axhline(y=0.2, color='red', linestyle='--', alpha=0.5, label='Convergence Threshold (0.2)')
+    plt.title('Calibration Phase: QUEST Alpha SD Trajectory')
+    plt.xlabel('Trial in Block')
+    plt.ylabel('Alpha SD')
+    
+    # handle duplicated legends from individual lines
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys(), title='Target Condition')
+
+    plt.tight_layout()
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / 'calibration_convergence.png'
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+    print("Saved plot: " + str(out_path))
+
+
+# ============================================================================
 # DATA INTEGRITY CHECKS
 # ============================================================================
 
@@ -1612,12 +1713,17 @@ if __name__ == "__main__":
     print("=" * 60 + "\n")
 
     # ------------------------------------------------------------------
-    # 9. Descriptive Statistics
+    # 9. Calibration Convergence Reporting
+    # ------------------------------------------------------------------
+    report_calibration_convergence(data)
+
+    # ------------------------------------------------------------------
+    # 10. Descriptive Statistics
     # ------------------------------------------------------------------
     print_descriptives(data)
 
     # ------------------------------------------------------------------
-    # 10. Sanity Checks & Plots
+    # 11. Sanity Checks & Plots
     # ------------------------------------------------------------------
     print("\n" + "=" * 60)
     print("SANITY CHECKS & PLOTS")
@@ -1634,9 +1740,10 @@ if __name__ == "__main__":
         print()
 
     plot_sanity_check(test_data, OUTPUT_DIR)
+    plot_calibration_convergence(data, OUTPUT_DIR)
 
     # ------------------------------------------------------------------
-    # 11. Recognition Memory Analysis
+    # 12. Recognition Memory Analysis
     # ------------------------------------------------------------------
     if recog_data is not None:
         print("\n" + "=" * 60)
