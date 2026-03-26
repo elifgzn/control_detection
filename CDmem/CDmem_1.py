@@ -1302,27 +1302,21 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
     """
 
     # ── Set the self-proportion for this trial ──────────────────────────────
-    # `prop` controls how much the participant's mouse direction influences
-    # the target shape. Range: 0.02 (nearly autonomous) to 0.90 (mostly mouse).
     if prop_override is not None:
         prop = float(np.clip(prop_override, 0.02, 0.90))
     else:
-        prop = 0.40  # Default fallback (should not normally be used)
+        prop = 0.40
 
     # ── Decide whether this is an image trial or a shape trial ─────────────
     use_images = (image_pair is not None)
 
     if use_images:
-        # Load the two images for this trial as PsychoPy ImageStim objects.
-        # Both are scaled to IMAGE_SIZE (40×40 px) to match the shape sizes.
         img_A_info, img_B_info = image_pair
         stim_A = visual.ImageStim(win, image=img_A_info['path'], size=IMAGE_SIZE)
         stim_B = visual.ImageStim(win, image=img_B_info['path'], size=IMAGE_SIZE)
-        # Use 'A' and 'B' as internal labels (analogous to 'square' and 'dot')
         stim_left_label  = 'img_A'
         stim_right_label = 'img_B'
     else:
-        # Calibration phase: use the original shapes
         stim_A = square
         stim_B = dot
         stim_left_label  = 'square'
@@ -1345,12 +1339,12 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
     left_stim = random.choice(['A', 'B'])
     if left_stim == 'A':
         stim_A.pos = (-OFFSET_X, 0); stim_B.pos = (OFFSET_X, 0)
-        left_label  = stim_left_label
-        right_label = stim_right_label
+        left_label  = stim_left_label   # 'img_A' or 'square'
+        right_label = stim_right_label  # 'img_B' or 'dot'
     else:
         stim_A.pos = (OFFSET_X, 0);  stim_B.pos = (-OFFSET_X, 0)
-        left_label  = stim_right_label
-        right_label = stim_left_label
+        left_label  = stim_right_label  # 'img_B' or 'dot'
+        right_label = stim_left_label   # 'img_A' or 'square'
 
     # Save starting positions so we can reset the images at response time
     start_pos_A = tuple(stim_A.pos)
@@ -1362,7 +1356,6 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
     trigger_stim_onset = np.nan
     if phase == "test" and control_condition:
         try:
-            # low -> level 1, high -> level 3
             level_idx = 1 if control_condition == 'low' else 3
             trigger_stim_onset = 10 + level_idx
             send_trigger(trigger_stim_onset)
@@ -1370,8 +1363,6 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
             pass
 
     # ── Wait for mouse movement to start ────────────────────────────────────
-    # The trial doesn't begin until the participant moves the mouse.
-    # This ensures the motion phase always starts with active mouse input.
     mouse = SimulatedMouse() if SIMULATE else event.Mouse(win=win, visible=False)
     mouse.setPos((0, 0))
     last = mouse.getPos()
@@ -1379,26 +1370,30 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
         stim_A.draw(); stim_B.draw(); win.flip()
         x, y = mouse.getPos()
         if math.hypot(x - last[0], y - last[1]) > 0 or SIMULATE:
-            break
+            breaksss
         if not SIMULATE and event.getKeys(["escape"]):
             _save(); core.quit()
 
     # ── Select target and trajectories ──────────────────────────────────────
-    # Randomly decide which stimulus is the target (the one the mouse influences).
-    # We keep the labels 'square'/'dot' for calibration, 'img_A'/'img_B' for test.
-    target = random.choice([stim_left_label, stim_right_label])
+    # FIX: target is now chosen from [left_label, right_label] so it is always
+    # in the same coordinate system as response_controlled (physical side),
+    # rather than from [stim_left_label, stim_right_label] (image identity).
+    target = random.choice([left_label, right_label])
 
-    # If using images, record which one was controlled for later memory analysis
+    # If using images, record which image was controlled for later memory analysis.
+    # We derive this from whether target matches the label on each side.
     if use_images:
-        image_control_map[img_A_info['filename']] = 'yes' if target == 'img_A' else 'no'
-        image_control_map[img_B_info['filename']] = 'yes' if target == 'img_B' else 'no'
+        image_control_map[img_A_info['filename']] = 'yes' if target == left_label and left_label == 'img_A' \
+                                                    else 'yes' if target == right_label and right_label == 'img_A' \
+                                                    else 'no'
+        image_control_map[img_B_info['filename']] = 'yes' if target == left_label and left_label == 'img_B' \
+                                                    else 'yes' if target == right_label and right_label == 'img_B' \
+                                                    else 'no'
 
     # Get 2 unique trajectory snippets: one for target, one for distractor.
     trajectory_indices = get_trajectory_indices(2)
     target_snippet_idx, distractor_snippet_idx = trajectory_indices[0], trajectory_indices[1]
 
-    # Load snippets and apply consistent smoothing to both.
-    # Smoothing is applied to both shapes equally so smoothness is not a cue.
     target_snippet     = motion_pool[target_snippet_idx]
     distractor_snippet = motion_pool[distractor_snippet_idx]
     target_snippet, distractor_snippet = apply_consistent_smoothing(
@@ -1406,16 +1401,15 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
     )
 
     # ── Motion phase setup ───────────────────────────────────────────────────
-    trial_kinematics = []            # Frame-by-frame data for this trial
-    clk   = core.Clock()             # Timer for the motion phase
-    frame = 0                        # Frame counter (used to index into snippets)
-    vt    = np.zeros(2, np.float32)  # Low-pass filtered velocity for target
-    vd    = np.zeros(2, np.float32)  # Low-pass filtered velocity for distractor
+    trial_kinematics = []
+    clk   = core.Clock()
+    frame = 0
+    vt    = np.zeros(2, np.float32)
+    vd    = np.zeros(2, np.float32)
 
     event.clearEvents(eventType='keyboard')
 
-    # ── MOTION PHASE: exactly 3 seconds, no response allowed ────────────────
-    # EEG Triggers: Motion Start
+    # ── EEG Triggers: Motion Start ───────────────────────────────────────────
     trigger_motion_start = np.nan
     if phase == "test" and control_condition:
         try:
@@ -1425,20 +1419,16 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
         except (ValueError, IndexError):
             pass
 
-    # Two screenshots per phase: frame 1 (starting positions) + frame 30 (~0.5 s in, mid-motion)
-    _SCREENSHOT_FRAMES = {1: 'frame001', 30: 'frame030'}  # frames to capture per phase
+    _SCREENSHOT_FRAMES = {1: 'frame001', 30: 'frame030'}
+
     while clk.getTime() < MOTION_DURATION:
-        # Get current mouse position and compute displacement from last frame
         x, y = mouse.getPos()
         dx, dy = x - last[0], y - last[1]
         last = (x, y)
 
-        # Get trajectory velocities for this frame.
-        # Snippets are looped if the trial is longer than the snippet.
         target_traj_dx,     target_traj_dy     = target_snippet[frame % len(target_snippet)]
         distractor_traj_dx, distractor_traj_dy = distractor_snippet[frame % len(distractor_snippet)]
 
-        # Scale up trajectory speed so shapes move visibly on screen
         target_traj_dx     *= SPEED_MULTIPLIER
         target_traj_dy     *= SPEED_MULTIPLIER
         distractor_traj_dx *= SPEED_MULTIPLIER
@@ -1446,7 +1436,6 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
 
         frame += 1
 
-        # Cap mouse speed to prevent extreme jumps from fast mouse movements
         mouse_speed = math.hypot(dx, dy)
         MAX_SPEED = 20.0
         if mouse_speed > MAX_SPEED:
@@ -1455,13 +1444,8 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
             dy *= scale_factor
             mouse_speed = MAX_SPEED
 
-        # Only mix mouse input when the mouse is actually moving.
-        # When stationary, the target follows its trajectory autonomously.
         mouse_is_moving = mouse_speed > MOUSE_MOVE_THRESHOLD
 
-        # ── Direction mixing (core of the control manipulation) ──────────────
-        # Target: blend mouse direction with trajectory direction (prop controls blend)
-        # Distractor: always follows its own trajectory, unaffected by mouse
         if mouse_is_moving:
             tdx, tdy = mix_direction_only(dx, dy, target_traj_dx, target_traj_dy, prop)
         else:
@@ -1469,43 +1453,35 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
 
         ddx, ddy = distractor_traj_dx, distractor_traj_dy
 
-        # ── Low-pass filter ──────────────────────────────────────────────────
-        # Smooths out frame-to-frame velocity changes for more natural motion.
-        # LOWPASS=0.2 means 20% of previous velocity + 80% of new velocity.
         vt = LOWPASS * vt + (1 - LOWPASS) * np.array([tdx, tdy])
         vd = LOWPASS * vd + (1 - LOWPASS) * np.array([ddx, ddy])
 
-        # ── Evidence calculation ─────────────────────────────────────────────
-        # Measures how aligned the mouse movement is with the target vs distractor.
-        # Positive evidence = mouse aligns more with target (correct signal).
-        # This is logged per frame for later analysis.
         vm       = np.array([dx, dy], dtype=float)
-        vm_speed = np.linalg.norm(vm) + 1e-9  # Avoid division by zero
+        vm_speed = np.linalg.norm(vm) + 1e-9
 
         vt_disp = np.array(vt, dtype=float)
         vd_disp = np.array(vd, dtype=float)
 
-        # Unit vectors in the direction of each shape's movement
         ut = vt_disp / (np.linalg.norm(vt_disp) + 1e-9)
         ud = vd_disp / (np.linalg.norm(vd_disp) + 1e-9)
 
-        # Cosine similarity between mouse direction and each shape's direction
         cos_T = np.dot(vm, ut) / vm_speed
         cos_D = np.dot(vm, ud) / vm_speed
 
-        # Evidence = difference in alignment, weighted by mouse speed
         evidence = (cos_T - cos_D) * mouse_speed if mouse_is_moving else 0.0
 
-        # ── Update stimulus positions ────────────────────────────────────────
-        # stim_A is the target when target == stim_left_label (set at trial start)
-        if target == stim_left_label:
+        # FIX: motion update now uses left_label/right_label (same system as target)
+        # instead of stim_left_label/stim_right_label.
+        # stim_A moves as target when stim_A is the controlled stimulus,
+        # i.e. when target matches the label on stim_A's side.
+        if (left_stim == 'A' and target == left_label) or \
+           (left_stim == 'B' and target == right_label):
             stim_A.pos = confine(tuple(np.array(stim_A.pos) + vt))
             stim_B.pos = confine(tuple(np.array(stim_B.pos) + vd))
         else:
             stim_B.pos = confine(tuple(np.array(stim_B.pos) + vt))
             stim_A.pos = confine(tuple(np.array(stim_A.pos) + vd))
 
-        # ── Log kinematics for this frame ────────────────────────────────────
         trial_kinematics.append({
             'timestamp':       clk.getTime(),
             'frame':           frame,
@@ -1520,14 +1496,12 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
             'evidence':        evidence
         })
 
-        # Check for Escape key (no response allowed during motion phase)
         if not SIMULATE:
             if event.getKeys(['escape']):
                 _save(); core.quit()
 
         stim_A.draw(); stim_B.draw(); win.flip()
 
-        # ── Screenshots: frame 1 (start) + frame 30 (~0.5 s, mid-motion) ────────
         if frame in _SCREENSHOT_FRAMES:
             key = f"{phase}_{_SCREENSHOT_FRAMES[frame]}"
             if key not in _screenshots_saved:
@@ -1538,31 +1512,25 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
                 print(f"[Screenshot] Saved: {fname}")
 
     # ── RESPONSE PHASE ───────────────────────────────────────────────────────
-    # After the motion phase ends, a response screen appears.
-    # Calibration: A = Square, S = Circle
-    # Test:        Images are reset to their starting positions.
-    #              A key label is shown below the left image, S below the right.
     event.clearEvents(eventType='keyboard')
 
-    # Key mapping: always based on which image is on which side
+    # Key mapping: always based on which image/shape is on which side
     key_to_label = {'a': left_label, 's': right_label}
 
-    CHOICE_DURATION = 5.0  # Fixed response window (seconds)
+    CHOICE_DURATION = 5.0
 
-    # Reset stimuli closer to center for the choice screen (maintaining original sides)
-    if start_pos_A[0] < 0:   # stim_A was on the left
+    if start_pos_A[0] < 0:
         stim_A.pos = (-CHOICE_OFFSET_X, 0)
         stim_B.pos = (CHOICE_OFFSET_X, 0)
         left_img_x, right_img_x = -CHOICE_OFFSET_X, CHOICE_OFFSET_X
-    else:                     # stim_B was on the left
+    else:
         stim_A.pos = (CHOICE_OFFSET_X, 0)
         stim_B.pos = (-CHOICE_OFFSET_X, 0)
         left_img_x, right_img_x = -CHOICE_OFFSET_X, CHOICE_OFFSET_X
 
-    img_y = 0        # vertical centre of images
-    # We use IMAGE_SIZE[1] roughly for both squares/dots (which are 40x40) and images
+    img_y = 0
     img_half_h = IMAGE_SIZE[1] / 2
-    label_y = img_y - img_half_h - 40  # 40 px below the bottom edge
+    label_y = img_y - img_half_h - 40
 
     key_label_A_stim = visual.TextStim(
         win, text="A", pos=(left_img_x, label_y),
@@ -1572,7 +1540,7 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
         win, text="S", pos=(right_img_x, label_y),
         height=30, color='white', bold=True, alignText='center'
     )
-    
+
     question_text = "Which image did you control?" if use_images else "Which shape did you control?"
     choice_question = visual.TextStim(
         win, text=question_text,
@@ -1587,7 +1555,7 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
         choice_question.draw()
         win.flip()
 
-    # EEG Triggers: Response Screen Onset
+    # ── EEG Triggers: Response Screen Onset ─────────────────────────────────
     trigger_resp_onset = np.nan
     if phase == "test" and control_condition:
         try:
@@ -1599,22 +1567,22 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
 
     response_controlled = None
     rt_choice  = np.nan
-    response_clock = core.Clock()  # Starts now; used for both RT and 5-s window
+    response_clock = core.Clock()
 
     draw_choice_screen()
-    response_start_time = response_clock.getTime()  # ≈ 0 — used for RT
+    response_start_time = response_clock.getTime()
 
     if SIMULATE:
-        # Simulate a response time between 1.5 and 4.5 seconds, then wait out the remaining window
         sim_rt = random.uniform(1.5, 4.5)
         core.wait(sim_rt)
-        response_controlled = rng.choice([stim_left_label, stim_right_label])
+        # FIX: simulate response from [left_label, right_label] to match
+        # the same coordinate system as target
+        response_controlled = rng.choice([left_label, right_label])
         rt_choice  = response_clock.getTime()
         remaining  = CHOICE_DURATION - rt_choice
         if remaining > 0:
             core.wait(remaining)
     else:
-        # Run until the full 5 s are up
         while response_clock.getTime() < CHOICE_DURATION:
             elapsed = response_clock.getTime()
             draw_choice_screen()
@@ -1626,10 +1594,8 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
                 elif key in key_to_label and response_controlled is None:
                     response_controlled = key_to_label[key]
                     rt_choice  = elapsed
-                    # Selected key feedback removed (no longer turns green)
             core.wait(0.01)
 
-        # Timed out — show "Please answer faster" for 2 s
         if response_controlled is None:
             response_controlled = 'timeout'
             timeout_msg = visual.TextStim(
@@ -1640,27 +1606,21 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
             core.wait(2.0)
 
     # Accuracy: 1 if participant identified the correct target, 0 otherwise.
-    # Timeouts count as incorrect.
     correct = int(response_controlled == target)
 
-    # EEG Triggers: Response Value
+    # ── EEG Triggers: Response Value ─────────────────────────────────────────
     trigger_resp_val = np.nan
     if phase == "test":
         trigger_resp_val = 41 if correct else 42
         send_trigger(trigger_resp_val)
 
-
     # ── FEEDBACK (calibration trials only) ───────────────────────────────────
-    # During calibration, participants receive immediate feedback so the
-    # staircase can converge to their threshold.
     if phase == "calibration":
         feedbackTxt.text = "Right" if correct else "Wrong"
         feedbackTxt.draw(); win.flip(); core.wait(0.8)
         win.flip(); core.wait(0.3)
 
     # ── AGENCY RATING (test trials only) ─────────────────────────────────────
-    # Participants rate how much control they felt over the shape's movement.
-    # This is the subjective sense of agency (SoA), rated on a 1–7 scale.
     agency_rating = np.nan
     if phase == "test":
         if SIMULATE:
@@ -1671,33 +1631,28 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
             msg.text = "How much control did you feel over the shape's movement?"
             msg.pos = (0, int(win.size[1] * 0.2))
 
-            # Dynamic scaling for the rating scale
-            scale_text_height = 20                        # Scale text size
-            scale_width = int(win.size[0] * 0.8)          # 80% screen width
+            scale_text_height = 20
+            scale_width = int(win.size[0] * 0.8)
             spacing = scale_width / 6
             start_x = -(scale_width / 2)
-            
-            # We draw a line above the text, so the text sits below the line
+
             line_y = -100
             text_y = line_y - scale_text_height * 1.5
-            
+
             scale_positions = [(start_x + i * spacing, text_y) for i in range(7)]
             scale_labels = ["1\nVery weak", "2\nWeak", "3\nSomewhat weak", "4\nModerate",
                             "5\nSomewhat strong", "6\nStrong", "7\nVery strong"]
-                            
-            # The horizontal axis line
+
             scale_line = visual.Line(
                 win, start=(start_x, line_y), end=(-start_x, line_y),
                 lineColor='white', lineWidth=5
             )
-            # Tick marks for each point
             tick_half_height = scale_text_height * 0.3
             scale_ticks = [
                 visual.Line(win, start=(x, line_y + tick_half_height), end=(x, line_y - tick_half_height),
                             lineColor='white', lineWidth=5)
                 for x, _ in scale_positions
             ]
-
             scale_stimuli = [
                 visual.TextStim(win, text=label, pos=pos, height=scale_text_height,
                                 color='white', alignText='center', bold=True)
@@ -1719,7 +1674,6 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
                         _save(); core.quit()
                     else:
                         rating = int(keys[0])
-                        # Visual feedback (green color change) removed
                         msg.draw()
                         scale_line.draw()
                         for tick in scale_ticks:
@@ -1733,34 +1687,30 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
             msg.pos = (0, 0)
 
     # ── COMPUTE SUMMARY EVIDENCE METRICS ─────────────────────────────────────
-    # Aggregate the per-frame evidence values into summary statistics.
-    # These capture how consistently the mouse aligned with the target.
     frame_evidence = [d['evidence'] for d in trial_kinematics]
     mean_evidence  = np.mean(frame_evidence) if frame_evidence else np.nan
     sum_evidence   = np.sum(frame_evidence)  if frame_evidence else np.nan
     var_evidence   = np.var(frame_evidence)  if frame_evidence else np.nan
 
     # ── ADD TRIAL METADATA TO KINEMATICS ─────────────────────────────────────
-    # Tag each frame with trial-level information for later analysis.
     for frame_data in trial_kinematics:
         frame_data.update({
-            'overall_trial_num': global_trial_counter,
-            'trial_in_block':   trial_in_block,
-            'phase':            phase,
-            'n_shapes':         2,
-            'target':           target,
-            'prop_used':        prop,
-            'block_num':        block_num,
-            'control_condition': control_condition,
-            'participant':      expInfo.get('participant'),
-            'session':          expInfo.get('session'),
-            'age':              expInfo.get('age'),
-            'gender':           expInfo.get('gender'),
-            'handedness':       expInfo.get('handedness')
+            'overall_trial_num':  global_trial_counter,
+            'trial_in_block':     trial_in_block,
+            'phase':              phase,
+            'n_shapes':           2,
+            'target':             target,
+            'prop_used':          prop,
+            'block_num':          block_num,
+            'control_condition':  control_condition,
+            'participant':        expInfo.get('participant'),
+            'session':            expInfo.get('session'),
+            'age':                expInfo.get('age'),
+            'gender':             expInfo.get('gender'),
+            'handedness':         expInfo.get('handedness')
         })
     kinematics_data.extend(trial_kinematics)
 
-    # Return all trial results as a dict for logging by the caller
     return dict(
         n_shapes=2,
         target_snippet_id=target_snippet_idx,
@@ -1778,10 +1728,8 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
         sum_evidence=sum_evidence,
         var_evidence=var_evidence,
         control_condition=control_condition,
-        # Image info (NaN for calibration trials, filenames for test trials)
         img_A_name=img_A_info['filename'] if use_images else np.nan,
         img_B_name=img_B_info['filename'] if use_images else np.nan,
-        # Trigger values for logging
         trigger_stim_onset=trigger_stim_onset,
         trigger_motion_start=trigger_motion_start,
         trigger_resp_onset=trigger_resp_onset,

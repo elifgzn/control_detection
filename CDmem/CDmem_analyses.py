@@ -13,6 +13,7 @@ Located in: CDmem/data/subjects/
 TODO:
 - add cd accuracy analysis - check simon's code?
 - add RT analyses
+- ren et al 2026: Trims RT outliers on a rolling, per-participant basis. Any trial with an RT greater than mean + 3 * SD for that specific participant is discarded. // CDmem_analyses.py: Uses an absolute cutoff across the board. Any recognition trial with an RT greater than 20 seconds is discarded unconditionally (following Haridi et al., 2025).
 """
 
 import os
@@ -846,6 +847,58 @@ def run_analysis_4_interaction_glmm(targets, recog_data):
     )
     if model is not None:
         print(f"  [REPORT] Random effects structure used: {structure}")
+
+    # -------------------------------------------------------------------------
+    # ALTERNATIVE (R SCRIPT) APPROACH: NESTED INTERACTION MODEL
+    # -------------------------------------------------------------------------
+    # Why this was added: 
+    # To provide a comparison between the full-factorial sum-coded model (above) 
+    # and a nested/conditional effects model commonly used in literature (e.g., Ren et al., 2026).
+    #
+    # PROS of the Full-Factorial Approach (current active model):
+    # - Matches standard ANOVA logic perfectly (orthogonal main effects and interactions).
+    # - Because of the (-0.5, 0.5) dummy balancing on foils, the main effect of item_type_c 
+    #   directly tests overall memory sensitivity (Hits vs FAs, i.e., overall d-prime) 
+    #   independently of the control condition.
+    # - Strict test: forces the model to prove that the control condition changes Hit Rates 
+    #   significantly more than it randomly fluctuates False Alarm rates.
+    #
+    # CONS of the Full-Factorial Approach:
+    # - Relies on a "dummy hack": Foils are artificially split into "High" and "Low" 
+    #   conditions they never experienced, which can be unintuitive.
+    #
+    # PROS of the Nested/Conditional Approach (R script style below):
+    # - Conceptually cleaner and strictly logical: Foils (new items) do not have an 
+    #   encoding condition, so the model only estimates the control effect where it 
+    #   genuinely exists (on old items).
+    # - The interaction coefficient directly corresponds to the effect of control on Hit Rates.
+    # - No artificial dummy data manipulation for foils.
+    #
+    # CONS of the Nested/Conditional Approach:
+    # - You don't get a single, pure "Main Effect of Memory" (a direct analogue to overall d-prime) 
+    #   because the baseline shifts. Doesn't strictly test condition differences relative to FAs.
+    # -------------------------------------------------------------------------
+    #
+    # # Code to run the alternative nested model (mimicking R script `is_old + is_old:control_val`):
+    # alt_foils = foils.copy()
+    # alt_foils['item_is_old'] = 0
+    # alt_foils['control_val'] = 0  # Foils have no condition
+    # 
+    # alt_targets = targets_df.copy()
+    # alt_targets['item_is_old'] = 1
+    # alt_targets['control_val'] = alt_targets['control_condition'].map({'high': 0.5, 'low': -0.5})
+    # 
+    # cols_alt = ['participant', 'said_old_int', 'item_is_old', 'control_val']
+    # df_alt = pd.concat([alt_targets[cols_alt], alt_foils[cols_alt]], ignore_index=True).dropna()
+    # 
+    # print("\nAlternative Analysis 4: Nested Interaction GLMM...")
+    # alt_model, alt_structure = fit_glmm_with_fallback(
+    #     formula_maximal="said_old_int ~ item_is_old + item_is_old:control_val + (1 + item_is_old:control_val | participant)",
+    #     formula_minimal="said_old_int ~ item_is_old + item_is_old:control_val + (1 | participant)",
+    #     data_pl=pl.from_pandas(df_alt),
+    #     family="binomial"
+    # )
+    
     return model
 
 
