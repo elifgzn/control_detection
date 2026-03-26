@@ -1116,7 +1116,8 @@ class QuestPlusStaircase:
 
         if target_type == "high":
             # Prior centred at prop=0.80 — easy region for ~85% correct
-            alpha_mu = logit(0.80)
+            # changed to 0.70 to make it harder since a participant got 100% in the pilot
+            alpha_mu = logit(0.70)
         elif target_type == "low":
             # Prior centred at prop=0.40 — hard region for ~55% correct
             alpha_mu = logit(0.40)

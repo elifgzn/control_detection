@@ -81,7 +81,7 @@ def load_all_data(data_dir=DATA_DIR):
     pattern = str(data_dir / "CDmem_*.csv")
     all_files = glob.glob(pattern)
 
-    strict_pattern = re.compile(r"^CDmem_1_\d+\.csv$")
+    strict_pattern = re.compile(r"^CDmem_1_\d+(?:_\d+)?\.csv$")
     all_files = [
         f for f in all_files
         if strict_pattern.match(os.path.basename(f))
@@ -319,8 +319,8 @@ def load_recognition_data(data_dir=DATA_DIR):
     pattern = str(Path(data_dir) / "CDmem_*_recognition.csv")
     all_files = glob.glob(pattern)
 
-    # Keep only files matching the canonical pattern: CDmem_1_<number>_recognition.csv
-    strict_pattern = re.compile(r"^CDmem_1_\d+_recognition\.csv$")
+    # Keep only files matching the canonical pattern: CDmem_1_<number>_recognition.csv or CDmem_1_<number>_<session>_recognition.csv
+    strict_pattern = re.compile(r"^CDmem_1_\d+(?:_\d+)?_recognition\.csv$")
     all_files = [
         f for f in all_files
         if strict_pattern.match(os.path.basename(f))
@@ -1336,21 +1336,14 @@ def report_calibration_convergence(data):
     print("|-------------|--------|--------|-----------|----------------|")
 
     for px, px_df in calib_data.groupby('participant'):
-        # 1. Search the ENTIRE participant block for ANY "TRUE"
-        # We check both boolean True and string 'TRUE' just to be safe
-        low_conv = px_df['quest_low_converged'].isin([True, 'TRUE', 'True']).any()
-        high_conv = px_df['quest_high_converged'].isin([True, 'TRUE', 'True']).any()
-
         for target, target_df in px_df.groupby('calib_target'):
             n_trials = len(target_df)
             final_alpha_sd = target_df['quest_alpha_sd'].iloc[-1]
             
-            if target < 0.7:
-                cond_label = f"Low ({target:.2f})"
-                is_converged = low_conv
-            else:
-                cond_label = f"High ({target:.2f})"
-                is_converged = high_conv
+            # Direct threshold check: converged if alpha_sd < 0.2
+            is_converged = final_alpha_sd < 0.20
+            
+            cond_label = f"Low ({target:.2f})" if target < 0.7 else f"High ({target:.2f})"
             
             print(f"| {px:<11} | {cond_label:<10} | {n_trials:<6} | {str(is_converged):<9} | {final_alpha_sd:<14.3f} |")
     print()
