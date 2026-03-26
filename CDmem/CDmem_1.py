@@ -1370,7 +1370,7 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
         stim_A.draw(); stim_B.draw(); win.flip()
         x, y = mouse.getPos()
         if math.hypot(x - last[0], y - last[1]) > 0 or SIMULATE:
-            breaksss
+            break
         if not SIMULATE and event.getKeys(["escape"]):
             _save(); core.quit()
 
