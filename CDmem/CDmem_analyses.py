@@ -1347,10 +1347,10 @@ def report_calibration_convergence(data):
             
             if target < 0.7:
                 cond_label = f"Low ({target:.2f})"
-                is_converged = target_df['quest_low_converged'].iloc[-1]
+                is_converged = target_df['quest_low_converged'].dropna().iloc[0]
             else:
                 cond_label = f"High ({target:.2f})"
-                is_converged = target_df['quest_high_converged'].iloc[-1]
+                is_converged = target_df['quest_high_converged'].dropna().iloc[0]
             
             final_alpha_sd = target_df['quest_alpha_sd'].iloc[-1]
             
