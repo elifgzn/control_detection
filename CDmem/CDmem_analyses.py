@@ -545,102 +545,51 @@ def fit_glmm_with_fallback(formula_maximal, formula_minimal, data_pl, family="bi
 # ============================================================================
 
 def analyze_recognition(main_data, recog_data):
-    """
-    Calculate recognition performance (HR, FA, d-prime) per participant
-    and per control condition (including uncontrolled items).
-
-    Returns
-    -------
-    mem_results : pd.DataFrame
-        Participant-level summary (primary: high vs. low).
-    targets : pd.DataFrame
-        Trial-level recognition data for old items with condition labels.
-    supp_mem_results : pd.DataFrame
-        Participant-level summary for 2x2 (trial_level x item_type).
-    """
     recog_data = recog_data.copy()
+    
+    # 1. Convert "yes"/"no" responses to True/False for calculation
     recog_data['said_old'] = recog_data['mem_response'].str.lower() == 'yes'
 
-    # --- False alarm rates per participant ---
+    # 2. Calculate FALSE ALARM RATE (Noise Baseline)
+    # We use all "unseen" items. These don't have a 'controlled' status.
     foils = recog_data[recog_data['mem_ground_truth'] == 'unseen']
-    if len(foils) == 0:
-        print("[WARNING] No foil ('unseen') trials found in recognition data.")
-        return None, None, None
-
     fa_rates = foils.groupby('participant')['said_old'].mean().reset_index()
     fa_rates.rename(columns={'said_old': 'FA_rate'}, inplace=True)
 
-    # --- Hit rates per condition ---
-    if 'phase' in main_data.columns:
-        test_data = main_data[main_data['phase'] == 'test'].copy()
-    else:
-        test_data = main_data.copy()
-
-    if 'control_condition' not in test_data.columns or 'true_controlled' not in test_data.columns:
-        print("[WARNING] Required columns not found in main data for recognition split.")
-        return None, None, None
-
-    # Build image -> condition lookup
-    img_lookups = []
-    for _, row in test_data.iterrows():
-        px       = row['participant']
-        cond     = row['control_condition']
-        target_img = row['true_controlled']
-
-        img_lookups.append({
-            'participant':      px,
-            'mem_filename':     row['img_A_name' if target_img == 'img_A' else 'img_B_name'],
-            'control_condition': cond,
-            'trial_level':      cond,
-            'item_type':        'controlled',
-            'is_controlled':    'yes'
-        })
-        img_lookups.append({
-            'participant':      px,
-            'mem_filename':     row['img_B_name' if target_img == 'img_A' else 'img_A_name'],
-            'control_condition': 'uncontrolled',
-            'trial_level':      cond,
-            'item_type':        'uncontrolled',
-            'is_controlled':    'no'
-        })
-
-    img_lookup = pd.DataFrame(img_lookups)
-    img_lookup.dropna(subset=['mem_filename'], inplace=True)
-    img_lookup.drop_duplicates(subset=['participant', 'mem_filename'], inplace=True)
-
-    # Merge targets with condition labels
+    # 3. Calculate HIT RATES (Signal)
+    # Only look at "seen" items. 
+    # Use 'controlled' as the condition (since 'control_condition' doesn't exist).
     targets = recog_data[recog_data['mem_ground_truth'] == 'seen'].copy()
-    targets = targets.merge(img_lookup, on=['participant', 'mem_filename'], how='left')
-
-    unmatched = targets['control_condition'].isna().sum()
-    if unmatched > 0:
-        print(f"[WARNING] {unmatched} recognition targets could not be matched to a condition.")
-
-    # --- Primary: hit rate per participant x condition (high / low / uncontrolled) ---
+    
+    # Check if 'controlled' column exists; if not, you might need to check the exact spelling
+    condition_col = 'controlled' 
+    
     hit_rates = (
         targets
-        .groupby(['participant', 'control_condition'])['said_old']
+        .groupby(['participant', condition_col])['said_old']
         .mean()
         .reset_index()
-        .rename(columns={'said_old': 'Hit_rate'})
+        .rename(columns={'said_old': 'Hit_rate', condition_col: 'control_condition'})
     )
+
+    # 4. Merge Hit rates with the FA baseline to get d-prime
     results = hit_rates.merge(fa_rates, on='participant', how='left')
     results['d_prime'] = results.apply(
         lambda row: calc_dprime(row['Hit_rate'], row['FA_rate']), axis=1
     )
 
-    # --- Supplementary: 2x2 hit rate per participant x trial_level x item_type ---
-    hit_rates_supp = (
-        targets
-        .groupby(['participant', 'trial_level', 'item_type'])['said_old']
-        .mean()
-        .reset_index()
-        .rename(columns={'said_old': 'Hit_rate'})
-    )
-    results_supp = hit_rates_supp.merge(fa_rates, on='participant', how='left')
-    results_supp['d_prime'] = results_supp.apply(
-        lambda row: calc_dprime(row['Hit_rate'], row['FA_rate']), axis=1
-    )
+    # 5. Handle the 2x2 Supplementary analysis if the columns exist
+    # You mentioned 'trial_level' and 'item_type'—ensure these are the exact names in CSV
+    results_supp = None
+    if 'trial_level' in targets.columns and 'item_type' in targets.columns:
+        results_supp = (
+            targets.groupby(['participant', 'trial_level', 'item_type'])['said_old']
+            .mean().reset_index().rename(columns={'said_old': 'Hit_rate'})
+            .merge(fa_rates, on='participant')
+        )
+        results_supp['d_prime'] = results_supp.apply(
+            lambda row: calc_dprime(row['Hit_rate'], row['FA_rate']), axis=1
+        )
 
     return results, targets, results_supp
 
@@ -1322,16 +1271,12 @@ def print_descriptives(data):
 # ============================================================================
 
 def report_calibration_convergence(data):
-    """
-    Extract and print calibration phase convergence information for all participants.
-    """
     if 'phase' not in data.columns:
-        print("[WARNING] 'phase' column missing. Cannot report calibration convergence.")
+        print("[WARNING] 'phase' column missing.")
         return
 
     calib_data = data[data['phase'] == 'calibration'].copy()
     if len(calib_data) == 0:
-        print("[WARNING] No calibration phase trials found.")
         return
 
     print("\n" + "=" * 60)
@@ -1340,21 +1285,24 @@ def report_calibration_convergence(data):
     print("\n| Participant | Target | Trials | Converged | Final Alpha SD |")
     print("|-------------|--------|--------|-----------|----------------|")
 
-    # We expect 'calib_target' to be approx 0.55 (low) and 0.85 (high)
     for px, px_df in calib_data.groupby('participant'):
+        # 1. Search the ENTIRE participant block for ANY "TRUE"
+        # We check both boolean True and string 'TRUE' just to be safe
+        low_conv = px_df['quest_low_converged'].isin([True, 'TRUE', 'True']).any()
+        high_conv = px_df['quest_high_converged'].isin([True, 'TRUE', 'True']).any()
+
         for target, target_df in px_df.groupby('calib_target'):
             n_trials = len(target_df)
+            final_alpha_sd = target_df['quest_alpha_sd'].iloc[-1]
             
             if target < 0.7:
                 cond_label = f"Low ({target:.2f})"
-                is_converged = target_df['quest_low_converged'].dropna().iloc[0]
+                is_converged = low_conv
             else:
                 cond_label = f"High ({target:.2f})"
-                is_converged = target_df['quest_high_converged'].dropna().iloc[0]
+                is_converged = high_conv
             
-            final_alpha_sd = target_df['quest_alpha_sd'].iloc[-1]
-            
-            print(f"| {px:<11} | {cond_label:<6} | {n_trials:<6} | {str(is_converged):<9} | {final_alpha_sd:<14.3f} |")
+            print(f"| {px:<11} | {cond_label:<10} | {n_trials:<6} | {str(is_converged):<9} | {final_alpha_sd:<14.3f} |")
     print()
 
 
@@ -1764,16 +1712,16 @@ if __name__ == "__main__":
     print("  [Final participant IDs in both datasets]")
     print(f"    {sorted(data['participant'].unique().tolist())}")
     print("=" * 60 + "\n")
-
     # ------------------------------------------------------------------
     # 9. Calibration Convergence Reporting
     # ------------------------------------------------------------------
     report_calibration_convergence(data)
-
+   
     # ------------------------------------------------------------------
     # 10. Descriptive Statistics
     # ------------------------------------------------------------------
     print_descriptives(data)
+    sys.stdout.flush()
 
     # ------------------------------------------------------------------
     # 11. Sanity Checks & Plots
@@ -1794,6 +1742,7 @@ if __name__ == "__main__":
 
     plot_sanity_check(test_data, OUTPUT_DIR)
     plot_calibration_convergence(data, OUTPUT_DIR)
+    sys.stdout.flush()
 
     # ------------------------------------------------------------------
     # 12. Recognition Memory Analysis
@@ -1824,6 +1773,7 @@ if __name__ == "__main__":
                 )[['Hit_rate', 'd_prime']].agg(['mean', 'std'])
                 print(summary_supp.to_string())
 
-        # 11b. Statistical Analyses
-        # recog_data is passed explicitly as a parameter to avoid global scope reliance
-        run_recognition_stats(mem_results, targets, supp_mem_results, recog_data)
+            sys.stdout.flush()
+
+            # Statistical Analyses (Long running - fitting models)
+            run_recognition_stats(mem_results, targets, supp_mem_results, recog_data)
