@@ -545,51 +545,101 @@ def fit_glmm_with_fallback(formula_maximal, formula_minimal, data_pl, family="bi
 # ============================================================================
 
 def analyze_recognition(main_data, recog_data):
+    """
+    Calculate recognition performance (HR, FA, d-prime) per participant
+    and per control condition (including uncontrolled items).
+
+    Returns
+    -------
+    mem_results : pd.DataFrame
+        Participant-level summary (primary: high vs. low vs. uncontrolled).
+    targets : pd.DataFrame
+        Trial-level recognition data for old items with condition labels.
+    supp_mem_results : pd.DataFrame
+        Participant-level summary for 2x2 (trial_level x item_type).
+    """
     recog_data = recog_data.copy()
     
     # 1. Convert "yes"/"no" responses to True/False for calculation
     recog_data['said_old'] = recog_data['mem_response'].str.lower() == 'yes'
 
     # 2. Calculate FALSE ALARM RATE (Noise Baseline)
-    # We use all "unseen" items. These don't have a 'controlled' status.
     foils = recog_data[recog_data['mem_ground_truth'] == 'unseen']
+    
+    if len(foils) == 0:
+        print("[WARNING] No foil ('unseen') trials found in recognition data.")
+        return None, None, None
+        
     fa_rates = foils.groupby('participant')['said_old'].mean().reset_index()
     fa_rates.rename(columns={'said_old': 'FA_rate'}, inplace=True)
 
-    # 3. Calculate HIT RATES (Signal)
-    # Only look at "seen" items. 
-    # Use 'controlled' as the condition (since 'control_condition' doesn't exist).
+    # 3. Process targets using the newly added direct tracking columns
     targets = recog_data[recog_data['mem_ground_truth'] == 'seen'].copy()
     
-    # Check if 'controlled' column exists; if not, you might need to check the exact spelling
-    condition_col = 'controlled' 
-    
-    hit_rates = (
-        targets
-        .groupby(['participant', condition_col])['said_old']
-        .mean()
-        .reset_index()
-        .rename(columns={'said_old': 'Hit_rate', condition_col: 'control_condition'})
+    # Check if we have the new logging (from updated CDmem_1.py)
+    if 'item_type' not in targets.columns or 'trial_level' not in targets.columns:
+        print("[INFO] Recognition data lacks condition tracking columns. Falling back to filename matching (for older subjects).")
+        # Build image -> condition lookup from main_data
+        if 'phase' in main_data.columns:
+            test_data = main_data[main_data['phase'] == 'test'].copy()
+        else:
+            test_data = main_data.copy()
+            
+        img_lookups = []
+        for _, row in test_data.iterrows():
+            px       = row['participant']
+            cond     = row['control_condition']
+            target_img = row['true_controlled']
+
+            img_lookups.append({
+                'participant':      px,
+                'mem_filename':     row['img_A_name' if target_img == 'img_A' else 'img_B_name'],
+                'trial_level':      cond,
+                'item_type':        'controlled'
+            })
+            img_lookups.append({
+                'participant':      px,
+                'mem_filename':     row['img_B_name' if target_img == 'img_A' else 'img_A_name'],
+                'trial_level':      cond,
+                'item_type':        'uncontrolled'
+            })
+        img_lookup = pd.DataFrame(img_lookups)
+        img_lookup.dropna(subset=['mem_filename'], inplace=True)
+        img_lookup.drop_duplicates(subset=['participant', 'mem_filename'], inplace=True)
+        
+        # Merge targets with condition labels
+        targets = targets.merge(img_lookup, on=['participant', 'mem_filename'], how='left')
+
+    # Derive 'control_condition' exactly as the old script expected for PRIMARY analysis:
+    # If controlled -> 'high' or 'low'. If uncontrolled -> 'uncontrolled'
+    targets['control_condition'] = targets.apply(
+        lambda row: row['trial_level'] if row['item_type'] == 'controlled' else 'uncontrolled',
+        axis=1
     )
 
-    # 4. Merge Hit rates with the FA baseline to get d-prime
+    # 4. Primary Hit Rates
+    hit_rates = (
+        targets
+        .groupby(['participant', 'control_condition'])['said_old']
+        .mean()
+        .reset_index()
+        .rename(columns={'said_old': 'Hit_rate'})
+    )
+
     results = hit_rates.merge(fa_rates, on='participant', how='left')
     results['d_prime'] = results.apply(
         lambda row: calc_dprime(row['Hit_rate'], row['FA_rate']), axis=1
     )
 
-    # 5. Handle the 2x2 Supplementary analysis if the columns exist
-    # You mentioned 'trial_level' and 'item_type'—ensure these are the exact names in CSV
-    results_supp = None
-    if 'trial_level' in targets.columns and 'item_type' in targets.columns:
-        results_supp = (
-            targets.groupby(['participant', 'trial_level', 'item_type'])['said_old']
-            .mean().reset_index().rename(columns={'said_old': 'Hit_rate'})
-            .merge(fa_rates, on='participant')
-        )
-        results_supp['d_prime'] = results_supp.apply(
-            lambda row: calc_dprime(row['Hit_rate'], row['FA_rate']), axis=1
-        )
+    # 5. Supplementary Analysis 2x2 Hit Rates (trial_level x item_type)
+    results_supp = (
+        targets.groupby(['participant', 'trial_level', 'item_type'])['said_old']
+        .mean().reset_index().rename(columns={'said_old': 'Hit_rate'})
+        .merge(fa_rates, on='participant', how='left')
+    )
+    results_supp['d_prime'] = results_supp.apply(
+        lambda row: calc_dprime(row['Hit_rate'], row['FA_rate']), axis=1
+    )
 
     return results, targets, results_supp
 

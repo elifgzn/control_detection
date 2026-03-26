@@ -959,8 +959,9 @@ image_pairs = make_image_pairs(sampled_test_images, _pair_seed)
 pair_index = 0
 
 # Mapping to track if an image was controlled ('yes') or distractor ('no')
+# Used to store the 'yes'/'no' control state and 'high'/'low' condition for memory test images
 image_control_map = {}
-
+image_condition_map = {}
 # ── Foil images for the memory test ──────────────────────────────────────────
 # We already populated `foil_images` from the paired subset sampled above.
 # The `foil_images` list contains exactly N_IMAGES (240) unseen images that are 
@@ -1389,7 +1390,8 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
         image_control_map[img_B_info['filename']] = 'yes' if target == left_label and left_label == 'img_B' \
                                                     else 'yes' if target == right_label and right_label == 'img_B' \
                                                     else 'no'
-
+        image_condition_map[img_A_info['filename']] = control_condition
+        image_condition_map[img_B_info['filename']] = control_condition
     # Get 2 unique trajectory snippets: one for target, one for distractor.
     trajectory_indices = get_trajectory_indices(2)
     target_snippet_idx, distractor_snippet_idx = trajectory_indices[0], trajectory_indices[1]
@@ -2130,6 +2132,8 @@ def run_memory_test(seen_images, foil_images_list):
             'mem_filename':     item['filename'],
             'mem_ground_truth': ground_truth,
             'controlled':       image_control_map.get(item['filename'], float('nan')),
+            'trial_level':      image_condition_map.get(item['filename'], float('nan')),
+            'item_type':        'controlled' if image_control_map.get(item['filename']) == 'yes' else 'uncontrolled' if image_control_map.get(item['filename']) == 'no' else float('nan'),
             'mem_response':     mem_response,
             'mem_rt':           mem_rt,
             'mem_trigger_onset': mem_trigger_onset,
