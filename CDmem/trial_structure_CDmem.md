@@ -11,7 +11,7 @@ The experiment is divided into 3 phases: **Calibration**, **Test**, and **Memory
 |-------|----------|--------|-------|
 | **Calibration** | - | 60–80 | Adaptive stop when alpha SD < 0.20; hard cap at 80 |
 | **Test — low** | 55% accuracy | 60 | 3 miniblocks × 20 trials. Show cases 120 images. |
-| **Test — high** | 85% accuracy | 60 | 3 miniblocks × 20 trials. Show cases 120 images. |
+| **Test — high** | 75% accuracy | 60 | 3 miniblocks × 20 trials. Show cases 120 images. |
 | **Test (total)** | - | **120** | **6 miniblocks × 20 trials. 240 total images shown.** |
 | **Memory test — seen** | Old | 240 | 2 images per trial × 120 test trials |
 | **Memory test — foils** | New | 240 | Paired counterparts never shown |
@@ -86,7 +86,7 @@ Participant presses a **number key 1–7**. After keypress, the next trial's fix
 
 ## Phase 1 — Calibration (Practice)
 
-**Purpose:** Estimate each participant's psychometric function via a QUEST+ Bayesian adaptive staircase, and find the `prop` value at which they can identify the controlled stimulus ~75% of the time.
+**Purpose:** Estimate each participant's psychometric function via a QUEST+ Bayesian adaptive staircase, and find the `prop` value at which they can identify the controlled stimulus ~75% of the time and 55% of the time. We now run two separate staircases for each participant, with different starting points for the psychometric function for the two target accuracies (i.e., 55% and 75%).
 
 **Stimuli:** Plain Square and Circle (no images).
 
