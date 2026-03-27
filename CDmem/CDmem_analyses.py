@@ -12,7 +12,7 @@ Located in: CDmem/data/subjects/
 
 TODO:
 - add cd accuracy analysis - check simon's code?
-- add RT analyses
+
 - ren et al 2026: Trims RT outliers on a rolling, per-participant basis. Any trial with an RT greater than mean + 3 * SD for that specific participant is discarded. // CDmem_analyses.py: Uses an absolute cutoff across the board. Any recognition trial with an RT greater than 20 seconds is discarded unconditionally (following Haridi et al., 2025).
 """
 
@@ -32,6 +32,7 @@ import seaborn as sns
 from pathlib import Path
 from scipy import stats
 from scipy.stats import norm
+from scipy.optimize import curve_fit
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from statsmodels.stats.anova import AnovaRM
@@ -573,42 +574,52 @@ def analyze_recognition(main_data, recog_data):
     fa_rates = foils.groupby('participant')['said_old'].mean().reset_index()
     fa_rates.rename(columns={'said_old': 'FA_rate'}, inplace=True)
 
-    # 3. Process targets using the newly added direct tracking columns
+    # 3. Process targets
     targets = recog_data[recog_data['mem_ground_truth'] == 'seen'].copy()
     
-    # Check if we have the new logging (from updated CDmem_1.py)
-    if 'item_type' not in targets.columns or 'trial_level' not in targets.columns:
-        print("[INFO] Recognition data lacks condition tracking columns. Falling back to filename matching (for older subjects).")
-        # Build image -> condition lookup from main_data
-        if 'phase' in main_data.columns:
-            test_data = main_data[main_data['phase'] == 'test'].copy()
-        else:
-            test_data = main_data.copy()
-            
-        img_lookups = []
-        for _, row in test_data.iterrows():
-            px       = row['participant']
-            cond     = row['control_condition']
-            target_img = row['true_controlled']
-
-            img_lookups.append({
-                'participant':      px,
-                'mem_filename':     row['img_A_name' if target_img == 'img_A' else 'img_B_name'],
-                'trial_level':      cond,
-                'item_type':        'controlled'
-            })
-            img_lookups.append({
-                'participant':      px,
-                'mem_filename':     row['img_B_name' if target_img == 'img_A' else 'img_A_name'],
-                'trial_level':      cond,
-                'item_type':        'uncontrolled'
-            })
-        img_lookup = pd.DataFrame(img_lookups)
-        img_lookup.dropna(subset=['mem_filename'], inplace=True)
-        img_lookup.drop_duplicates(subset=['participant', 'mem_filename'], inplace=True)
+    # Build image -> condition lookup from main_data to get encoding RTs and handle fallbacks
+    if 'phase' in main_data.columns:
+        test_data = main_data[main_data['phase'] == 'test'].copy()
+    else:
+        test_data = main_data.copy()
         
-        # Merge targets with condition labels
+    img_lookups = []
+    for _, row in test_data.iterrows():
+        px       = row['participant']
+        cond     = row['control_condition']
+        target_img = row['true_controlled']
+
+        img_lookups.append({
+            'participant':      px,
+            'mem_filename':     row['img_A_name' if target_img == 'img_A' else 'img_B_name'],
+            'trial_level':      cond,
+            'item_type':        'controlled',
+            'encoding_rt':      row['rt_choice']
+        })
+        img_lookups.append({
+            'participant':      px,
+            'mem_filename':     row['img_B_name' if target_img == 'img_A' else 'img_A_name'],
+            'trial_level':      cond,
+            'item_type':        'uncontrolled',
+            'encoding_rt':      row['rt_choice']
+        })
+    img_lookup = pd.DataFrame(img_lookups)
+    img_lookup.dropna(subset=['mem_filename'], inplace=True)
+    img_lookup.drop_duplicates(subset=['participant', 'mem_filename'], inplace=True)
+
+    # Check if we have the new logging (item_type/trial_level) in the CSV
+    has_tracking = 'item_type' in targets.columns and 'trial_level' in targets.columns
+    
+    if not has_tracking:
+        print("[INFO] Recognition data lacks condition tracking columns. Falling back to filename matching.")
         targets = targets.merge(img_lookup, on=['participant', 'mem_filename'], how='left')
+    else:
+        # Merge only encoding_rt if tracking columns already exist
+        targets = targets.merge(
+            img_lookup[['participant', 'mem_filename', 'encoding_rt']], 
+            on=['participant', 'mem_filename'], 
+            how='left'
+        )
 
     # Derive 'control_condition' exactly as the old script expected for PRIMARY analysis:
     # If controlled -> 'high' or 'low'. If uncontrolled -> 'uncontrolled'
@@ -1267,7 +1278,98 @@ def run_recognition_stats(mem_results, targets, supp_mem_results, recog_data):
     run_supp_analysis_4_glmm_foils(targets, recog_data)
     run_supp_analysis_5_fa_check(recog_data)
 
+    # --- NEW: Recognition RT Analysis ---
+    run_analysis_6_rt_lmm(targets, recog_data)
+
     print("\n" + "=" * 60)
+
+
+# ==============================================================================
+# ANALYSIS 6: Recognition RT LMM
+# ==============================================================================
+
+def run_analysis_6_rt_lmm(targets, recog_data):
+    """
+    Trial-level LMM (Linear, Gaussian) on recognition RTs.
+    Following the user provided R blueprint:
+    Model 1 (Correct trials): recog_rt ~ is_old + is_old:control + is_old:encoding_rt + (1|px)
+    Model 2 (Hits vs Misses): recog_rt ~ is_correct * control + (1|px) [Old items only]
+    """
+    if targets is None or recog_data is None:
+        print("[WARNING] Missing data for Analysis 6 (RT LMM). Skipping.")
+        return
+
+    # 1. Prepare data for Model 1: Correct Recognition Trials (Hits and CRs)
+    # -------------------------------------------------------------------------
+    foils = recog_data[recog_data['mem_ground_truth'] == 'unseen'].copy()
+    foils['is_correct'] = foils['mem_response'].str.lower() == 'no'
+    foils['item_type_c'] = -0.5
+    foils['control_c'] = 0  # No control condition for foils
+    foils['encoding_rt_z'] = 0 # No encoding time for foils
+    foils['recog_rt'] = pd.to_numeric(foils['mem_rt'], errors='coerce')
+    
+    targets_df = targets.copy()
+    targets_df['is_correct'] = targets_df['said_old'] # Hit = Old images called 'yes'
+    targets_df['item_type_c'] = 0.5
+    targets_df['control_c'] = targets_df['trial_level'].map({'high': 0.5, 'low': -0.5})
+    targets_df['recog_rt'] = pd.to_numeric(targets_df['mem_rt'], errors='coerce')
+    
+    # Z-score encoding RT per participant (or overall if only one)
+    if 'encoding_rt' in targets_df.columns:
+        valid_ert = targets_df.dropna(subset=['encoding_rt'])
+        if len(valid_ert) > 1:
+            targets_df['encoding_rt_z'] = (targets_df['encoding_rt'] - valid_ert['encoding_rt'].mean()) / (valid_ert['encoding_rt'].std() + 1e-9)
+        else:
+            targets_df['encoding_rt_z'] = 0
+    else:
+        targets_df['encoding_rt_z'] = 0
+
+    combined = pd.concat([
+        targets_df[['participant', 'recog_rt', 'is_correct', 'item_type_c', 'control_c', 'encoding_rt_z']],
+        foils[['participant', 'recog_rt', 'is_correct', 'item_type_c', 'control_c', 'encoding_rt_z']]
+    ], ignore_index=True)
+    
+    # Filter for correct trials only
+    correct_trials = combined[combined['is_correct'] == True].dropna(subset=['recog_rt'])
+
+    if len(correct_trials) > 0:
+        print("\nAnalysis 6: LMM on Recognition RT (Correct trials only)...")
+        print(f"  Trials: {len(correct_trials)} | Participants: {correct_trials['participant'].nunique()}")
+        
+        # Following R structure: recog_rt ~ item_type_c + item_type_c:control_c + item_type_c:encoding_rt_z
+        # We handle this as main effect of oldness and its interactions.
+        try:
+            df_pl = pl.from_pandas(correct_trials)
+            model, structure = fit_glmm_with_fallback(
+                formula_maximal="recog_rt ~ item_type_c + item_type_c:control_c + item_type_c:encoding_rt_z + (1 | participant)",
+                formula_minimal="recog_rt ~ item_type_c + (1 | participant)", # Very minimal fallback
+                data_pl=df_pl,
+                family="gaussian"
+            )
+            if model is not None:
+                print(f"  [REPORT] Random effects structure used: {structure}")
+        except Exception as e:
+            print(f"  [ERROR] Model 1 failed: {e}")
+
+    # 2. Prepare data for Model 2: Hits vs Misses (Old items only)
+    # -------------------------------------------------------------------------
+    old_items = targets_df.dropna(subset=['recog_rt', 'is_correct', 'control_c'])
+    if len(old_items) > 0:
+        print("\nAnalysis 6: LMM on Recognition RT (Hits vs Misses for Old items)...")
+        old_items['is_correct_c'] = old_items['is_correct'].map({True: 0.5, False: -0.5})
+        
+        try:
+            df_pl = pl.from_pandas(old_items)
+            model, structure = fit_glmm_with_fallback(
+                formula_maximal="recog_rt ~ is_correct_c * control_c + (1 | participant)",
+                formula_minimal="recog_rt ~ is_correct_c + control_c + (1 | participant)",
+                data_pl=df_pl,
+                family="gaussian"
+            )
+            if model is not None:
+                print(f"  [REPORT] Random effects structure used: {structure}")
+        except Exception as e:
+            print(f"  [ERROR] Model 2 failed: {e}")
 
 
 # ============================================================================
@@ -1409,6 +1511,58 @@ def plot_calibration_convergence(data, output_dir):
     print("Saved plot: " + str(out_path))
 
 
+def plot_recognition_performance(supp_mem_results, output_dir):
+    """
+    Create a bar plot for recognition hit rates.
+    X-axis: Trial Level (High vs Low), Hue: Item Type (Controlled vs Uncontrolled).
+    """
+    if supp_mem_results is None or len(supp_mem_results) == 0:
+        print("[WARNING] No supplementary recognition data for plotting.")
+        return
+
+    plt.style.use('seaborn-v0_8-whitegrid')
+    
+    plt.figure(figsize=(10, 7))
+    
+    # Sort for consistent plotting
+    plot_df = supp_mem_results.copy()
+    if 'trial_level' in plot_df.columns and 'item_type' in plot_df.columns:
+        plot_df['trial_level'] = pd.Categorical(plot_df['trial_level'], categories=['high', 'low'], ordered=True)
+        plot_df['item_type'] = pd.Categorical(plot_df['item_type'], categories=['controlled', 'uncontrolled'], ordered=True)
+        plot_df = plot_df.sort_values(['trial_level', 'item_type'])
+
+        # Create the grouped bar plot
+        # High Control Blue, Low Control Orange (standard colors from sanity check)
+        # But here we have two factors, so using a standard palette like 'Set2'
+        ax = sns.barplot(
+            data=plot_df, 
+            x='trial_level', 
+            y='Hit_rate', 
+            hue='item_type',
+            errorbar='se',
+            palette='Set2',
+            capsize=0.1
+        )
+
+        plt.title('Recognition Performance: Hit Rate by Condition', fontsize=14, fontweight='bold')
+        plt.xlabel('Control Task Level', fontsize=12)
+        plt.ylabel('Hit Rate (Mean Accuracy to Old Items)', fontsize=12)
+        plt.ylim(0, 1)
+        plt.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5, label='Chance')
+        
+        plt.legend(title='Item Type', frameon=True, loc='upper right')
+
+        plt.tight_layout()
+        out_dir = Path(output_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / 'recognition_performance.png'
+        plt.savefig(out_path, dpi=150)
+        plt.close()
+        print(f"Saved recognition plot: {out_path}")
+    else:
+        print("[WARNING] Missing required columns for recognition plot.")
+
+
 # ============================================================================
 # DATA INTEGRITY CHECKS
 # ============================================================================
@@ -1513,134 +1667,155 @@ def sanity_check(df):
     return results
 
 
-def plot_sanity_check(df, output_dir):
+def plot_sanity_check(data, output_dir):
     """Create plots for sanity check statistics."""
 
     plt.style.use('seaborn-v0_8-whitegrid')
-    sns.set_palette("husl")
+    
+    # Define consistent colors for conditions
+    color_map = {'high': '#1f77b4', 'low': '#ff7f0e'} # Blue for High, Orange for Low
 
     fig, axes = plt.subplots(2, 2, figsize=(14, 12))
-    df = df.copy()
+    data = data.copy()
 
-    df['detection_accuracy'] = pd.to_numeric(df['detection_accuracy'], errors='coerce')
-    df['prop_used']          = pd.to_numeric(df['prop_used'],          errors='coerce')
-    if 'agency_rating' in df.columns:
-        df['agency_rating'] = pd.to_numeric(df['agency_rating'], errors='coerce')
-    if 'rt_choice' in df.columns:
-        df['rt_choice'] = pd.to_numeric(df['rt_choice'], errors='coerce')
+    # Ensure numeric types for critical columns
+    numeric_cols = ['detection_accuracy', 'prop_used', 'agency_rating', 'rt_choice', 'calib_target']
+    for col in numeric_cols:
+        if col in data.columns:
+            data[col] = pd.to_numeric(data[col], errors='coerce')
 
-    has_condition = 'control_condition' in df.columns
+    # Split into calibration and test data
+    calib_data = data[data['phase'] == 'calibration'].copy() if 'phase' in data.columns else pd.DataFrame()
+    test_data  = data[data['phase'] == 'test'].copy()        if 'phase' in data.columns else data.copy()
 
-    # 1. Psychometric function
+    # 1. Psychometric function (using Calibration data fit + Test markers)
     ax = axes[0, 0]
-    if has_condition:
-        for condition in df['control_condition'].dropna().unique():
-            subset = df[df['control_condition'] == condition].copy()
-            if len(subset) == 0:
-                continue
-            if subset['prop_used'].min() != subset['prop_used'].max():
-                bins        = np.linspace(subset['prop_used'].min(), subset['prop_used'].max(), 11)
-                bin_centers = (bins[:-1] + bins[1:]) / 2
-                subset['prop_bin'] = pd.cut(subset['prop_used'], bins=bins, labels=bin_centers)
-                psychometric = (
-                    subset.groupby('prop_bin', observed=False)['detection_accuracy']
-                    .agg(['mean', 'sem']).reset_index()
-                )
-                psychometric['prop_bin'] = psychometric['prop_bin'].astype(float)
-                ax.errorbar(psychometric['prop_bin'], psychometric['mean'],
-                            yerr=psychometric['sem'], label=f'{condition}',
-                            marker='o', capsize=3)
-            else:
-                psychometric = (
-                    subset.groupby('prop_used', observed=False)['detection_accuracy']
-                    .agg(['mean', 'sem']).reset_index()
-                )
-                ax.errorbar(psychometric['prop_used'], psychometric['mean'],
-                            yerr=psychometric['sem'], label=f'{condition}',
-                            marker='o', capsize=3)
-        ax.legend()
+    if not calib_data.empty:
+        # Define psychometric fit (sigmoid starting at 0.5)
+        def psychometric_func(x, alpha, beta):
+            return 0.5 + 0.48 / (1 + np.exp(-np.clip(beta, 0.1, 100) * (x - alpha)))
+
+        # Detect number of participants to decide on binning strategy
+        n_participants = data['participant'].nunique() if 'participant' in data.columns else 1
+
+        # 1a. Global sigmoid fit (pooling all calibration data)
+        try:
+            if calib_data['prop_used'].nunique() >= 2:
+                popt, _ = curve_fit(psychometric_func, calib_data['prop_used'], calib_data['detection_accuracy'], 
+                                    p0=[calib_data['prop_used'].mean(), 10], 
+                                    bounds=([0, 0], [1, 200]), maxfev=5000)
+                x_fit = np.linspace(0, 1, 100)
+                y_fit = psychometric_func(x_fit, *popt)
+                ax.plot(x_fit, y_fit, color='gray', linestyle='-', linewidth=2, alpha=0.6, label='Global Sigmoid Fit')
+        except Exception as e:
+            print(f"[Plotting] Global sigmoid fit failed: {e}")
+
+        # 1b. Staircase-specific data points
+        if 'calib_target' in calib_data.columns:
+            calib_data['calib_condition'] = np.where(calib_data['calib_target'] < 0.7, 'low', 'high')
+            for condition in ['high', 'low']:
+                subset = calib_data[calib_data['calib_condition'] == condition].copy()
+                if subset.empty: continue
+                
+                # Binning Strategy: use raw values for single participant, bins for multiple
+                if n_participants == 1:
+                    psychometric = subset.groupby('prop_used', observed=False)['detection_accuracy'].agg(['mean', 'sem']).reset_index()
+                    psychometric.rename(columns={'prop_used': 'prop_bin'}, inplace=True)
+                else:
+                    bins = np.linspace(0, 1, 11)
+                    bin_centers = (bins[:-1] + bins[1:]) / 2
+                    subset['prop_bin'] = pd.cut(subset['prop_used'], bins=bins, labels=bin_centers)
+                    psychometric = subset.groupby('prop_bin', observed=False)['detection_accuracy'].agg(['mean', 'sem']).reset_index()
+                    psychometric['prop_bin'] = psychometric['prop_bin'].astype(float)
+                
+                psychometric = psychometric.dropna(subset=['mean'])
+                
+                ax.errorbar(psychometric['prop_bin'], psychometric['mean'], yerr=psychometric['sem'],
+                            marker='o', capsize=3, linestyle='None', color=color_map[condition], alpha=0.7,
+                            label=f'{condition.capitalize()} {"Samples" if n_participants == 1 else "Bins"}')
+                # Add target horizontal lines
+                target_acc = 0.55 if condition == 'low' else 0.85
+                ax.axhline(y=target_acc, color=color_map[condition], linestyle=':', alpha=0.3)
+
+        # 1c. Overlay Test Results
+        if not test_data.empty:
+            for condition in ['high', 'low']:
+                test_subset = test_data[test_data['control_condition'] == condition]
+                if not test_subset.empty:
+                    mean_prop = test_subset['prop_used'].mean()
+                    mean_acc  = test_subset['detection_accuracy'].mean()
+                    ax.plot(mean_prop, mean_acc, marker='*', markersize=15, 
+                            color=color_map[condition], markeredgecolor='black',
+                            linestyle='None', label=f'{condition.capitalize()} (Test)')
+        
+        ax.legend(frameon=True, facecolor='white', framealpha=0.9, fontsize='small', loc='lower right')
     else:
-        if df['prop_used'].min() != df['prop_used'].max():
-            bins        = np.linspace(df['prop_used'].min(), df['prop_used'].max(), 11)
-            bin_centers = (bins[:-1] + bins[1:]) / 2
-            df['prop_bin'] = pd.cut(df['prop_used'], bins=bins, labels=bin_centers)
-            psychometric = (
-                df.groupby('prop_bin', observed=False)['detection_accuracy']
-                .agg(['mean', 'sem']).reset_index()
-            )
-            psychometric['prop_bin'] = psychometric['prop_bin'].astype(float)
-            ax.errorbar(psychometric['prop_bin'], psychometric['mean'],
-                        yerr=psychometric['sem'], marker='o', capsize=3)
-        else:
-            psychometric = (
-                df.groupby('prop_used', observed=False)['detection_accuracy']
-                .agg(['mean', 'sem']).reset_index()
-            )
-            ax.errorbar(psychometric['prop_used'], psychometric['mean'],
-                        yerr=psychometric['sem'], marker='o', capsize=3)
+        ax.text(0.5, 0.5, 'No calibration data available', transform=ax.transAxes, ha='center')
 
     ax.set_xlabel('Control Level (prop self-motion)')
     ax.set_ylabel('Accuracy')
-    ax.set_title('Psychometric Function')
+    ax.set_title(f'Psychometric Function ({"Raw" if n_participants == 1 else "Binned"} & Global Fit)')
     ax.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5)
+    ax.set_ylim([-0.05, 1.05])
+    ax.set_xlim([-0.05, 1.05])
 
-    # 2. Accuracy by condition
+    # 2. Accuracy by condition (using Test data)
     ax = axes[0, 1]
-    if has_condition:
+    has_condition = 'control_condition' in test_data.columns
+    if has_condition and not test_data.empty:
+        # Sort to ensure consistent order: high, low
         accuracy_data = (
-            df.groupby('control_condition')['detection_accuracy']
-            .agg(['mean', 'sem']).reset_index()
+            test_data.groupby('control_condition')['detection_accuracy']
+            .agg(['mean', 'sem']).reindex(['high', 'low']).dropna().reset_index()
         )
-        colors = ['#1f77b4', '#ff7f0e'] if len(accuracy_data) <= 2 else None
+        colors = [color_map.get(str(c), '#666666') for c in accuracy_data['control_condition']]
         ax.bar(accuracy_data['control_condition'].astype(str), accuracy_data['mean'],
                yerr=accuracy_data['sem'], capsize=5, color=colors)
         ax.set_xlabel('Control Condition')
-    else:
-        ax.bar(['Overall'], [df['detection_accuracy'].mean()],
-               yerr=[df['detection_accuracy'].sem()], capsize=5)
-
+    elif not test_data.empty:
+        ax.bar(['Overall'], [test_data['detection_accuracy'].mean()],
+               yerr=[test_data['detection_accuracy'].sem()], capsize=5, color='gray')
+    
     ax.set_ylabel('Mean Accuracy')
-    ax.set_title('Accuracy')
+    ax.set_title('Accuracy (Test Phase)')
     ax.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5, label='Chance')
     ax.set_ylim([0, 1])
 
-    # 3. Agency ratings by accuracy
+    # 3. Agency ratings by accuracy (using Test data)
     ax = axes[1, 0]
-    if 'agency_rating' in df.columns and df['agency_rating'].notna().any():
+    if 'agency_rating' in test_data.columns and test_data['agency_rating'].notna().any():
         if has_condition:
-            sns.barplot(data=df, x='control_condition', y='agency_rating',
-                        hue='detection_accuracy', ax=ax, errorbar='se')
+            sns.barplot(data=test_data, x='control_condition', y='agency_rating',
+                        hue='detection_accuracy', ax=ax, errorbar='se',
+                        palette={0: '#cccccc', 1: '#999999'}, order=['high', 'low'])
             ax.set_xlabel('Control Condition')
         else:
-            df['Overall'] = 'Overall'
-            sns.barplot(data=df, x='Overall', y='agency_rating',
+            sns.barplot(data=test_data, x='phase', y='agency_rating',
                         hue='detection_accuracy', ax=ax, errorbar='se')
-            ax.set_xlabel('')
         ax.set_ylabel('Agency Rating (1-7)')
-        ax.set_title('Agency Ratings by Accuracy')
+        ax.set_title('Agency Ratings by Accuracy (Test Phase)')
         ax.legend(title='Correct (1) / Incorrect (0)')
     else:
-        ax.text(0.5, 0.5, 'No agency rating data available',
-                transform=ax.transAxes, ha='center')
+        ax.text(0.5, 0.5, 'No agency rating data available', transform=ax.transAxes, ha='center')
 
-    # 4. RT distribution
+    # 4. RT distribution (using Test data)
     ax = axes[1, 1]
-    if 'rt_choice' in df.columns and df['rt_choice'].notna().any():
-        df_rt = df[df['rt_choice'] > 0]
+    if 'rt_choice' in test_data.columns and test_data['rt_choice'].notna().any():
+        df_rt = test_data[test_data['rt_choice'] > 0]
         if has_condition and len(df_rt) > 0:
-            for condition in df_rt['control_condition'].dropna().unique():
+            for condition in ['high', 'low']:
                 subset = df_rt[df_rt['control_condition'] == condition]['rt_choice']
                 if len(subset) > 0:
-                    ax.hist(subset, bins=30, alpha=0.5, label=str(condition), density=True)
+                    ax.hist(subset, bins=30, alpha=0.4, label=condition, 
+                            density=True, color=color_map.get(condition))
             ax.legend()
         elif len(df_rt) > 0:
-            ax.hist(df_rt['rt_choice'], bins=30, alpha=0.5, density=True)
+            ax.hist(df_rt['rt_choice'], bins=30, alpha=0.5, density=True, color='gray')
         ax.set_xlabel('Reaction Time (s)')
         ax.set_ylabel('Density')
-        ax.set_title('RT Distribution')
+        ax.set_title('RT Distribution (Test Phase)')
     else:
-        ax.text(0.5, 0.5, 'No RT data available',
-                transform=ax.transAxes, ha='center')
+        ax.text(0.5, 0.5, 'No RT data available', transform=ax.transAxes, ha='center')
 
     plt.tight_layout()
     out_dir = Path(output_dir)
@@ -1783,7 +1958,7 @@ if __name__ == "__main__":
         print(s_results['accuracy_by_condition'].to_string())
         print()
 
-    plot_sanity_check(test_data, OUTPUT_DIR)
+    plot_sanity_check(data, OUTPUT_DIR)
     plot_calibration_convergence(data, OUTPUT_DIR)
     sys.stdout.flush()
 
@@ -1820,3 +1995,6 @@ if __name__ == "__main__":
 
             # Statistical Analyses (Long running - fitting models)
             run_recognition_stats(mem_results, targets, supp_mem_results, recog_data)
+
+            # Recognition Performance Plot
+            plot_recognition_performance(supp_mem_results, OUTPUT_DIR)
