@@ -34,6 +34,7 @@ from scipy import stats
 from scipy.stats import norm
 from scipy.optimize import curve_fit
 from statsmodels.stats.anova import AnovaRM
+import statsmodels.formula.api as smf
 from pymer4.models import lmer, glmer
 
 # ============================================================================
@@ -1224,6 +1225,125 @@ def run_supp_analysis_5_fa_check(recog_data):
     return fa_per_px
 
 
+# ------------------------------------------------------------------------------
+# ANALYSIS 5a: Agency as a function of current accuracy and control level
+# (adapted from MT_Inference_Analysis.py Analysis 5a)
+# ------------------------------------------------------------------------------
+
+def run_agency_current_trial_analysis(test_data):
+    """
+    OLS regression of agency_rating on current-trial accuracy and control level,
+    run separately for each control condition (High vs Low).
+
+    Model (per condition):
+      agency_rating ~ detection_accuracy + prop_used + detection_accuracy:prop_used
+
+    Tests whether subjective agency tracks current performance (detection_accuracy)
+    and control level (prop_used), and whether they interact, within each condition.
+
+    NOTE: The active OLS model is taken directly from MT_Inference_Analysis.py
+    (Analysis 5a). It pools all trials within a condition without accounting for
+    participant-level clustering. A mixed-effects alternative (smf.mixedlm with
+    participant as random intercept) is provided below in commented-out form --
+    uncomment it if you want to account for between-participant variance.
+
+    Parameters
+    ----------
+    test_data : pd.DataFrame
+        Test-phase main data (after exclusions), must contain:
+        'agency_rating', 'detection_accuracy', 'prop_used', 'control_condition'.
+    """
+    if test_data is None or len(test_data) == 0:
+        print("[WARNING] test_data is None or empty. Skipping Analysis 5a.")
+        return None
+
+    if 'agency_rating' not in test_data.columns or test_data['agency_rating'].isna().all():
+        print("[INFO] No agency rating data available. Skipping Analysis 5a.")
+        return None
+
+    df_agency = test_data.dropna(subset=['agency_rating', 'detection_accuracy', 'prop_used']).copy()
+
+    if len(df_agency) == 0:
+        print("[WARNING] No valid trials with agency ratings. Skipping Analysis 5a.")
+        return None
+
+    print("\n" + "=" * 60)
+    print("ANALYSIS 5a: Agency ~ Accuracy + Control Level (OLS per Condition)")
+    print("=" * 60)
+    print("  Model: agency_rating ~ detection_accuracy + prop_used + detection_accuracy:prop_used")
+    print("  Source: adapted from MT_Inference_Analysis.py (Analysis 5a).")
+    print("  Run separately for High and Low control conditions.")
+
+    results = {}
+
+    for condition in ['high', 'low']:
+        df_cond = df_agency[df_agency['control_condition'] == condition]
+
+        if len(df_cond) < 30:
+            print(f"\n  [{condition.upper()}] Insufficient data (N={len(df_cond)} trials). Skipping.")
+            continue
+
+        print(f"\n  [{condition.upper()} condition] N = {len(df_cond)} trials, "
+              f"{df_cond['participant'].nunique()} participant(s)")
+
+        # ------------------------------------------------------------------
+        # Active model: OLS (from MT_Inference_Analysis.py Analysis 5a)
+        # Pools all trials within condition; ignores participant clustering.
+        # ------------------------------------------------------------------
+        try:
+            formula = "agency_rating ~ detection_accuracy + prop_used + detection_accuracy:prop_used"
+            model = smf.ols(formula, data=df_cond).fit()
+            results[f'{condition}_agency_model'] = model
+
+            print(f"  R\u00b2 = {model.rsquared:.3f}, F({int(model.df_model)},{int(model.df_resid)}) "
+                  f"= {model.fvalue:.3f}, p = {model.f_pvalue:.4f}")
+            print(f"  {'Predictor':<35} {'Coef':>8} {'SE':>8} {'t':>7} {'p':>8}")
+            print("  " + "-" * 70)
+            for term in model.params.index:
+                coef  = model.params[term]
+                se    = model.bse[term]
+                tval  = model.tvalues[term]
+                pval  = model.pvalues[term]
+                label = term.replace('detection_accuracy:prop_used', 'accuracy \u00d7 prop_used')
+                sig   = " *" if pval < 0.05 else ""
+                print(f"  {label:<35} {coef:>8.3f} {se:>8.3f} {tval:>7.3f} {pval:>8.4f}{sig}")
+
+        except Exception as e:
+            print(f"  [ERROR] OLS model failed for {condition} condition: {e}")
+
+        # ------------------------------------------------------------------
+        # Alternative model: Mixed LMM with participant as random intercept.
+        # Uncomment this block (and comment out the OLS block above) if you
+        # want to account for between-participant variance in agency ratings.
+        # Requires smf.mixedlm (already imported as smf).
+        # ------------------------------------------------------------------
+        # try:
+        #     formula_mixed = ("agency_rating ~ detection_accuracy + prop_used "
+        #                      "+ detection_accuracy:prop_used")
+        #     model_mixed = smf.mixedlm(
+        #         formula_mixed, df_cond, groups=df_cond['participant']
+        #     ).fit()
+        #     results[f'{condition}_agency_model'] = model_mixed
+        #
+        #     print(f"  Mixed LMM [{condition.upper()}]:")
+        #     print(f"  {'Predictor':<35} {'Coef':>8} {'SE':>8} {'z':>7} {'p':>8}")
+        #     print("  " + "-" * 70)
+        #     for term in model_mixed.params.index:
+        #         coef  = model_mixed.params[term]
+        #         se    = model_mixed.bse[term]
+        #         zval  = model_mixed.tvalues[term]
+        #         pval  = model_mixed.pvalues[term]
+        #         label = term.replace('detection_accuracy:prop_used', 'accuracy x prop_used')
+        #         sig   = " *" if pval < 0.05 else ""
+        #         print(f"  {label:<35} {coef:>8.3f} {se:>8.3f} {zval:>7.3f} {pval:>8.4f}{sig}")
+        #
+        # except Exception as e:
+        #     print(f"  [ERROR] Mixed LMM failed for {condition} condition: {e}")
+
+    print()
+    return results
+
+
 # ============================================================================
 # PRINT HELPERS
 # ============================================================================
@@ -1996,3 +2116,8 @@ if __name__ == "__main__":
 
             # Recognition Performance Plot
             plot_recognition_performance(supp_mem_results, OUTPUT_DIR)
+
+    # ------------------------------------------------------------------
+    # 13. Analysis 5a: Agency ~ Accuracy + Control Level (Test Phase)
+    # ------------------------------------------------------------------
+    run_agency_current_trial_analysis(test_data)
