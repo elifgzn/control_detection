@@ -33,8 +33,6 @@ from pathlib import Path
 from scipy import stats
 from scipy.stats import norm
 from scipy.optimize import curve_fit
-import statsmodels.api as sm
-import statsmodels.formula.api as smf
 from statsmodels.stats.anova import AnovaRM
 from pymer4.models import lmer, glmer
 
@@ -859,7 +857,7 @@ def run_analysis_4_interaction_glmm(targets, recog_data):
         print(f"  [REPORT] Random effects structure used: {structure}")
 
     # -------------------------------------------------------------------------
-    # ALTERNATIVE (R SCRIPT) APPROACH: NESTED INTERACTION MODEL
+    # ALTERNATIVE APPROACH: NESTED INTERACTION MODEL (Ren et al., 2026)
     # -------------------------------------------------------------------------
     # Why this was added: 
     # To provide a comparison between the full-factorial sum-coded model (above) 
@@ -1291,7 +1289,7 @@ def run_recognition_stats(mem_results, targets, supp_mem_results, recog_data):
 def run_analysis_6_rt_lmm(targets, recog_data):
     """
     Trial-level LMM (Linear, Gaussian) on recognition RTs.
-    Following the user provided R blueprint:
+    Following Ren et al., 2026 R code blueprint:
     Model 1 (Correct trials): recog_rt ~ is_old + is_old:control + is_old:encoding_rt + (1|px)
     Model 2 (Hits vs Misses): recog_rt ~ is_correct * control + (1|px) [Old items only]
     """
