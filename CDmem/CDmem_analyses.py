@@ -10,10 +10,15 @@ Loads all subject data files and performs various analyses.
 Data file naming convention: CDmem_1_{participant}.csv
 Located in: CDmem/data/subjects/
 
-TODO:
-- add cd accuracy analysis - check simon's code?
+- add cd accuracy analysis -> see run_cd_accuracy_analysis() below.
 
 - ren et al 2026: Trims RT outliers on a rolling, per-participant basis. Any trial with an RT greater than mean + 3 * SD for that specific participant is discarded. // CDmem_analyses.py: Uses an absolute cutoff across the board. Any recognition trial with an RT greater than 20 seconds is discarded unconditionally (following Haridi et al., 2025).
+
+- TODO (supplementary): Add a serial/trial-order analysis of recognition memory. Images are presented
+  in counterbalanced blocks (all High trials together, all Low trials together), so there may be
+  primacy/recency effects on memory. Adding a trial_position covariate (z-scored serial position
+  within block) to Analysis 3 would allow testing whether the control-level effect persists after
+  controlling for encoding order.
 """
 
 import os
@@ -27,6 +32,10 @@ import glob
 import numpy as np
 import pandas as pd
 import polars as pl
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend: writes directly to file, no GUI window.
+                       # Ensures plots are saved reliably on Windows regardless of whether
+                       # a display is available or image viewer has the file open.
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
@@ -35,6 +44,7 @@ from scipy.stats import norm
 from scipy.optimize import curve_fit
 from statsmodels.stats.anova import AnovaRM
 import statsmodels.formula.api as smf
+from statsmodels.stats.multitest import multipletests
 from pymer4.models import lmer, glmer
 
 # ============================================================================
@@ -46,6 +56,11 @@ SCRIPT_DIR = Path(__file__).parent
 DATA_DIR = Path(r"C:\Users\elifg\Desktop\PHD\control_detection\pilot_data")
 OUTPUT_DIR = SCRIPT_DIR / "analysis_output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# Participant filter: set to a non-empty list to restrict analyses to specific
+# participant IDs, e.g. PARTICIPANT_FILTER = [2, 3].
+# Leave as an empty list [] to include ALL participants found in data files.
+PARTICIPANT_FILTER = [2,3]  # e.g. [2, 3]
 
 # ============================================================================
 # DATA LOADING
@@ -109,6 +124,14 @@ def load_all_data(data_dir=DATA_DIR):
         return None
 
     data = pd.concat(dfs, ignore_index=True)
+
+    if PARTICIPANT_FILTER:
+        before = data['participant'].nunique()
+        data = data[data['participant'].isin(PARTICIPANT_FILTER)].copy()
+        after = data['participant'].nunique()
+        print(f"  PARTICIPANT_FILTER applied: retained {after}/{before} participant(s).")
+        print(f"  Retained: {sorted(data['participant'].unique().tolist())}\n")
+
     print(f"\nLoaded {len(dfs)} file(s) -> {len(data)} total rows combined.\n")
     return data
 
@@ -679,6 +702,8 @@ def run_analysis_1_dprime_ttest(mem_results):
     pivoted = pivoted.dropna(subset=['high', 'low'])
 
     t_stat, p_val = stats.ttest_rel(pivoted['high'], pivoted['low'])
+    diff = pivoted['high'] - pivoted['low']
+    cohens_d = diff.mean() / (diff.std() + 1e-9)
 
     return {
         'analysis':   'Analysis 1: d-prime paired t-test',
@@ -688,6 +713,7 @@ def run_analysis_1_dprime_ttest(mem_results):
         'mean_low':   pivoted['low'].mean(),
         'sd_high':    pivoted['high'].std(),
         'sd_low':     pivoted['low'].std(),
+        'cohens_d':   cohens_d,
         'n':          len(pivoted)
     }
 
@@ -713,6 +739,8 @@ def run_analysis_2_hitrate_ttest(mem_results):
     pivoted = pivoted.dropna(subset=['high', 'low'])
 
     t_stat, p_val = stats.ttest_rel(pivoted['high'], pivoted['low'])
+    diff = pivoted['high'] - pivoted['low']
+    cohens_d = diff.mean() / (diff.std() + 1e-9)
 
     return {
         'analysis':   'Analysis 2: Hit rate paired t-test',
@@ -722,6 +750,7 @@ def run_analysis_2_hitrate_ttest(mem_results):
         'mean_low':   pivoted['low'].mean(),
         'sd_high':    pivoted['high'].std(),
         'sd_low':     pivoted['low'].std(),
+        'cohens_d':   cohens_d,
         'n':          len(pivoted)
     }
 
@@ -845,6 +874,11 @@ def run_analysis_4_interaction_glmm(targets, recog_data):
     print(f"  Trials: {len(df)} (T={len(targets_df)}, F={len(foils)}) | Pxs: {df['participant'].nunique()}")
     print(f"  Contrast coding: Target=+0.5/Foil=-0.5, High=+0.5/Low=-0.5")
     print(f"  NOTE: control_c for foils is a balanced dummy assignment (not experimental).")
+    print(f"  Target cell counts (item_type_c x control_c):")
+    for (it, cc), grp in targets_df.groupby(['item_type_c', 'control_c']):
+        lbl_it = 'Target' if it > 0 else 'Foil'
+        lbl_cc = 'High'   if cc > 0 else 'Low'
+        print(f"    {lbl_it} / {lbl_cc}: N trials={len(grp)}, N pxs={grp['participant'].nunique()}")
 
     df_pl = pl.from_pandas(df)
 
@@ -1148,6 +1182,11 @@ def run_supp_analysis_4_glmm_foils(targets, recog_data):
     print(f"  Trials: {len(df)} (Old={len(old_items)}, Foils={len(foils)})")
     print(f"  Contrast coding: Old=+0.5/Foil=-0.5, High=+0.5/Low=-0.5, Ctrl=+0.5/Unctrl=-0.5")
     print(f"  NOTE: trial_level_c and item_type_c for foils are balanced dummy assignments.")
+    print(f"  Old-item cell counts (trial_level x item_type):")
+    for (tl, it), grp in old_items.groupby(['trial_level_c', 'item_type_c']):
+        lbl_tl = 'High' if tl > 0 else 'Low'
+        lbl_it = 'Controlled' if it > 0 else 'Uncontrolled'
+        print(f"    {lbl_tl} / {lbl_it}: N trials={len(grp)}, N pxs={grp['participant'].nunique()}")
 
     df_pl = pl.from_pandas(df)
 
@@ -1356,6 +1395,8 @@ def print_stat_results(res):
     print(f"  t({res['n']-1}) = {res['t_stat']:.3f}, p = {res['p_val']:.4f}")
     print(f"  Mean (SD) High: {res['mean_high']:.3f} ({res['sd_high']:.3f})")
     print(f"  Mean (SD) Low:  {res['mean_low']:.3f} ({res['sd_low']:.3f})")
+    if 'cohens_d' in res:
+        print(f"  Cohen's d       : {res['cohens_d']:.3f}")
 
 
 def run_recognition_stats(mem_results, targets, supp_mem_results, recog_data):
@@ -1390,13 +1431,38 @@ def run_recognition_stats(mem_results, targets, supp_mem_results, recog_data):
     print("SUPPLEMENTARY ANALYSES (2x2 Factorial + FA Check)")
     print("-" * 60)
 
-    run_supp_analysis_1_dprime_2x2_anova(supp_mem_results)
-    run_supp_analysis_2_hitrate_2x2_anova(supp_mem_results)
+    s1 = run_supp_analysis_1_dprime_2x2_anova(supp_mem_results)
+    s2 = run_supp_analysis_2_hitrate_2x2_anova(supp_mem_results)
     run_supp_analysis_3_glmm_2x2(targets)
     run_supp_analysis_4_glmm_foils(targets, recog_data)
     run_supp_analysis_5_fa_check(recog_data)
 
-    # --- NEW: Recognition RT Analysis ---
+    # --- Bonferroni correction summary for supplementary ANOVAs ---
+    k_supp = 4  # Supp 1-4 constitute the supplementary family
+    alpha_adj = 0.05 / k_supp
+    print("\n" + "-" * 60)
+    print(f"BONFERRONI CORRECTION (Supplementary Analyses, k={k_supp})")
+    print(f"  Corrected alpha = 0.05 / {k_supp} = {alpha_adj:.4f}")
+    print("-" * 60)
+    for label, anova in [("Supp 1 (d-prime 2x2 ANOVA)", s1),
+                         ("Supp 2 (hit rate 2x2 ANOVA)", s2)]:
+        if anova is None:
+            print(f"  {label}: not available.")
+            continue
+        try:
+            tbl = anova.anova_table
+            int_keys = [idx for idx in tbl.index if ':' in str(idx)]
+            if int_keys:
+                p_raw = tbl.loc[int_keys[0], 'Pr > F']
+                p_adj = min(1.0, p_raw * k_supp)
+                sig   = " *" if p_adj < 0.05 else ""
+                print(f"  {label}: interaction p_uncorr={p_raw:.4f}, "
+                      f"p_Bonferroni={p_adj:.4f}{sig}")
+        except Exception as e:
+            print(f"  {label}: could not extract p-values ({e}).")
+    print(f"  NOTE: Supp 3 & 4 GLMM p-values should also be compared against alpha={alpha_adj:.4f}.")
+
+    # --- Recognition RT Analysis ---
     run_analysis_6_rt_lmm(targets, recog_data)
 
     print("\n" + "=" * 60)
@@ -1432,13 +1498,12 @@ def run_analysis_6_rt_lmm(targets, recog_data):
     targets_df['control_c'] = targets_df['trial_level'].map({'high': 0.5, 'low': -0.5})
     targets_df['recog_rt'] = pd.to_numeric(targets_df['mem_rt'], errors='coerce')
     
-    # Z-score encoding RT per participant (or overall if only one)
+    # Z-score encoding RT per participant (within-subject centering — standard practice)
     if 'encoding_rt' in targets_df.columns:
-        valid_ert = targets_df.dropna(subset=['encoding_rt'])
-        if len(valid_ert) > 1:
-            targets_df['encoding_rt_z'] = (targets_df['encoding_rt'] - valid_ert['encoding_rt'].mean()) / (valid_ert['encoding_rt'].std() + 1e-9)
-        else:
-            targets_df['encoding_rt_z'] = 0
+        targets_df['encoding_rt_z'] = targets_df.groupby('participant')['encoding_rt'].transform(
+            lambda x: (x - x.mean()) / (x.std() + 1e-9) if x.notna().sum() > 1 else pd.Series(0.0, index=x.index)
+        )
+        targets_df['encoding_rt_z'] = targets_df['encoding_rt_z'].fillna(0.0)
     else:
         targets_df['encoding_rt_z'] = 0
 
@@ -1569,6 +1634,19 @@ def report_calibration_convergence(data):
     print()
 
 
+def _px_label(data, col='participant'):
+    """
+    Build a compact participant label string for plot titles.
+    Single participant  -> '(p. 3)'
+    Multiple participants -> '(p. 2, 3, 7)'
+    """
+    if data is None or col not in data.columns:
+        return ''
+    ids = sorted(data[col].dropna().unique().tolist())
+    ids_str = ', '.join(str(int(i)) if float(i).is_integer() else str(i) for i in ids)
+    return f'(p. {ids_str})'
+
+
 def plot_calibration_convergence(data, output_dir):
     """
     Plot the trajectory of QUEST alpha_sd over calibration trials.
@@ -1611,7 +1689,7 @@ def plot_calibration_convergence(data, output_dir):
         )
 
     plt.axhline(y=0.2, color='red', linestyle='--', alpha=0.5, label='Convergence Threshold (0.2)')
-    plt.title('Calibration Phase: QUEST Alpha SD Trajectory')
+    plt.title(f'Calibration Phase: QUEST Alpha SD Trajectory  {_px_label(data)}')
     plt.xlabel('Trial in Block')
     plt.ylabel('Alpha SD')
     
@@ -1662,7 +1740,8 @@ def plot_recognition_performance(supp_mem_results, output_dir):
             capsize=0.1
         )
 
-        plt.title('Recognition Performance: Hit Rate by Condition', fontsize=14, fontweight='bold')
+        plt.title(f'Recognition Performance: Hit Rate by Condition  {_px_label(plot_df)}',
+                  fontsize=14, fontweight='bold')
         plt.xlabel('Control Task Level', fontsize=12)
         plt.ylabel('Hit Rate (Mean Accuracy to Old Items)', fontsize=12)
         plt.ylim(0, 1)
@@ -1935,12 +2014,151 @@ def plot_sanity_check(data, output_dir):
     else:
         ax.text(0.5, 0.5, 'No RT data available', transform=ax.transAxes, ha='center')
 
+    px_lbl = _px_label(data)
+    fig.suptitle(f'Sanity Check  {px_lbl}', fontsize=14, fontweight='bold', y=1.01)
     plt.tight_layout()
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    plt.savefig(out_dir / 'sanity_check.png', dpi=150)
+    plt.savefig(out_dir / 'sanity_check.png', dpi=150, bbox_inches='tight')
     plt.close()
     print("Saved plot: " + str(out_dir / 'sanity_check.png'))
+
+
+# ============================================================================
+# CONTROL DETECTION ACCURACY ANALYSIS (Manipulation Check)
+# ============================================================================
+
+def run_cd_accuracy_analysis(data):
+    """
+    Verify the control manipulation worked by testing whether detection accuracy
+    differs significantly between High and Low conditions in the test phase.
+
+    This is a prerequisite check: if accuracy does not differ, the memory
+    analyses cannot be attributed to a control-level effect.
+
+    Analyses:
+      1. Descriptive summary (mean, SD per condition).
+      2. Paired t-test: High vs. Low (participant-level means) + Cohen's d.
+      3. Binomial GLMM: detection_accuracy ~ control_c + (1 + control_c | participant).
+    """
+    if data is None or len(data) == 0:
+        print("[WARNING] No data for CD accuracy analysis. Skipping.")
+        return
+
+    test_data = data[data['phase'] == 'test'].copy() if 'phase' in data.columns else data.copy()
+    test_data['detection_accuracy'] = pd.to_numeric(test_data['detection_accuracy'], errors='coerce')
+
+    if 'control_condition' not in test_data.columns:
+        print("[WARNING] 'control_condition' column missing. Skipping CD accuracy analysis.")
+        return
+
+    print("\n" + "=" * 60)
+    print("CONTROL DETECTION ACCURACY (Manipulation Check)")
+    print("=" * 60)
+    print(f"  Expected: High \u2248 {EXPECTED_ACCURACY['high']*100:.0f}%, Low \u2248 {EXPECTED_ACCURACY['low']*100:.0f}%")
+
+    # 1. Descriptives
+    desc = (
+        test_data.groupby('control_condition')['detection_accuracy']
+        .agg(mean='mean', sd='std', n='count')
+        .reindex(['high', 'low']).dropna()
+    )
+    print("\n  Descriptives:")
+    for cond, row in desc.iterrows():
+        print(f"    {cond.capitalize()}: M = {row['mean']:.3f}, SD = {row['sd']:.3f}, N = {int(row['n'])} trials")
+
+    # 2. Paired t-test (participant-level means)
+    acc_px = (
+        test_data
+        .groupby(['participant', 'control_condition'])['detection_accuracy']
+        .mean().reset_index()
+        .pivot(index='participant', columns='control_condition', values='detection_accuracy')
+        .dropna(subset=['high', 'low'])
+    )
+    if len(acc_px) < 2:
+        print("\n  [WARNING] Too few participants for paired t-test. Skipping.")
+        return
+
+    t_stat, p_val = stats.ttest_rel(acc_px['high'], acc_px['low'])
+    diff = acc_px['high'] - acc_px['low']
+    cohens_d = diff.mean() / (diff.std() + 1e-9)
+
+    print(f"\n  Paired t-test (High vs. Low, participant-level means):")
+    print(f"    t({len(acc_px)-1}) = {t_stat:.3f}, p = {p_val:.4f}")
+    print(f"    Cohen's d = {cohens_d:.3f}")
+    print(f"    Mean (SD) High: {acc_px['high'].mean():.3f} ({acc_px['high'].std():.3f})")
+    print(f"    Mean (SD) Low:  {acc_px['low'].mean():.3f} ({acc_px['low'].std():.3f})")
+    if p_val < 0.05:
+        print("    -> Significant: manipulation successfully differentiated accuracy levels.")
+    else:
+        print("    -> NOT significant: accuracy did not differ between conditions. "
+              "Interpret memory effects with caution.")
+
+    # 3. Binomial GLMM
+    print("\n  Binomial GLMM: detection_accuracy ~ control_c + (1 + control_c | participant)")
+    df = test_data.dropna(subset=['detection_accuracy', 'control_condition', 'participant']).copy()
+    df['control_c'] = df['control_condition'].map({'high': 0.5, 'low': -0.5})
+    df = df.dropna(subset=['control_c'])
+    df['detection_accuracy'] = df['detection_accuracy'].astype(int)
+    if df['participant'].nunique() < 2:
+        print("  [WARNING] Need \u22652 participants for GLMM. Skipping.")
+        return
+    df_pl = pl.from_pandas(df[['participant', 'detection_accuracy', 'control_c']])
+    fit_glmm_with_fallback(
+        formula_maximal="detection_accuracy ~ control_c + (1 + control_c | participant)",
+        formula_minimal="detection_accuracy ~ control_c + (1 | participant)",
+        data_pl=df_pl,
+        family="binomial"
+    )
+    print("=" * 60 + "\n")
+
+
+# ============================================================================
+# PLOT: d-prime by condition (2x2)
+# ============================================================================
+
+def plot_dprime_by_condition(supp_mem_results, output_dir):
+    """
+    Bar chart of mean d' grouped by the 2x2 design:
+      Trial Level (High / Low) x Item Type (Controlled / Uncontrolled).
+    A d' = 0 reference line marks chance memory performance.
+    """
+    if supp_mem_results is None or len(supp_mem_results) == 0:
+        print("[WARNING] No supplementary data for d-prime plot.")
+        return
+    if 'trial_level' not in supp_mem_results.columns or 'item_type' not in supp_mem_results.columns:
+        print("[WARNING] Missing required columns for d-prime plot.")
+        return
+
+    plt.style.use('seaborn-v0_8-whitegrid')
+    plot_df = supp_mem_results.copy()
+    plot_df['trial_level'] = pd.Categorical(
+        plot_df['trial_level'], categories=['high', 'low'], ordered=True
+    )
+    plot_df['item_type'] = pd.Categorical(
+        plot_df['item_type'], categories=['controlled', 'uncontrolled'], ordered=True
+    )
+
+    fig, ax = plt.subplots(figsize=(10, 7))
+    sns.barplot(
+        data=plot_df, x='trial_level', y='d_prime', hue='item_type',
+        errorbar='se', palette='Set2', capsize=0.1, ax=ax,
+        order=['high', 'low'], hue_order=['controlled', 'uncontrolled']
+    )
+    ax.axhline(y=0, color='black', linestyle='--', linewidth=1.2, alpha=0.6,
+               label="d\u2032 = 0 (chance)")
+    ax.set_title(f"Recognition Memory Sensitivity (d\u2032) by Condition  {_px_label(supp_mem_results)}",
+                 fontsize=14, fontweight='bold')
+    ax.set_xlabel("Control Task Level", fontsize=12)
+    ax.set_ylabel("d\u2032 (Mean \u00b1 SE)", fontsize=12)
+    ax.legend(title='Item Type', frameon=True, loc='lower right')
+    plt.tight_layout()
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / 'dprime_by_condition.png'
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+    print(f"Saved d-prime plot: {out_path}")
 
 
 # ============================================================================
@@ -2114,10 +2332,16 @@ if __name__ == "__main__":
             # Statistical Analyses (Long running - fitting models)
             run_recognition_stats(mem_results, targets, supp_mem_results, recog_data)
 
-            # Recognition Performance Plot
+            # Recognition Performance Plots
             plot_recognition_performance(supp_mem_results, OUTPUT_DIR)
+            plot_dprime_by_condition(supp_mem_results, OUTPUT_DIR)
 
     # ------------------------------------------------------------------
-    # 13. Analysis 5a: Agency ~ Accuracy + Control Level (Test Phase)
+    # 13. Control Detection Accuracy (Manipulation Check)
+    # ------------------------------------------------------------------
+    run_cd_accuracy_analysis(data)
+
+    # ------------------------------------------------------------------
+    # 14. Analysis 5a: Agency ~ Accuracy + Control Level (Test Phase)
     # ------------------------------------------------------------------
     run_agency_current_trial_analysis(test_data)
