@@ -14,7 +14,11 @@ Located in: CDmem/data/subjects/
 
 - ren et al 2026: Trims RT outliers on a rolling, per-participant basis. Any trial with an RT greater than mean + 3 * SD for that specific participant is discarded. // CDmem_analyses.py: Uses an absolute cutoff across the board. Any recognition trial with an RT greater than 20 seconds is discarded unconditionally (following Haridi et al., 2025).
 
-- TODO (supplementary): Add a serial/trial-order analysis of recognition memory. Images are presented
+- TODO 
+
+SANITY CHECK PLOTS SHOULD BE BOTH PARTICIPANT SPECIFIC AND POOLED!
+
+(supplementary): Add a serial/trial-order analysis of recognition memory. Images are presented
   in counterbalanced blocks (all High trials together, all Low trials together), so there may be
   primacy/recency effects on memory. Adding a trial_position covariate (z-scored serial position
   within block) to Analysis 3 would allow testing whether the control-level effect persists after
