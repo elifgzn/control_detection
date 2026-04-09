@@ -58,8 +58,11 @@ from pymer4.models import lmer, glmer
 SCRIPT_DIR = Path(__file__).parent
 # DATA_DIR = SCRIPT_DIR / "data" / "subjects"
 DATA_DIR = Path(r"C:\Users\elifg\Desktop\PHD\control_detection\pilot_data")
-OUTPUT_DIR = SCRIPT_DIR / "analysis_output"
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DIR          = SCRIPT_DIR / "analysis_output"
+POOLED_DIR          = OUTPUT_DIR / "pooled"
+PER_PARTICIPANT_DIR = OUTPUT_DIR / "per_participant"
+for _d in (OUTPUT_DIR, POOLED_DIR, PER_PARTICIPANT_DIR):
+    _d.mkdir(parents=True, exist_ok=True)
 
 # Participant filter: set to a non-empty list to restrict analyses to specific
 # participant IDs, e.g. PARTICIPANT_FILTER = [2, 3].
@@ -615,19 +618,20 @@ def analyze_recognition(main_data, recog_data):
         cond     = row['control_condition']
         target_img = row['true_controlled']
 
+        _agency = row['agency_rating'] if 'agency_rating' in row.index and pd.notna(row.get('agency_rating')) else np.nan
         img_lookups.append({
             'participant':      px,
             'mem_filename':     row['img_A_name' if target_img == 'img_A' else 'img_B_name'],
             'trial_level':      cond,
             'item_type':        'controlled',
-            'encoding_rt':      row['rt_choice']
+            'agency_rating':    _agency
         })
         img_lookups.append({
             'participant':      px,
             'mem_filename':     row['img_B_name' if target_img == 'img_A' else 'img_A_name'],
             'trial_level':      cond,
             'item_type':        'uncontrolled',
-            'encoding_rt':      row['rt_choice']
+            'agency_rating':    _agency
         })
     img_lookup = pd.DataFrame(img_lookups)
     img_lookup.dropna(subset=['mem_filename'], inplace=True)
@@ -640,10 +644,10 @@ def analyze_recognition(main_data, recog_data):
         print("[INFO] Recognition data lacks condition tracking columns. Falling back to filename matching.")
         targets = targets.merge(img_lookup, on=['participant', 'mem_filename'], how='left')
     else:
-        # Merge only encoding_rt if tracking columns already exist
+        # Merge agency_rating if tracking columns already exist
         targets = targets.merge(
-            img_lookup[['participant', 'mem_filename', 'encoding_rt']], 
-            on=['participant', 'mem_filename'], 
+            img_lookup[['participant', 'mem_filename', 'agency_rating']],
+            on=['participant', 'mem_filename'],
             how='left'
         )
 
@@ -1466,97 +1470,214 @@ def run_recognition_stats(mem_results, targets, supp_mem_results, recog_data):
             print(f"  {label}: could not extract p-values ({e}).")
     print(f"  NOTE: Supp 3 & 4 GLMM p-values should also be compared against alpha={alpha_adj:.4f}.")
 
-    # --- Recognition RT Analysis ---
-    run_analysis_6_rt_lmm(targets, recog_data)
 
     print("\n" + "=" * 60)
 
 
+
+
 # ==============================================================================
-# ANALYSIS 6: Recognition RT LMM
+# ANALYSIS 7: Agency Rating -> Recognition Memory
+# (mirrors Analyses 1, 2, 3 — with median-split agency as the binary predictor)
 # ==============================================================================
 
-def run_analysis_6_rt_lmm(targets, recog_data):
+def prepare_agency_mem_results(targets, recog_data):
     """
-    Trial-level LMM (Linear, Gaussian) on recognition RTs.
-    Following Ren et al., 2026 R code blueprint:
-    Model 1 (Correct trials): recog_rt ~ is_old + is_old:control + is_old:encoding_rt + (1|px)
-    Model 2 (Hits vs Misses): recog_rt ~ is_correct * control + (1|px) [Old items only]
-    """
-    if targets is None or recog_data is None:
-        print("[WARNING] Missing data for Analysis 6 (RT LMM). Skipping.")
-        return
+    Median-split agency_rating per participant into 'high' and 'low' agency,
+    then compute hit rates and d-prime for each level.
 
-    # 1. Prepare data for Model 1: Correct Recognition Trials (Hits and CRs)
-    # -------------------------------------------------------------------------
+    This mirrors the structure of analyze_recognition / mem_results so that
+    Analyses 7a-c can parallel Analyses 1-3 exactly.
+
+    FA rate is taken from foils (same per-participant rate used elsewhere,
+    since foils have no agency rating).
+
+    Returns
+    -------
+    agency_mem_results : pd.DataFrame
+        Participant-level (participant x agency_level) with Hit_rate, FA_rate, d_prime.
+    targets_agency : pd.DataFrame
+        Trial-level targets with 'agency_level' and 'agency_c' (±0.5) columns added.
+    """
+    if targets is None or len(targets) == 0:
+        print("[INFO] No target data for agency memory preparation.")
+        return None, None
+    if 'agency_rating' not in targets.columns or targets['agency_rating'].isna().all():
+        print("[INFO] No agency_rating data. Skipping agency memory preparation.")
+        return None, None
+
+    df = targets.copy()
+    df['agency_rating'] = pd.to_numeric(df['agency_rating'], errors='coerce')
+    df = df.dropna(subset=['agency_rating', 'said_old', 'participant'])
+
+    # Median split per participant
+    df['_median'] = df.groupby('participant')['agency_rating'].transform('median')
+    df['agency_level'] = np.where(df['agency_rating'] >= df['_median'], 'high', 'low')
+    df['agency_c']     = np.where(df['agency_level'] == 'high', 0.5, -0.5)
+    df.drop(columns=['_median'], inplace=True)
+
+    # FA rate per participant (from foils — no agency assignment possible for foils)
     foils = recog_data[recog_data['mem_ground_truth'] == 'unseen'].copy()
-    foils['is_correct'] = foils['mem_response'].str.lower() == 'no'
-    foils['item_type_c'] = -0.5
-    foils['control_c'] = 0  # No control condition for foils
-    foils['encoding_rt_z'] = 0 # No encoding time for foils
-    foils['recog_rt'] = pd.to_numeric(foils['mem_rt'], errors='coerce')
-    
-    targets_df = targets.copy()
-    targets_df['is_correct'] = targets_df['said_old'] # Hit = Old images called 'yes'
-    targets_df['item_type_c'] = 0.5
-    targets_df['control_c'] = targets_df['trial_level'].map({'high': 0.5, 'low': -0.5})
-    targets_df['recog_rt'] = pd.to_numeric(targets_df['mem_rt'], errors='coerce')
-    
-    # Z-score encoding RT per participant (within-subject centering — standard practice)
-    if 'encoding_rt' in targets_df.columns:
-        targets_df['encoding_rt_z'] = targets_df.groupby('participant')['encoding_rt'].transform(
-            lambda x: (x - x.mean()) / (x.std() + 1e-9) if x.notna().sum() > 1 else pd.Series(0.0, index=x.index)
-        )
-        targets_df['encoding_rt_z'] = targets_df['encoding_rt_z'].fillna(0.0)
-    else:
-        targets_df['encoding_rt_z'] = 0
+    foils['said_old'] = foils['mem_response'].str.lower() == 'yes'
+    fa_rates = foils.groupby('participant')['said_old'].mean().reset_index()
+    fa_rates.rename(columns={'said_old': 'FA_rate'}, inplace=True)
 
-    combined = pd.concat([
-        targets_df[['participant', 'recog_rt', 'is_correct', 'item_type_c', 'control_c', 'encoding_rt_z']],
-        foils[['participant', 'recog_rt', 'is_correct', 'item_type_c', 'control_c', 'encoding_rt_z']]
-    ], ignore_index=True)
-    
-    # Filter for correct trials only
-    correct_trials = combined[combined['is_correct'] == True].dropna(subset=['recog_rt'])
+    # Hit rates per (participant, agency_level)
+    hit_rates = (
+        df.groupby(['participant', 'agency_level'])['said_old']
+        .mean().reset_index()
+        .rename(columns={'said_old': 'Hit_rate'})
+    )
 
-    if len(correct_trials) > 0:
-        print("\nAnalysis 6: LMM on Recognition RT (Correct trials only)...")
-        print(f"  Trials: {len(correct_trials)} | Participants: {correct_trials['participant'].nunique()}")
-        
-        # Following R structure: recog_rt ~ item_type_c + item_type_c:control_c + item_type_c:encoding_rt_z
-        # We handle this as main effect of oldness and its interactions.
-        try:
-            df_pl = pl.from_pandas(correct_trials)
-            model, structure = fit_glmm_with_fallback(
-                formula_maximal="recog_rt ~ item_type_c + item_type_c:control_c + item_type_c:encoding_rt_z + (1 | participant)",
-                formula_minimal="recog_rt ~ item_type_c + (1 | participant)", # Very minimal fallback
-                data_pl=df_pl,
-                family="gaussian"
-            )
-            if model is not None:
-                print(f"  [REPORT] Random effects structure used: {structure}")
-        except Exception as e:
-            print(f"  [ERROR] Model 1 failed: {e}")
+    results = hit_rates.merge(fa_rates, on='participant', how='left')
+    results['d_prime'] = results.apply(
+        lambda row: calc_dprime(row['Hit_rate'], row['FA_rate']), axis=1
+    )
 
-    # 2. Prepare data for Model 2: Hits vs Misses (Old items only)
-    # -------------------------------------------------------------------------
-    old_items = targets_df.dropna(subset=['recog_rt', 'is_correct', 'control_c'])
-    if len(old_items) > 0:
-        print("\nAnalysis 6: LMM on Recognition RT (Hits vs Misses for Old items)...")
-        old_items['is_correct_c'] = old_items['is_correct'].map({True: 0.5, False: -0.5})
-        
-        try:
-            df_pl = pl.from_pandas(old_items)
-            model, structure = fit_glmm_with_fallback(
-                formula_maximal="recog_rt ~ is_correct_c * control_c + (1 | participant)",
-                formula_minimal="recog_rt ~ is_correct_c + control_c + (1 | participant)",
-                data_pl=df_pl,
-                family="gaussian"
-            )
-            if model is not None:
-                print(f"  [REPORT] Random effects structure used: {structure}")
-        except Exception as e:
-            print(f"  [ERROR] Model 2 failed: {e}")
+    print("\nAgency Memory Results (Median Split):")
+    print(results.to_string(index=False))
+
+    return results, df
+
+
+# ------------------------------------------------------------------------------
+# ANALYSIS 7a: Paired t-test on d-prime (mirrors Analysis 1)
+# ------------------------------------------------------------------------------
+
+def run_analysis_7a_dprime_ttest(agency_mem_results):
+    """
+    Paired t-test comparing d-prime between high and low agency (median split).
+    Mirrors Analysis 1.
+    """
+    if agency_mem_results is None:
+        print("[WARNING] agency_mem_results is None. Skipping Analysis 7a.")
+        return None
+
+    pivoted = agency_mem_results.pivot(
+        index='participant', columns='agency_level', values='d_prime'
+    )
+    if 'high' not in pivoted.columns or 'low' not in pivoted.columns:
+        print("[WARNING] Missing agency level data for d-prime t-test.")
+        return None
+
+    pivoted = pivoted.dropna(subset=['high', 'low'])
+    t_stat, p_val = stats.ttest_rel(pivoted['high'], pivoted['low'])
+    diff = pivoted['high'] - pivoted['low']
+    cohens_d = diff.mean() / (diff.std() + 1e-9)
+
+    return {
+        'analysis':  'Analysis 7a: d-prime paired t-test (High vs Low Agency)',
+        't_stat':    t_stat,
+        'p_val':     p_val,
+        'mean_high': pivoted['high'].mean(),
+        'mean_low':  pivoted['low'].mean(),
+        'sd_high':   pivoted['high'].std(),
+        'sd_low':    pivoted['low'].std(),
+        'cohens_d':  cohens_d,
+        'n':         len(pivoted)
+    }
+
+
+# ------------------------------------------------------------------------------
+# ANALYSIS 7b: Paired t-test on hit rates (mirrors Analysis 2)
+# ------------------------------------------------------------------------------
+
+def run_analysis_7b_hitrate_ttest(agency_mem_results):
+    """
+    Paired t-test comparing hit rates between high and low agency (median split).
+    Mirrors Analysis 2.
+    """
+    if agency_mem_results is None:
+        print("[WARNING] agency_mem_results is None. Skipping Analysis 7b.")
+        return None
+
+    pivoted = agency_mem_results.pivot(
+        index='participant', columns='agency_level', values='Hit_rate'
+    )
+    if 'high' not in pivoted.columns or 'low' not in pivoted.columns:
+        print("[WARNING] Missing agency level data for hit rate t-test.")
+        return None
+
+    pivoted = pivoted.dropna(subset=['high', 'low'])
+    t_stat, p_val = stats.ttest_rel(pivoted['high'], pivoted['low'])
+    diff = pivoted['high'] - pivoted['low']
+    cohens_d = diff.mean() / (diff.std() + 1e-9)
+
+    return {
+        'analysis':  'Analysis 7b: Hit rate paired t-test (High vs Low Agency)',
+        't_stat':    t_stat,
+        'p_val':     p_val,
+        'mean_high': pivoted['high'].mean(),
+        'mean_low':  pivoted['low'].mean(),
+        'sd_high':   pivoted['high'].std(),
+        'sd_low':    pivoted['low'].std(),
+        'cohens_d':  cohens_d,
+        'n':         len(pivoted)
+    }
+
+
+# ------------------------------------------------------------------------------
+# ANALYSIS 7c: GLMM on said_old ~ agency_c (mirrors Analysis 3)
+# ------------------------------------------------------------------------------
+
+def run_analysis_7c_glmm(targets_agency):
+    """
+    Trial-level GLMM (Binomial, logit link) on target (old) trials.
+    Predictor: agency_c (contrast-coded from median split: High=+0.5, Low=-0.5).
+    Mirrors Analysis 3.
+
+    Model formula:
+      Maximal : said_old_int ~ agency_c + (1 + agency_c | participant)
+      Fallback: said_old_int ~ agency_c + (1 | participant)
+    """
+    if targets_agency is None or len(targets_agency) == 0:
+        print("[WARNING] No target data for Analysis 7c. Skipping.")
+        return None
+
+    df = targets_agency.copy()
+    df['said_old_int'] = df['said_old'].astype(int)
+    df = df.dropna(subset=['said_old_int', 'agency_c', 'participant'])
+
+    if len(df) == 0:
+        print("[WARNING] No valid trials for Analysis 7c after preprocessing.")
+        return None
+
+    print("\nAnalysis 7c: GLMM (Binomial, logit link) on target trials (High vs Low Agency)...")
+    print(f"  Trials: {len(df)} | Participants: {df['participant'].nunique()}")
+    print(f"  Contrast coding: High Agency = +0.5, Low Agency = -0.5 (median split per participant)")
+
+    df_pl = pl.from_pandas(df[['participant', 'said_old_int', 'agency_c']])
+
+    model, structure = fit_glmm_with_fallback(
+        formula_maximal="said_old_int ~ agency_c + (1 + agency_c | participant)",
+        formula_minimal="said_old_int ~ agency_c + (1 | participant)",
+        data_pl=df_pl,
+        family="binomial"
+    )
+    if model is not None:
+        print(f"  [REPORT] Random effects structure used: {structure}")
+    return model
+
+
+def run_agency_recognition_stats(agency_mem_results, targets_agency):
+    """
+    Run all agency -> recognition analyses (7a, 7b, 7c).
+    Mirrors run_recognition_stats in structure.
+    """
+    print("\n" + "=" * 60)
+    print("ANALYSIS 7: Agency Rating -> Recognition Memory")
+    print("  (Median split per participant: High vs Low Agency)")
+    print("=" * 60)
+
+    res7a = run_analysis_7a_dprime_ttest(agency_mem_results)
+    print_stat_results(res7a)
+
+    res7b = run_analysis_7b_hitrate_ttest(agency_mem_results)
+    print_stat_results(res7b)
+
+    run_analysis_7c_glmm(targets_agency)
+
+    print("\n" + "=" * 60)
 
 
 # ============================================================================
@@ -1651,7 +1772,7 @@ def _px_label(data, col='participant'):
     return f'(p. {ids_str})'
 
 
-def plot_calibration_convergence(data, output_dir):
+def plot_calibration_convergence(data, output_dir, suffix=""):
     """
     Plot the trajectory of QUEST alpha_sd over calibration trials.
     """
@@ -1705,13 +1826,13 @@ def plot_calibration_convergence(data, output_dir):
     plt.tight_layout()
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / 'calibration_convergence.png'
+    out_path = out_dir / f'calibration_convergence{suffix}.png'
     plt.savefig(out_path, dpi=150)
     plt.close()
     print("Saved plot: " + str(out_path))
 
 
-def plot_recognition_performance(supp_mem_results, output_dir):
+def plot_recognition_performance(supp_mem_results, output_dir, suffix=""):
     """
     Create a bar plot for recognition hit rates.
     X-axis: Trial Level (High vs Low), Hue: Item Type (Controlled vs Uncontrolled).
@@ -1756,7 +1877,7 @@ def plot_recognition_performance(supp_mem_results, output_dir):
         plt.tight_layout()
         out_dir = Path(output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / 'recognition_performance.png'
+        out_path = out_dir / f'recognition_performance{suffix}.png'
         plt.savefig(out_path, dpi=150)
         plt.close()
         print(f"Saved recognition plot: {out_path}")
@@ -1868,7 +1989,7 @@ def sanity_check(df):
     return results
 
 
-def plot_sanity_check(data, output_dir):
+def plot_sanity_check(data, output_dir, suffix=""):
     """Create plots for sanity check statistics."""
 
     plt.style.use('seaborn-v0_8-whitegrid')
@@ -2023,9 +2144,9 @@ def plot_sanity_check(data, output_dir):
     plt.tight_layout()
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    plt.savefig(out_dir / 'sanity_check.png', dpi=150, bbox_inches='tight')
+    plt.savefig(out_dir / f'sanity_check{suffix}.png', dpi=150, bbox_inches='tight')
     plt.close()
-    print("Saved plot: " + str(out_dir / 'sanity_check.png'))
+    print("Saved plot: " + str(out_dir / f'sanity_check{suffix}.png'))
 
 
 # ============================================================================
@@ -2121,7 +2242,7 @@ def run_cd_accuracy_analysis(data):
 # PLOT: d-prime by condition (2x2)
 # ============================================================================
 
-def plot_dprime_by_condition(supp_mem_results, output_dir):
+def plot_dprime_by_condition(supp_mem_results, output_dir, suffix=""):
     """
     Bar chart of mean d' grouped by the 2x2 design:
       Trial Level (High / Low) x Item Type (Controlled / Uncontrolled).
@@ -2159,10 +2280,116 @@ def plot_dprime_by_condition(supp_mem_results, output_dir):
     plt.tight_layout()
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / 'dprime_by_condition.png'
+    out_path = out_dir / f'dprime_by_condition{suffix}.png'
     plt.savefig(out_path, dpi=150)
     plt.close()
     print(f"Saved d-prime plot: {out_path}")
+
+
+# ============================================================================
+# PLOT: Agency rating vs. recognition memory
+# ============================================================================
+
+def plot_agency_recognition(targets, output_dir, suffix=""):
+    """
+    Bar chart of mean hit rate per agency rating level (1-7), split by control
+    condition (High vs Low), with SE error bars and a logistic regression trend
+    line per condition overlaid.
+
+    X-axis : Agency rating 1-7 (discrete Likert values)
+    Y-axis : Mean hit rate (proportion of targets recognised as 'old')
+    Shows  : Whether memory performance increases as SoA ratings increase.
+    """
+    if targets is None or len(targets) == 0:
+        print("[WARNING] No target data for agency_recognition plot.")
+        return
+    if 'agency_rating' not in targets.columns or targets['agency_rating'].isna().all():
+        print("[INFO] No agency_rating data. Skipping agency_recognition plot.")
+        return
+
+    df = targets.copy()
+    df['said_old_int'] = df['said_old'].astype(int)
+    df['agency_rating'] = pd.to_numeric(df['agency_rating'], errors='coerce')
+    df = df.dropna(subset=['agency_rating', 'said_old_int'])
+
+    if len(df) == 0:
+        print("[WARNING] No valid rows for agency_recognition plot.")
+        return
+
+    plt.style.use('seaborn-v0_8-whitegrid')
+    color_map = {'high': '#1f77b4', 'low': '#ff7f0e'}
+
+    cond_col    = 'trial_level' if 'trial_level' in df.columns else 'control_condition'
+    conditions  = [c for c in ['high', 'low'] if c in df[cond_col].values]
+    rating_vals = sorted(df['agency_rating'].dropna().unique())
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Offset bars side-by-side for the two conditions
+    bar_w   = 0.35
+    n_cond  = len(conditions)
+    offsets = np.linspace(-(n_cond - 1) * bar_w / 2,
+                           (n_cond - 1) * bar_w / 2,
+                           n_cond)
+
+    for i, cond in enumerate(conditions):
+        subset = df[df[cond_col] == cond].copy()
+        if subset.empty:
+            continue
+
+        # Mean hit rate +/- SE per discrete rating value
+        grouped = (
+            subset.groupby('agency_rating')['said_old_int']
+            .agg(mean='mean', sem=lambda x: x.sem())
+            .reindex(rating_vals)
+            .reset_index()
+        )
+
+        x_pos = np.array(grouped['agency_rating'], dtype=float) + offsets[i]
+        col   = color_map.get(cond, 'gray')
+
+        ax.bar(
+            x_pos, grouped['mean'],
+            width=bar_w, color=col, alpha=0.75,
+            label=f'{cond.capitalize()} control', zorder=2
+        )
+        ax.errorbar(
+            x_pos, grouped['mean'], yerr=grouped['sem'],
+            fmt='none', color=col, capsize=4, linewidth=1.5, zorder=3
+        )
+
+        # Logistic regression trend line across full rating range
+        try:
+            from scipy.special import expit
+            valid = subset.dropna(subset=['agency_rating', 'said_old_int'])
+            if valid['agency_rating'].nunique() >= 3:
+                lr       = smf.logit('said_old_int ~ agency_rating', data=valid).fit(disp=False)
+                x_line   = np.linspace(min(rating_vals), max(rating_vals), 200)
+                log_odds = lr.params['Intercept'] + lr.params['agency_rating'] * x_line
+                ax.plot(x_line, expit(log_odds),
+                        color=col, linewidth=2.2, linestyle='-', alpha=0.85,
+                        label=f'{cond.capitalize()} trend', zorder=4)
+        except Exception:
+            pass
+
+    ax.axhline(y=0.5, color='gray', linestyle=':', alpha=0.5, label='Chance')
+    ax.set_xticks(rating_vals)
+    ax.set_xlabel('Agency Rating at Encoding  (1 = Low SoA → 7 = High SoA)', fontsize=12)
+    ax.set_ylabel('Hit Rate  (Mean ± SE)', fontsize=12)
+    ax.set_ylim(0, 1.05)
+    ax.set_title(
+        f'Agency (SoA) Rating → Recognition Memory  {_px_label(targets)}',
+        fontsize=13, fontweight='bold'
+    )
+    ax.legend(frameon=True, loc='lower right')
+    plt.tight_layout()
+
+    out_dir  = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f'agency_recognition{suffix}.png'
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+    print(f"Saved agency_recognition plot: {out_path}")
 
 
 # ============================================================================
@@ -2298,8 +2525,8 @@ if __name__ == "__main__":
         print(s_results['accuracy_by_condition'].to_string())
         print()
 
-    plot_sanity_check(data, OUTPUT_DIR)
-    plot_calibration_convergence(data, OUTPUT_DIR)
+    plot_sanity_check(data, POOLED_DIR)
+    plot_calibration_convergence(data, POOLED_DIR)
     sys.stdout.flush()
 
     # ------------------------------------------------------------------
@@ -2336,9 +2563,44 @@ if __name__ == "__main__":
             # Statistical Analyses (Long running - fitting models)
             run_recognition_stats(mem_results, targets, supp_mem_results, recog_data)
 
-            # Recognition Performance Plots
-            plot_recognition_performance(supp_mem_results, OUTPUT_DIR)
-            plot_dprime_by_condition(supp_mem_results, OUTPUT_DIR)
+            # Recognition Performance Plots (pooled)
+            plot_recognition_performance(supp_mem_results, POOLED_DIR)
+            plot_dprime_by_condition(supp_mem_results, POOLED_DIR)
+
+            # Analysis 7: Agency -> Memory (standalone, mirrors Analyses 1-3)
+            agency_mem_results_7, targets_agency = prepare_agency_mem_results(targets, recog_data)
+            run_agency_recognition_stats(agency_mem_results_7, targets_agency)
+            plot_agency_recognition(targets, POOLED_DIR)
+
+    # ------------------------------------------------------------------
+    # Per-participant plots
+    # ------------------------------------------------------------------
+    print("\n" + "=" * 60)
+    print("PER-PARTICIPANT PLOTS")
+    print("=" * 60)
+
+    for _px in sorted(data['participant'].unique()):
+        _px_suffix = f"_{int(_px)}"
+        _px_data   = data[data['participant'] == _px].copy()
+        print(f"\n  Participant {int(_px)} -> {PER_PARTICIPANT_DIR}")
+
+        plot_sanity_check(_px_data, PER_PARTICIPANT_DIR, suffix=_px_suffix)
+        plot_calibration_convergence(_px_data, PER_PARTICIPANT_DIR, suffix=_px_suffix)
+
+        if recog_data is not None and supp_mem_results is not None:
+            _px_supp = supp_mem_results[
+                supp_mem_results['participant'] == _px
+            ].copy()
+            if not _px_supp.empty:
+                plot_recognition_performance(_px_supp, PER_PARTICIPANT_DIR, suffix=_px_suffix)
+                plot_dprime_by_condition(_px_supp, PER_PARTICIPANT_DIR, suffix=_px_suffix)
+            else:
+                print(f"    [WARNING] No supplementary recognition data for participant {int(_px)}. Skipping recognition plots.")
+
+            if targets is not None:
+                _px_targets = targets[targets['participant'] == _px].copy()
+                if not _px_targets.empty:
+                    plot_agency_recognition(_px_targets, PER_PARTICIPANT_DIR, suffix=_px_suffix)
 
     # ------------------------------------------------------------------
     # 13. Control Detection Accuracy (Manipulation Check)
