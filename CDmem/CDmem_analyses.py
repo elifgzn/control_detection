@@ -67,7 +67,7 @@ for _d in (OUTPUT_DIR, POOLED_DIR, PER_PARTICIPANT_DIR):
 # Participant filter: set to a non-empty list to restrict analyses to specific
 # participant IDs, e.g. PARTICIPANT_FILTER = [2, 3].
 # Leave as an empty list [] to include ALL participants found in data files.
-PARTICIPANT_FILTER = [2,3]  # e.g. [2, 3]
+PARTICIPANT_FILTER = [2,3,4]  # e.g. [2, 3]
 
 # ============================================================================
 # DATA LOADING
@@ -2276,6 +2276,7 @@ def plot_dprime_by_condition(supp_mem_results, output_dir, suffix=""):
                  fontsize=14, fontweight='bold')
     ax.set_xlabel("Control Task Level", fontsize=12)
     ax.set_ylabel("d\u2032 (Mean \u00b1 SE)", fontsize=12)
+    ax.set_ylim(0, 2)
     ax.legend(title='Item Type', frameon=True, loc='lower right')
     plt.tight_layout()
     out_dir = Path(output_dir)
@@ -2292,9 +2293,8 @@ def plot_dprime_by_condition(supp_mem_results, output_dir, suffix=""):
 
 def plot_agency_recognition(targets, output_dir, suffix=""):
     """
-    Bar chart of mean hit rate per agency rating level (1-7), split by control
-    condition (High vs Low), with SE error bars and a logistic regression trend
-    line per condition overlaid.
+    Scatterplot of mean hit rate per participant per agency rating (1-7),
+    ignoring control condition, with a single logistic regression trend line.
 
     X-axis : Agency rating 1-7 (discrete Likert values)
     Y-axis : Mean hit rate (proportion of targets recognised as 'old')
@@ -2317,71 +2317,74 @@ def plot_agency_recognition(targets, output_dir, suffix=""):
         return
 
     plt.style.use('seaborn-v0_8-whitegrid')
-    color_map = {'high': '#1f77b4', 'low': '#ff7f0e'}
 
-    cond_col    = 'trial_level' if 'trial_level' in df.columns else 'control_condition'
-    conditions  = [c for c in ['high', 'low'] if c in df[cond_col].values]
     rating_vals = sorted(df['agency_rating'].dropna().unique())
+
+    # Get participant-level means for each agency rating
+    px_means = (
+        df.groupby(['participant', 'agency_rating'])['said_old_int']
+        .mean()
+        .reset_index()
+        .rename(columns={'said_old_int': 'mean_hit_rate'})
+    )
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    # Offset bars side-by-side for the two conditions
-    bar_w   = 0.35
-    n_cond  = len(conditions)
-    offsets = np.linspace(-(n_cond - 1) * bar_w / 2,
-                           (n_cond - 1) * bar_w / 2,
-                           n_cond)
+    # Add jitter to x-axis for participant points to avoid overlap
+    jitter = np.random.uniform(-0.15, 0.15, size=len(px_means))
+    x_jittered = px_means['agency_rating'] + jitter
+    
+    # Plot individual participant means as scattered dots
+    ax.scatter(
+        x_jittered, px_means['mean_hit_rate'],
+        color='#1f77b4', alpha=0.4, edgecolor='none', s=40,
+        label='Participant Mean', zorder=2
+    )
 
-    for i, cond in enumerate(conditions):
-        subset = df[df[cond_col] == cond].copy()
-        if subset.empty:
-            continue
+    # Calculate overall means and SEM per agency rating for bold summary points
+    overall_stats = (
+        px_means.groupby('agency_rating')['mean_hit_rate']
+        .agg(['mean', 'sem'])
+        .reindex(rating_vals)
+        .reset_index()
+    )
 
-        # Mean hit rate +/- SE per discrete rating value
-        grouped = (
-            subset.groupby('agency_rating')['said_old_int']
-            .agg(mean='mean', sem=lambda x: x.sem())
-            .reindex(rating_vals)
-            .reset_index()
-        )
+    # Plot overall mean points and error bars
+    ax.errorbar(
+        overall_stats['agency_rating'], overall_stats['mean'], yerr=overall_stats['sem'],
+        fmt='o', color='#d62728', markersize=8, capsize=5, linewidth=2,
+        label='Group Mean ± SE', zorder=4
+    )
 
-        x_pos = np.array(grouped['agency_rating'], dtype=float) + offsets[i]
-        col   = color_map.get(cond, 'gray')
-
-        ax.bar(
-            x_pos, grouped['mean'],
-            width=bar_w, color=col, alpha=0.75,
-            label=f'{cond.capitalize()} control', zorder=2
-        )
-        ax.errorbar(
-            x_pos, grouped['mean'], yerr=grouped['sem'],
-            fmt='none', color=col, capsize=4, linewidth=1.5, zorder=3
-        )
-
-        # Logistic regression trend line across full rating range
-        try:
-            from scipy.special import expit
-            valid = subset.dropna(subset=['agency_rating', 'said_old_int'])
-            if valid['agency_rating'].nunique() >= 3:
-                lr       = smf.logit('said_old_int ~ agency_rating', data=valid).fit(disp=False)
-                x_line   = np.linspace(min(rating_vals), max(rating_vals), 200)
-                log_odds = lr.params['Intercept'] + lr.params['agency_rating'] * x_line
-                ax.plot(x_line, expit(log_odds),
-                        color=col, linewidth=2.2, linestyle='-', alpha=0.85,
-                        label=f'{cond.capitalize()} trend', zorder=4)
-        except Exception:
-            pass
+    # Single logistic regression trend line across full rating range
+    try:
+        from scipy.special import expit
+        if df['agency_rating'].nunique() >= 3:
+            # Fit logistic regression on the raw binary trial data
+            lr       = smf.logit('said_old_int ~ agency_rating', data=df).fit(disp=False)
+            x_line   = np.linspace(min(rating_vals), max(rating_vals), 200)
+            log_odds = lr.params['Intercept'] + lr.params['agency_rating'] * x_line
+            ax.plot(x_line, expit(log_odds),
+                    color='#2ca02c', linewidth=3, linestyle='-', alpha=0.9,
+                    label='Overall Logistic Trend', zorder=3)
+    except Exception as e:
+        print(f"[WARNING] Could not fit overall logistic trend: {e}")
 
     ax.axhline(y=0.5, color='gray', linestyle=':', alpha=0.5, label='Chance')
     ax.set_xticks(rating_vals)
-    ax.set_xlabel('Agency Rating at Encoding  (1 = Low SoA → 7 = High SoA)', fontsize=12)
-    ax.set_ylabel('Hit Rate  (Mean ± SE)', fontsize=12)
-    ax.set_ylim(0, 1.05)
+    ax.set_xlabel('Agency Rating at Encoding (1 = Low SoA → 7 = High SoA)', fontsize=12)
+    ax.set_ylabel('Hit Rate (Proportion Recognised)', fontsize=12)
+    ax.set_ylim(-0.05, 1.05)
     ax.set_title(
-        f'Agency (SoA) Rating → Recognition Memory  {_px_label(targets)}',
+        f'Sense of Agency vs Recognition Memory {_px_label(targets)}',
         fontsize=13, fontweight='bold'
     )
-    ax.legend(frameon=True, loc='lower right')
+    
+    # Clean up legend
+    handles, labels = ax.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    ax.legend(by_label.values(), by_label.keys(), frameon=True, loc='lower right')
+    
     plt.tight_layout()
 
     out_dir  = Path(output_dir)
