@@ -386,17 +386,19 @@ def load_recognition_data(data_dir=DATA_DIR):
 # RECOGNITION EXCLUSION: LONG RT TRIALS
 # ============================================================================
 #
-# Criterion (Haridi et al., 2025):
-#   Recognition trials with a response time (mem_rt) longer than 20 seconds
-#   are excluded at the TRIAL level (not the participant level).
+# Criterion (Ren et al., 2026):
+#   Recognition trials with a response time (mem_rt) greater than each
+#   participant's mean recognition RT + 3 * SD are excluded at the TRIAL
+#   level (not the participant level).
 # ============================================================================
 
-RT_CUTOFF_SECONDS = 20.0
+RT_SD_MULTIPLIER = 3.0
 
 
 def exclude_long_rt_trials(recog_data):
     """
-    Remove individual recognition trials where mem_rt exceeds RT_CUTOFF_SECONDS.
+    Remove individual recognition trials where mem_rt exceeds each
+    participant's mean RT + RT_SD_MULTIPLIER * SD.
 
     Parameters
     ----------
@@ -412,17 +414,29 @@ def exclude_long_rt_trials(recog_data):
     recog_data = recog_data.copy()
     recog_data["mem_rt"] = pd.to_numeric(recog_data["mem_rt"], errors="coerce")
 
-    long_rt_mask = recog_data["mem_rt"] > RT_CUTOFF_SECONDS
+    # Compute per-participant mean and SD of mem_rt
+    px_stats = (
+        recog_data
+        .groupby("participant")["mem_rt"]
+        .agg(px_mean="mean", px_sd="std")
+        .reset_index()
+    )
+    recog_data = recog_data.merge(px_stats, on="participant", how="left")
+    recog_data["rt_threshold"] = recog_data["px_mean"] + RT_SD_MULTIPLIER * recog_data["px_sd"]
+
+    long_rt_mask = recog_data["mem_rt"] > recog_data["rt_threshold"]
     missing_rt_mask = recog_data["mem_rt"].isna()
     exclude_mask = long_rt_mask | missing_rt_mask
 
-    exclusion_details = recog_data[exclude_mask][["participant", "overall_trial_num", "mem_rt"]].copy()
+    exclusion_details = recog_data[exclude_mask][
+        ["participant", "overall_trial_num", "mem_rt", "rt_threshold"]
+    ].copy()
     n_excluded_trials = len(exclusion_details)
 
     print("=" * 60)
     print("RECOGNITION EXCLUSION: Long RT Trials")
-    print(f"  RT cutoff : > {RT_CUTOFF_SECONDS:.0f} s")
-    print(f"  Reference : Haridi et al., 2025")
+    print(f"  RT cutoff : per-participant mean + {RT_SD_MULTIPLIER:.0f} SD")
+    print(f"  Reference : Ren et al., 2026")
     print("=" * 60)
 
     if n_excluded_trials == 0:
@@ -433,11 +447,14 @@ def exclude_long_rt_trials(recog_data):
             print(
                 f"     Participant {row['participant']} | "
                 f"Trial {int(row['overall_trial_num'])} | "
-                f"RT = {row['mem_rt']:.2f} s"
+                f"RT = {row['mem_rt']:.2f} s "
+                f"(threshold = {row['rt_threshold']:.2f} s)"
             )
         print()
 
-    recog_clean = recog_data[~exclude_mask].copy()
+    recog_clean = recog_data[~exclude_mask].drop(
+        columns=["px_mean", "px_sd", "rt_threshold"]
+    ).copy()
 
     return recog_clean, n_excluded_trials, exclusion_details
 
