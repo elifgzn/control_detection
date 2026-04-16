@@ -89,7 +89,7 @@ For each participant, mean and SD of `mem_rt` are computed across all their reco
 | False Alarm Rate (FAR) | Mean of `said_old` across foil trials per participant | All d′ calculations |
 | d′ (d-prime) | Φ⁻¹(HR_clipped) − Φ⁻¹(FAR_clipped); Clipping: [0.01, 0.99] to avoid ±∞ | Analyses 1, 7a, Supp 1 |
 | `control_c` | Contrast code: High = +0.5, Low = −0.5 | Analyses 3, 4, CD accuracy GLMM |
-| `agency_c` | Contrast code: High agency = +0.5, Low agency = −0.5 (per-participant median split of `agency_rating`) | Analysis 7c |
+| `agency_rating_z` | `agency_rating` z-scored within each participant: `(x − participant_mean) / participant_SD`. Removes individual differences in scale use; slope captures trial-to-trial within-person variation only. | Analysis 7 |
 | `trial_level_c` | Contrast code: High = +0.5, Low = −0.5 | Supp 3, Supp 4 |
 | `item_type_c` | Contrast code: Controlled = +0.5, Uncontrolled = −0.5 | Supp 3, Supp 4 |
 | `item_is_old_c` | Contrast code: Old (target) = +0.5, Foil = −0.5 | Analysis 4, Supp 4 |
@@ -243,52 +243,28 @@ Fallback: said_old_int ~ item_is_old_c * trial_level_c * item_type_c + (1 | part
 
 ---
 
-### Analysis 7 — Sense of Agency → Recognition Memory
+### Analysis 7 — Sense of Agency → Recognition Memory (Continuous)
 
-Agency_rating (1–7) is median-split *within each participant* into High / Low agency groups. The split is per-participant to control for individual differences in rating scale usage. Analyses 7a–7c mirror Analyses 1–3 exactly, with agency level replacing control level.
-
----
-
-#### Analysis 7a — d′ Paired t-test: High vs. Low Agency (median split)
-
-| Attribute | Detail |
-|---|---|
-| Analysis type | Paired-samples t-test |
-| Package | `scipy.stats.ttest_rel` |
-| Independent variable | Agency level: High vs. Low (median split per participant) |
-| Dependent variable | d′ per participant per agency level |
-| Notes | Mirrors Analysis 1. Cohen's d on paired differences reported. |
+Agency_rating (1–7) is used as a **continuous predictor**, z-scored *within each participant*. Within-participant z-scoring removes individual differences in rating scale use (some participants habitually rate higher or lower than others), so the GLMM slope captures trial-to-trial variation within a person only.
 
 ---
 
-#### Analysis 7b — Hit Rate Paired t-test: High vs. Low Agency (median split)
-
-| Attribute | Detail |
-|---|---|
-| Analysis type | Paired-samples t-test |
-| Package | `scipy.stats.ttest_rel` |
-| Independent variable | Agency level: High vs. Low (median split per participant) |
-| Dependent variable | Hit rate per participant per agency level |
-| Notes | Mirrors Analysis 2. |
-
----
-
-#### Analysis 7c — Recognition GLMM: Agency Level (target trials only)
+#### Analysis 7 — Recognition GLMM: Continuous agency_rating_z (target trials only)
 
 | Attribute | Detail |
 |---|---|
 | Analysis type | Generalized Linear Mixed Model (Binomial, logit link) |
 | Package | `pymer4` (lme4/R via rpy2) |
-| Independent variable | `agency_c`: High agency = +0.5, Low agency = −0.5 (contrast-coded median split) |
-| Dependent variable | `said_old_int`: binary recognition response |
+| Independent variable | `agency_rating_z`: `agency_rating` z-scored within each participant (continuous) |
+| Dependent variable | `said_old_int`: binary recognition response (0 = no, 1 = yes) |
 
 **Model formulas:**
 ```
-Maximal:  said_old_int ~ agency_c + (1 + agency_c | participant)
-Fallback: said_old_int ~ agency_c + (1 | participant)
+Maximal:  said_old_int ~ agency_rating_z + (1 + agency_rating_z | participant)
+Fallback: said_old_int ~ agency_rating_z + (1 | participant)
 ```
 
-> Mirrors Analysis 3. Median split applied per participant.
+> The positive slope estimate indicates that on trials where a participant felt *more* agency than usual, they were more likely to subsequently recognise the image. This is a within-person effect, not a between-person effect.
 
 ---
 

@@ -1493,179 +1493,97 @@ def run_recognition_stats(mem_results, targets, supp_mem_results, recog_data):
 
 # ==============================================================================
 # ANALYSIS 7: Agency Rating -> Recognition Memory
-# (mirrors Analyses 1, 2, 3 — with median-split agency as the binary predictor)
+# (Continuous predictor: within-participant z-scored agency_rating)
 # ==============================================================================
 
-def prepare_agency_mem_results(targets, recog_data):
+def prepare_targets_agency(targets):
     """
-    Median-split agency_rating per participant into 'high' and 'low' agency,
-    then compute hit rates and d-prime for each level.
+    Z-score agency_rating within each participant and attach as 'agency_rating_z'.
 
-    This mirrors the structure of analyze_recognition / mem_results so that
-    Analyses 7a-c can parallel Analyses 1-3 exactly.
+    Agency ratings are treated as a continuous predictor (1–7 Likert scale).
+    Within-participant z-scoring removes individual differences in scale use
+    (e.g. a participant who always rates 5–7 vs one who uses 1–4), so the
+    slope in the GLMM captures trial-to-trial within-person variation only.
 
-    FA rate is taken from foils (same per-participant rate used elsewhere,
-    since foils have no agency rating).
+    Parameters
+    ----------
+    targets : pd.DataFrame
+        Trial-level recognition data for old items.
 
     Returns
     -------
-    agency_mem_results : pd.DataFrame
-        Participant-level (participant x agency_level) with Hit_rate, FA_rate, d_prime.
     targets_agency : pd.DataFrame
-        Trial-level targets with 'agency_level' and 'agency_c' (±0.5) columns added.
+        Copy of targets with 'agency_rating_z' column added.
+        Rows with missing agency_rating are dropped.
     """
     if targets is None or len(targets) == 0:
         print("[INFO] No target data for agency memory preparation.")
-        return None, None
+        return None
     if 'agency_rating' not in targets.columns or targets['agency_rating'].isna().all():
         print("[INFO] No agency_rating data. Skipping agency memory preparation.")
-        return None, None
+        return None
 
     df = targets.copy()
     df['agency_rating'] = pd.to_numeric(df['agency_rating'], errors='coerce')
     df = df.dropna(subset=['agency_rating', 'said_old', 'participant'])
 
-    # Median split per participant
-    df['_median'] = df.groupby('participant')['agency_rating'].transform('median')
-    df['agency_level'] = np.where(df['agency_rating'] >= df['_median'], 'high', 'low')
-    df['agency_c']     = np.where(df['agency_level'] == 'high', 0.5, -0.5)
-    df.drop(columns=['_median'], inplace=True)
-
-    # FA rate per participant (from foils — no agency assignment possible for foils)
-    foils = recog_data[recog_data['mem_ground_truth'] == 'unseen'].copy()
-    foils['said_old'] = foils['mem_response'].str.lower() == 'yes'
-    fa_rates = foils.groupby('participant')['said_old'].mean().reset_index()
-    fa_rates.rename(columns={'said_old': 'FA_rate'}, inplace=True)
-
-    # Hit rates per (participant, agency_level)
-    hit_rates = (
-        df.groupby(['participant', 'agency_level'])['said_old']
-        .mean().reset_index()
-        .rename(columns={'said_old': 'Hit_rate'})
+    # Z-score within participant
+    df['agency_rating_z'] = df.groupby('participant')['agency_rating'].transform(
+        lambda x: (x - x.mean()) / (x.std() + 1e-9)
     )
 
-    results = hit_rates.merge(fa_rates, on='participant', how='left')
-    results['d_prime'] = results.apply(
-        lambda row: calc_dprime(row['Hit_rate'], row['FA_rate']), axis=1
-    )
+    print("\n  Agency rating z-scoring (within participant):")
+    print(f"    Trials with agency rating : {len(df)}")
+    print(f"    Participants              : {df['participant'].nunique()}")
+    for px, px_df in df.groupby('participant'):
+        print(
+            f"    Participant {px}: "
+            f"M = {px_df['agency_rating'].mean():.2f}, "
+            f"SD = {px_df['agency_rating'].std():.2f}, "
+            f"range = {px_df['agency_rating'].min():.0f}–{px_df['agency_rating'].max():.0f}"
+        )
 
-    print("\nAgency Memory Results (Median Split):")
-    print(results.to_string(index=False))
-
-    return results, df
+    return df
 
 
 # ------------------------------------------------------------------------------
-# ANALYSIS 7a: Paired t-test on d-prime (mirrors Analysis 1)
+# ANALYSIS 7: GLMM — continuous agency_rating_z -> said_old
 # ------------------------------------------------------------------------------
 
-def run_analysis_7a_dprime_ttest(agency_mem_results):
+def run_analysis_7_agency_glmm(targets_agency):
     """
-    Paired t-test comparing d-prime between high and low agency (median split).
-    Mirrors Analysis 1.
-    """
-    if agency_mem_results is None:
-        print("[WARNING] agency_mem_results is None. Skipping Analysis 7a.")
-        return None
+    Trial-level GLMM (Binomial, logit link) testing whether within-participant
+    variation in agency_rating predicts subsequent recognition memory.
 
-    pivoted = agency_mem_results.pivot(
-        index='participant', columns='agency_level', values='d_prime'
-    )
-    if 'high' not in pivoted.columns or 'low' not in pivoted.columns:
-        print("[WARNING] Missing agency level data for d-prime t-test.")
-        return None
-
-    pivoted = pivoted.dropna(subset=['high', 'low'])
-    t_stat, p_val = stats.ttest_rel(pivoted['high'], pivoted['low'])
-    diff = pivoted['high'] - pivoted['low']
-    cohens_d = diff.mean() / (diff.std() + 1e-9)
-
-    return {
-        'analysis':  'Analysis 7a: d-prime paired t-test (High vs Low Agency)',
-        't_stat':    t_stat,
-        'p_val':     p_val,
-        'mean_high': pivoted['high'].mean(),
-        'mean_low':  pivoted['low'].mean(),
-        'sd_high':   pivoted['high'].std(),
-        'sd_low':    pivoted['low'].std(),
-        'cohens_d':  cohens_d,
-        'n':         len(pivoted)
-    }
-
-
-# ------------------------------------------------------------------------------
-# ANALYSIS 7b: Paired t-test on hit rates (mirrors Analysis 2)
-# ------------------------------------------------------------------------------
-
-def run_analysis_7b_hitrate_ttest(agency_mem_results):
-    """
-    Paired t-test comparing hit rates between high and low agency (median split).
-    Mirrors Analysis 2.
-    """
-    if agency_mem_results is None:
-        print("[WARNING] agency_mem_results is None. Skipping Analysis 7b.")
-        return None
-
-    pivoted = agency_mem_results.pivot(
-        index='participant', columns='agency_level', values='Hit_rate'
-    )
-    if 'high' not in pivoted.columns or 'low' not in pivoted.columns:
-        print("[WARNING] Missing agency level data for hit rate t-test.")
-        return None
-
-    pivoted = pivoted.dropna(subset=['high', 'low'])
-    t_stat, p_val = stats.ttest_rel(pivoted['high'], pivoted['low'])
-    diff = pivoted['high'] - pivoted['low']
-    cohens_d = diff.mean() / (diff.std() + 1e-9)
-
-    return {
-        'analysis':  'Analysis 7b: Hit rate paired t-test (High vs Low Agency)',
-        't_stat':    t_stat,
-        'p_val':     p_val,
-        'mean_high': pivoted['high'].mean(),
-        'mean_low':  pivoted['low'].mean(),
-        'sd_high':   pivoted['high'].std(),
-        'sd_low':    pivoted['low'].std(),
-        'cohens_d':  cohens_d,
-        'n':         len(pivoted)
-    }
-
-
-# ------------------------------------------------------------------------------
-# ANALYSIS 7c: GLMM on said_old ~ agency_c (mirrors Analysis 3)
-# ------------------------------------------------------------------------------
-
-def run_analysis_7c_glmm(targets_agency):
-    """
-    Trial-level GLMM (Binomial, logit link) on target (old) trials.
-    Predictor: agency_c (contrast-coded from median split: High=+0.5, Low=-0.5).
-    Mirrors Analysis 3.
+    Predictor: agency_rating_z — agency_rating z-scored within each participant.
+    Within-participant z-scoring removes between-participant differences in
+    rating scale use, so the slope reflects trial-to-trial variation only.
 
     Model formula:
-      Maximal : said_old_int ~ agency_c + (1 + agency_c | participant)
-      Fallback: said_old_int ~ agency_c + (1 | participant)
+      Maximal : said_old_int ~ agency_rating_z + (1 + agency_rating_z | participant)
+      Fallback: said_old_int ~ agency_rating_z + (1 | participant)
     """
     if targets_agency is None or len(targets_agency) == 0:
-        print("[WARNING] No target data for Analysis 7c. Skipping.")
+        print("[WARNING] No target data for Analysis 7. Skipping.")
         return None
 
     df = targets_agency.copy()
     df['said_old_int'] = df['said_old'].astype(int)
-    df = df.dropna(subset=['said_old_int', 'agency_c', 'participant'])
+    df = df.dropna(subset=['said_old_int', 'agency_rating_z', 'participant'])
 
     if len(df) == 0:
-        print("[WARNING] No valid trials for Analysis 7c after preprocessing.")
+        print("[WARNING] No valid trials for Analysis 7 after preprocessing.")
         return None
 
-    print("\nAnalysis 7c: GLMM (Binomial, logit link) on target trials (High vs Low Agency)...")
+    print("\nAnalysis 7: GLMM (Binomial, logit link) — continuous agency_rating_z -> said_old")
     print(f"  Trials: {len(df)} | Participants: {df['participant'].nunique()}")
-    print(f"  Contrast coding: High Agency = +0.5, Low Agency = -0.5 (median split per participant)")
+    print(f"  Predictor: agency_rating_z (within-participant z-scored, continuous 1–7 scale)")
 
-    df_pl = pl.from_pandas(df[['participant', 'said_old_int', 'agency_c']])
+    df_pl = pl.from_pandas(df[['participant', 'said_old_int', 'agency_rating_z']])
 
     model, structure = fit_glmm_with_fallback(
-        formula_maximal="said_old_int ~ agency_c + (1 + agency_c | participant)",
-        formula_minimal="said_old_int ~ agency_c + (1 | participant)",
+        formula_maximal="said_old_int ~ agency_rating_z + (1 + agency_rating_z | participant)",
+        formula_minimal="said_old_int ~ agency_rating_z + (1 | participant)",
         data_pl=df_pl,
         family="binomial"
     )
@@ -1674,25 +1592,30 @@ def run_analysis_7c_glmm(targets_agency):
     return model
 
 
-def run_agency_recognition_stats(agency_mem_results, targets_agency):
+def run_agency_recognition_stats(targets):
     """
-    Run all agency -> recognition analyses (7a, 7b, 7c).
-    Mirrors run_recognition_stats in structure.
+    Run Analysis 7: continuous agency_rating -> recognition memory.
+
+    Parameters
+    ----------
+    targets : pd.DataFrame
+        Trial-level target data (from analyze_recognition).
+
+    Returns
+    -------
+    targets_agency : pd.DataFrame
+        Targets with agency_rating_z column; None if no agency data.
     """
     print("\n" + "=" * 60)
     print("ANALYSIS 7: Agency Rating -> Recognition Memory")
-    print("  (Median split per participant: High vs Low Agency)")
+    print("  (Continuous predictor: within-participant z-scored agency_rating)")
     print("=" * 60)
 
-    res7a = run_analysis_7a_dprime_ttest(agency_mem_results)
-    print_stat_results(res7a)
-
-    res7b = run_analysis_7b_hitrate_ttest(agency_mem_results)
-    print_stat_results(res7b)
-
-    run_analysis_7c_glmm(targets_agency)
+    targets_agency = prepare_targets_agency(targets)
+    run_analysis_7_agency_glmm(targets_agency)
 
     print("\n" + "=" * 60)
+    return targets_agency
 
 
 # ============================================================================
@@ -2585,9 +2508,8 @@ if __name__ == "__main__":
             plot_recognition_performance(supp_mem_results, POOLED_DIR)
             plot_dprime_by_condition(supp_mem_results, POOLED_DIR)
 
-            # Analysis 7: Agency -> Memory (standalone, mirrors Analyses 1-3)
-            agency_mem_results_7, targets_agency = prepare_agency_mem_results(targets, recog_data)
-            run_agency_recognition_stats(agency_mem_results_7, targets_agency)
+            # Analysis 7: Agency -> Memory (continuous agency_rating_z)
+            targets_agency = run_agency_recognition_stats(targets)
             plot_agency_recognition(targets, POOLED_DIR)
 
     # ------------------------------------------------------------------
