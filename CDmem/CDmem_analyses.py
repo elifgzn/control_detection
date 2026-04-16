@@ -16,8 +16,6 @@ Located in: CDmem/data/subjects/
 
 - TODO 
 
-SANITY CHECK PLOTS SHOULD BE BOTH PARTICIPANT SPECIFIC AND POOLED!
-
 (supplementary): Add a serial/trial-order analysis of recognition memory. Images are presented
   in counterbalanced blocks (all High trials together, all Low trials together), so there may be
   primacy/recency effects on memory. Adding a trial_position covariate (z-scored serial position
