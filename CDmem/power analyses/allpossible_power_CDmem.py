@@ -3,23 +3,35 @@
 Power Analysis for Recognition Memory Experiment
 ===============================================================================
 This script estimates statistical power for detecting a control-level effect
-on recognition memory across four different analysis strategies:
+on recognition memory. Analyses mirror CDmem_analyses.py exactly:
 
-  1. Paired t-test on d-prime (aggregated SDT measure)
-  2. Paired t-test on hit rates (aggregated, ignores false alarms)
-  3. GEE on target trials only (trial-level, hits only)
-  4. GEE with item_type x control interaction (trial-level, all trials)
+PRIMARY ANALYSES (High vs. Low control — controlled targets only)
+  1. Paired t-test on d-prime         (run_analysis_1_dprime_ttest)
+  2. Paired t-test on hit rates        (run_analysis_2_hitrate_ttest)
+  3. GEE on target trials only         (run_analysis_3_glmm)
+  4. GEE with item_type x control      (run_analysis_4_interaction_glmm)
 
-We test two effect sizes (Cohen's d = 0.2 and 0.5) and four sample sizes
-(N = 30, 40, 50, 60), as relevant for an EEG study with practical constraints.
+SUPPLEMENTARY ANALYSES (2x2: Trial Level x Item Type)
+  Supp 1. 2x2 RM ANOVA on d-prime     (run_supp_analysis_1_dprime_2x2_anova)
+            Trial Level (High/Low) x Item Type (Controlled/Uncontrolled)
+            Key test: interaction (trial_level x item_type)
+  Supp 2. 2x2 RM ANOVA on hit rates   (run_supp_analysis_2_hitrate_2x2_anova)
+  Supp 3. 2x2 GEE on all old items    (run_supp_analysis_3_glmm_2x2)
+            said_old ~ trial_level_c * item_type_c
+  Supp 4. 3-way GEE on all trials     (run_supp_analysis_4_glmm_foils)
+            said_old ~ item_is_old_c * trial_level_c * item_type_c
+            Foils dummy-assigned to balanced 2x2 cells (same as actual script)
 
-ANALYSES 3 & 4 use Generalized Estimating Equations (GEE) via statsmodels.
-GEE is appropriate here because:
-  - It handles binary trial-level outcomes (recognized: 0/1)
-  - It accounts for within-participant correlation across trials via the
-    exchangeable working correlation structure
-  - It is robust to misspecification of the correlation structure
-  - It does not require specifying random slopes, which is risky with small N
+ANALYSIS 7: Agency -> Memory  (run_analysis_7_agency_glmm)
+  Continuous within-participant z-scored agency_rating predicts said_old.
+  Two effect sizes: small (b=0.20 log-odds/SD) and medium (b=0.50).
+  Labelled exploratory; no prior literature provides a point estimate.
+
+GEE IS USED INSTEAD OF GLMM FOR SIMULATION BECAUSE:
+  - GEE simulation is computationally stable across thousands of iterations.
+  - GEE-based power estimates are CONSERVATIVE relative to GLMM due to
+    non-collapsibility of the logit link (Skrondal & Rabe-Hesketh, 2004;
+    Diggle et al., 2002; Rochon, 1998), so actual GLMM power >= estimated.
 
 PARAMETERS sourced from:
   - Schreiner et al. (2024): d-prime means/SDs, hit rate means/SDs
@@ -27,7 +39,7 @@ PARAMETERS sourced from:
 
 OUTPUT:
   - Console progress output
-  - power_analysis_results.md saved in the current working directory
+  - results_CDmem.md saved in the current working directory
 ===============================================================================
 """
 
@@ -38,6 +50,7 @@ from scipy.special import expit   # logistic function: 1 / (1 + exp(-x))
 from scipy.stats import norm      # normal distribution for d-prime conversions
 import statsmodels.formula.api as smf
 import statsmodels.api as sm
+from statsmodels.stats.anova import AnovaRM   # proper within-subjects RM ANOVA
 import warnings
 import time
 warnings.filterwarnings('ignore')
@@ -84,6 +97,21 @@ BASELINE_FA_RATE = 0.20
 #   RI_SD ~ DPRIME_SD x (pi / sqrt(3)) ~ 0.75 x 1.814 ~ 1.36
 # This is a rough approximation — the actual value is unknown.
 RI_SD = 1.36
+
+# Within-participant correlation for 2x2 RM ANOVA simulation.
+# Decomposed as: total_SD^2 = between_SD^2 + within_SD^2.
+# With rho = 0.50: between_SD = within_SD = DPRIME_SD * sqrt(0.5).
+# Removing between-subject variance from ANOVA error increases power
+# relative to f_oneway (independent groups), giving more accurate estimates.
+WITHIN_PERSON_CORR = 0.50
+
+# Agency -> Memory effect sizes (Analysis 7).
+# Defined directly as log-odds slope per 1 SD of within-participant agency.
+# Small (0.20): +1 SD agency => ~5% increase in hit rate at baseline.
+# Medium (0.50): +1 SD agency => ~12% increase — an appreciable relationship.
+# No prior literature provides a point estimate; treat as exploratory.
+AGENCY_SLOPE_SMALL  = 0.20
+AGENCY_SLOPE_MEDIUM = 0.50
 
 
 # ==============================================================================
@@ -390,187 +418,248 @@ def power_gee_interaction(n, effect_d, n_sim=N_SIMULATIONS):
 # item). Both are shown in the recognition test as "old" items alongside
 # completely new foils.
 #
-# This gives THREE categories of old items:
-#   - High control items   (target item, high control condition)
-#   - Low control items    (target item, low control condition)
-#   - Uncontrolled items   (the randomly moving item, seen simultaneously)
+# This gives FOUR old-item categories (2 x 2):
+#   trial_level : High control / Low control   (which trial the item was on)
+#   item_type   : Controlled   / Uncontrolled  (was the item under motor control?)
 #
-# THEORETICAL NOTE:
-# The uncontrolled items were viewed in the same context and at the same time
-# as the controlled items, so they are not a clean "no encoding" baseline.
-# For this reason these are treated as SUPPLEMENTARY rather than primary
-# analyses. They are informative but require cautious interpretation.
+# The 2x2 design matches run_supp_analysis_1-4 in CDmem_analyses.py.
+# The KEY TEST is the trial_level x item_type INTERACTION:
+#   - Controlled items should show a trial_level effect (high > low memory)
+#   - Uncontrolled items should show NO trial_level effect (no motor control)
+#   => Significant interaction = motor control per se drives memory
 #
-# The key contrast of interest here is:
-#   controlled (high + low) vs uncontrolled — does motor control per se
-#   boost memory beyond mere co-occurrence/viewing?
-#
-# Assumed effect sizes for supplementary analyses:
-#   We assume the uncontrolled item hit rate equals the low control hit rate
-#   (conservative: motor control adds nothing beyond viewing context).
-#   The effect of interest is still quantified as Cohen's d relative to
-#   the same pooled SD as the primary analyses.
+# Data generating process (conservative):
+#   High controlled:   BASELINE + effect/2  (e.g. higher d-prime)
+#   Low  controlled:   BASELINE - effect/2
+#   High uncontrolled: BASELINE              (no trial-level effect)
+#   Low  uncontrolled: BASELINE
 # ==============================================================================
 
-# Number of uncontrolled items, split by which condition trial they appeared in.
-# Each encoding trial shows one controlled item (target) and one uncontrolled item.
-# So there are exactly as many uncontrolled items per condition as controlled items.
-# These are kept separate because in the recognition test their condition of origin
-# is known — they were co-presented with either a high or low control target.
-# Theoretically we treat them as a single pool (no motor control effect regardless
-# of condition), but their condition membership is preserved for model structure.
-N_UNCONTROLLED_PER_CONDITION = N_TRIALS_PER_CONDITION   # 60 per condition
+N_UNCONTROLLED_PER_CONDITION = N_TRIALS_PER_CONDITION   # 60 per condition origin
 N_UNCONTROLLED               = N_UNCONTROLLED_PER_CONDITION * 2   # 120 total
 
 
 # ------------------------------------------------------------------------------
-# Supplementary Analysis 1: One-way repeated measures ANOVA on d-prime
-# (three conditions: high control, low control, uncontrolled)
+# Helper: simulate correlated 2x2 within-subjects d-prime data
 # ------------------------------------------------------------------------------
 
-def power_supp_dprime_anova(n, effect_d, n_sim=N_SIMULATIONS):
+def _sim_2x2_dprime(n, mean_hi_ctrl, mean_lo_ctrl, mean_hi_unc, mean_lo_unc):
     """
-    Simulate power for a one-way repeated measures ANOVA on d-prime
-    with three levels: high control, low control, uncontrolled (pooled).
+    Draw n participants' 2x2 d-prime values using a random-intercept
+    decomposition that produces the within-participant correlation
+    WITHIN_PERSON_CORR between any two conditions.
 
-    Although uncontrolled items come from two condition contexts (co-presented
-    with high vs low control targets), they are pooled into a single
-    'uncontrolled' category here. This reflects the theoretical assumption
-    that motor control — not mere co-presence in a control trial — drives
-    any memory difference. Pooling doubles the trial count for the
-    uncontrolled d-prime estimate (n=120 trials), improving its stability.
+    Total SD per cell = DPRIME_SD.
+    Between-participant SD = DPRIME_SD * sqrt(WITHIN_PERSON_CORR).
+    Within-participant (residual) SD = DPRIME_SD * sqrt(1 - WITHIN_PERSON_CORR).
 
-    All three d-primes are computed against the same false alarm rate
-    (completely new foils), so they are directly comparable.
+    Returns four arrays of length n (one per cell).
+    """
+    between_sd = DPRIME_SD * np.sqrt(WITHIN_PERSON_CORR)
+    within_sd  = DPRIME_SD * np.sqrt(1.0 - WITHIN_PERSON_CORR)
+    ri = np.random.normal(0, between_sd, n)   # shared random intercept
+    dp_hi_ctrl = mean_hi_ctrl + ri + np.random.normal(0, within_sd, n)
+    dp_lo_ctrl = mean_lo_ctrl + ri + np.random.normal(0, within_sd, n)
+    dp_hi_unc  = mean_hi_unc  + ri + np.random.normal(0, within_sd, n)
+    dp_lo_unc  = mean_lo_unc  + ri + np.random.normal(0, within_sd, n)
+    return dp_hi_ctrl, dp_lo_ctrl, dp_hi_unc, dp_lo_unc
 
-    Conservative assumption: uncontrolled d-prime equals low control d-prime.
+
+def _sim_2x2_hitrate(n, mean_hi_ctrl, mean_lo_ctrl, mean_hi_unc, mean_lo_unc):
+    """Same as _sim_2x2_dprime but uses HIT_RATE_SD."""
+    between_sd = HIT_RATE_SD * np.sqrt(WITHIN_PERSON_CORR)
+    within_sd  = HIT_RATE_SD * np.sqrt(1.0 - WITHIN_PERSON_CORR)
+    ri = np.random.normal(0, between_sd, n)
+    hr_hi_ctrl = mean_hi_ctrl + ri + np.random.normal(0, within_sd, n)
+    hr_lo_ctrl = mean_lo_ctrl + ri + np.random.normal(0, within_sd, n)
+    hr_hi_unc  = mean_hi_unc  + ri + np.random.normal(0, within_sd, n)
+    hr_lo_unc  = mean_lo_unc  + ri + np.random.normal(0, within_sd, n)
+    return hr_hi_ctrl, hr_lo_ctrl, hr_hi_unc, hr_lo_unc
+
+
+# ------------------------------------------------------------------------------
+# Supplementary Analysis 1: 2x2 RM ANOVA on d-prime
+# (Trial Level x Item Type; mirrors run_supp_analysis_1_dprime_2x2_anova)
+# ------------------------------------------------------------------------------
+
+def power_supp_dprime_2x2_anova(n, effect_d, n_sim=N_SIMULATIONS):
+    """
+    Simulate power for a 2x2 repeated-measures ANOVA on d-prime.
+
+    Factors:
+      trial_level : High vs. Low  (which encoding trial the item appeared on)
+      item_type   : Controlled vs. Uncontrolled
+
+    Key test: trial_level x item_type INTERACTION.
+      The effect of interest is that controlled items show a trial_level
+      effect (high>low) while uncontrolled items do not.
+      A significant interaction therefore indicates that motor control per se
+      (not mere co-presence on a control trial) drives memory.
+
+    Data generating process (conservative):
+      High, Controlled  : BASELINE_DPRIME + dprime_diff/2
+      Low,  Controlled  : BASELINE_DPRIME - dprime_diff/2
+      High, Uncontrolled: BASELINE_DPRIME  (no trial-level effect)
+      Low,  Uncontrolled: BASELINE_DPRIME  (no trial-level effect)
+
+    Correlation across the 4 conditions within each participant is modelled
+    via a shared random intercept (rho = WITHIN_PERSON_CORR = 0.50).
+    Uses statsmodels.AnovaRM — the same estimator as CDmem_analyses.py.
     """
     dprime_diff  = cohens_d_to_dprime_diff(effect_d)
-    mean_high    = BASELINE_DPRIME + dprime_diff / 2
-    mean_low     = BASELINE_DPRIME - dprime_diff / 2
-    mean_unctrl  = BASELINE_DPRIME - dprime_diff / 2   # conservative: same as low
+    mean_hi_ctrl = BASELINE_DPRIME + dprime_diff / 2
+    mean_lo_ctrl = BASELINE_DPRIME - dprime_diff / 2
+    mean_hi_unc  = BASELINE_DPRIME   # no trial-level effect for uncontrolled
+    mean_lo_unc  = BASELINE_DPRIME
 
     significant = 0
-    for _ in range(n_sim):
-        dp_high   = np.random.normal(mean_high,   DPRIME_SD, n)
-        dp_low    = np.random.normal(mean_low,    DPRIME_SD, n)
-        dp_unctrl = np.random.normal(mean_unctrl, DPRIME_SD, n)
+    subj_ids = np.arange(n)
 
-        # One-way repeated measures ANOVA via F-statistic
-        # scipy.stats.f_oneway is for independent groups — for repeated measures
-        # we use the within-subject F manually, or approximate with f_oneway
-        # (slight overestimate of power since it ignores within-person correlation,
-        # but conservative enough for planning purposes)
-        _, p = stats.f_oneway(dp_high, dp_low, dp_unctrl)
-        if p < ALPHA:
-            significant += 1
+    for _ in range(n_sim):
+        dp_hc, dp_lc, dp_hu, dp_lu = _sim_2x2_dprime(
+            n, mean_hi_ctrl, mean_lo_ctrl, mean_hi_unc, mean_lo_unc
+        )
+        # Long-format DataFrame required by AnovaRM
+        df_sim = pd.DataFrame({
+            'participant': np.tile(subj_ids, 4),
+            'trial_level': np.repeat(['high', 'high', 'low', 'low'], n),
+            'item_type':   np.repeat(['controlled', 'uncontrolled',
+                                      'controlled', 'uncontrolled'], n),
+            'd_prime':     np.concatenate([dp_hc, dp_hu, dp_lc, dp_lu])
+        })
+        try:
+            res = AnovaRM(
+                data=df_sim, depvar='d_prime',
+                subject='participant',
+                within=['trial_level', 'item_type']
+            ).fit()
+            tbl = res.anova_table
+            # Key test: interaction
+            int_key = [k for k in tbl.index if ':' in str(k)]
+            if int_key and tbl.loc[int_key[0], 'Pr > F'] < ALPHA:
+                significant += 1
+        except Exception:
+            pass
 
     return significant / n_sim
 
 
 # ------------------------------------------------------------------------------
-# Supplementary Analysis 2: One-way repeated measures ANOVA on hit rates
-# (three conditions: high control, low control, uncontrolled)
+# Supplementary Analysis 2: 2x2 RM ANOVA on hit rates
+# (Trial Level x Item Type; mirrors run_supp_analysis_2_hitrate_2x2_anova)
 # ------------------------------------------------------------------------------
 
-def power_supp_hitrate_anova(n, effect_d, n_sim=N_SIMULATIONS):
+def power_supp_hitrate_2x2_anova(n, effect_d, n_sim=N_SIMULATIONS):
     """
-    Simulate power for a one-way repeated measures ANOVA on hit rates
-    with three levels: high control, low control, uncontrolled (pooled).
+    Simulate power for a 2x2 repeated-measures ANOVA on hit rates.
 
-    Uncontrolled items (60 co-presented with high control trials + 60
-    co-presented with low control trials) are pooled into one category,
-    consistent with the theoretical assumption that their condition of
-    origin does not affect their memorability. Conservative assumption:
-    uncontrolled hit rate equals low control hit rate.
+    Same 2x2 design and key test (interaction) as Supp Analysis 1.
+    Hit rates are bounded [0,1]; the linear ANOVA is an approximation,
+    matching the same caveat in CDmem_analyses.py.
+
+    Data generating process:
+      High, Controlled  : BASELINE_HIT_RATE + hr_diff/2
+      Low,  Controlled  : BASELINE_HIT_RATE - hr_diff/2
+      High, Uncontrolled: BASELINE_HIT_RATE
+      Low,  Uncontrolled: BASELINE_HIT_RATE
     """
     hr_diff      = cohens_d_to_hr_diff(effect_d)
-    hr_high      = np.clip(BASELINE_HIT_RATE + hr_diff / 2, 0.01, 0.99)
-    hr_low       = np.clip(BASELINE_HIT_RATE - hr_diff / 2, 0.01, 0.99)
-    hr_unctrl    = hr_low   # conservative: uncontrolled = low control
+    mean_hi_ctrl = np.clip(BASELINE_HIT_RATE + hr_diff / 2, 0.01, 0.99)
+    mean_lo_ctrl = np.clip(BASELINE_HIT_RATE - hr_diff / 2, 0.01, 0.99)
+    mean_hi_unc  = BASELINE_HIT_RATE
+    mean_lo_unc  = BASELINE_HIT_RATE
 
     significant = 0
+    subj_ids = np.arange(n)
+
     for _ in range(n_sim):
-        hrs_high   = np.random.normal(hr_high,   HIT_RATE_SD, n)
-        hrs_low    = np.random.normal(hr_low,    HIT_RATE_SD, n)
-        hrs_unctrl = np.random.normal(hr_unctrl, HIT_RATE_SD, n)
-        _, p = stats.f_oneway(hrs_high, hrs_low, hrs_unctrl)
-        if p < ALPHA:
-            significant += 1
+        hr_hc, hr_lc, hr_hu, hr_lu = _sim_2x2_hitrate(
+            n, mean_hi_ctrl, mean_lo_ctrl, mean_hi_unc, mean_lo_unc
+        )
+        df_sim = pd.DataFrame({
+            'participant': np.tile(subj_ids, 4),
+            'trial_level': np.repeat(['high', 'high', 'low', 'low'], n),
+            'item_type':   np.repeat(['controlled', 'uncontrolled',
+                                      'controlled', 'uncontrolled'], n),
+            'hit_rate':    np.concatenate([hr_hc, hr_hu, hr_lc, hr_lu])
+        })
+        try:
+            res = AnovaRM(
+                data=df_sim, depvar='hit_rate',
+                subject='participant',
+                within=['trial_level', 'item_type']
+            ).fit()
+            tbl = res.anova_table
+            int_key = [k for k in tbl.index if ':' in str(k)]
+            if int_key and tbl.loc[int_key[0], 'Pr > F'] < ALPHA:
+                significant += 1
+        except Exception:
+            pass
 
     return significant / n_sim
 
 
 # ------------------------------------------------------------------------------
-# Supplementary Analysis 3: GEE on all old items (3-level control_type predictor)
+# Supplementary Analysis 3: 2x2 GEE on all old items
+# (mirrors run_supp_analysis_3_glmm_2x2 in CDmem_analyses.py)
 # ------------------------------------------------------------------------------
 
-def power_supp_gee_three_conditions(n, effect_d, n_sim=N_SIMULATIONS):
+def power_supp_gee_2x2_old_items(n, effect_d, n_sim=N_SIMULATIONS):
     """
-    Simulate power for a trial-level GEE on all old items with
-    control_type as a three-level categorical predictor.
+    Simulate power for a 2x2 trial-level GEE on all old items.
 
     Model:
-        recognized ~ is_high + is_low
+        recognized ~ trial_level_c * item_type_c
         groups: participant
         family: Binomial, logit link
         working correlation: Exchangeable
 
-    control_type levels (uncontrolled = reference):
-        uncontrolled  : 60 items co-presented with high control targets
-                      + 60 items co-presented with low control targets
-                      = 120 items total, all treated as reference category
-        low control   : 60 controlled targets from low condition (is_low = 1)
-        high control  : 60 controlled targets from high condition (is_high = 1)
+    Contrast coding:
+        trial_level_c : High = +0.5, Low = -0.5
+        item_type_c   : Controlled = +0.5, Uncontrolled = -0.5
 
-    The uncontrolled items are split by condition of origin in the trial
-    structure (60 from high condition trials, 60 from low condition trials),
-    but both groups are assigned to the reference category because
-    theoretically their condition of origin should not affect memorability —
-    they were never under participant control regardless of which trial
-    they appeared on.
+    Key test: trial_level_c:item_type_c INTERACTION
 
-    The key test is the is_high coefficient: high control items vs
-    uncontrolled items — does motor control per se boost memory?
+    With contrast (±0.5) coding, the interaction coefficient in log-odds equals:
+        β_int = lo(Hi,Ctrl) - lo(Lo,Ctrl) - lo(Hi,Unc) + lo(Lo,Unc)
+              = (lo_high - lo_low) - 0  =  true_slope_controlled
+    because uncontrolled items have identical log-odds regardless of trial level.
 
-    Conservative assumption: uncontrolled hit rate equals low control hit rate.
+    240 old trials per participant: 4 cells x 60 trials.
     """
     hr_diff   = cohens_d_to_hr_diff(effect_d)
     hr_high   = np.clip(BASELINE_HIT_RATE + hr_diff / 2, 0.01, 0.99)
     hr_low    = np.clip(BASELINE_HIT_RATE - hr_diff / 2, 0.01, 0.99)
-    hr_unctrl = hr_low
-
     lo_high   = hr_to_log_odds(hr_high)
     lo_low    = hr_to_log_odds(hr_low)
-    lo_unctrl = hr_to_log_odds(hr_unctrl)
+    lo_base   = (lo_high + lo_low) / 2   # uncontrolled: grand mean, no trial effect
 
-    # Trial structure:
-    #   60 high control targets
-    #   60 low control targets
-    #   60 uncontrolled items from high condition trials  } both = reference
-    #   60 uncontrolled items from low condition trials   }
-    n_total      = N_TRIALS_PER_CONDITION * 2 + N_UNCONTROLLED
+    # Trial structure per participant (240 old items)
+    n_total = N_TRIALS_PER_CONDITION * 2 + N_UNCONTROLLED   # 60+60+60+60
     participants = np.repeat(np.arange(n), n_total)
 
-    is_high = np.tile(np.concatenate([
-        np.ones(N_TRIALS_PER_CONDITION),              # high control targets
-        np.zeros(N_TRIALS_PER_CONDITION),             # low control targets
-        np.zeros(N_UNCONTROLLED_PER_CONDITION),       # uncontrolled (high trial)
-        np.zeros(N_UNCONTROLLED_PER_CONDITION)        # uncontrolled (low trial)
+    # trial_level_c: High=+0.5, Low=-0.5
+    trial_level_c = np.tile(np.concatenate([
+        np.repeat( 0.5, N_TRIALS_PER_CONDITION),          # High controlled
+        np.repeat(-0.5, N_TRIALS_PER_CONDITION),          # Low  controlled
+        np.repeat( 0.5, N_UNCONTROLLED_PER_CONDITION),    # High uncontrolled
+        np.repeat(-0.5, N_UNCONTROLLED_PER_CONDITION)     # Low  uncontrolled
     ]), n)
 
-    is_low = np.tile(np.concatenate([
-        np.zeros(N_TRIALS_PER_CONDITION),             # high control targets
-        np.ones(N_TRIALS_PER_CONDITION),              # low control targets
-        np.zeros(N_UNCONTROLLED_PER_CONDITION),       # uncontrolled (high trial)
-        np.zeros(N_UNCONTROLLED_PER_CONDITION)        # uncontrolled (low trial)
+    # item_type_c: Controlled=+0.5, Uncontrolled=-0.5
+    item_type_c = np.tile(np.concatenate([
+        np.repeat( 0.5, N_TRIALS_PER_CONDITION),           # controlled
+        np.repeat( 0.5, N_TRIALS_PER_CONDITION),
+        np.repeat(-0.5, N_UNCONTROLLED_PER_CONDITION),     # uncontrolled
+        np.repeat(-0.5, N_UNCONTROLLED_PER_CONDITION)
     ]), n)
 
+    # True log-odds per cell (uncontrolled items have no trial-level effect)
     base_lo = np.tile(np.concatenate([
-        np.repeat(lo_high,   N_TRIALS_PER_CONDITION),
-        np.repeat(lo_low,    N_TRIALS_PER_CONDITION),
-        np.repeat(lo_unctrl, N_UNCONTROLLED_PER_CONDITION),   # uncontrolled from high trials
-        np.repeat(lo_unctrl, N_UNCONTROLLED_PER_CONDITION)    # uncontrolled from low trials
+        np.repeat(lo_high, N_TRIALS_PER_CONDITION),
+        np.repeat(lo_low,  N_TRIALS_PER_CONDITION),
+        np.repeat(lo_base, N_UNCONTROLLED_PER_CONDITION),
+        np.repeat(lo_base, N_UNCONTROLLED_PER_CONDITION)
     ]), n)
 
     significant = 0
@@ -582,24 +671,22 @@ def power_supp_gee_three_conditions(n, effect_d, n_sim=N_SIMULATIONS):
         recognized = np.random.binomial(1, probs)
 
         df_sim = pd.DataFrame({
-            'participant': participants,
-            'is_high':     is_high,
-            'is_low':      is_low,
-            'recognized':  recognized
+            'participant':   participants,
+            'trial_level_c': trial_level_c,
+            'item_type_c':   item_type_c,
+            'recognized':    recognized
         })
 
         try:
             gee = smf.gee(
-                "recognized ~ is_high + is_low",
+                "recognized ~ trial_level_c * item_type_c",
                 groups="participant",
                 data=df_sim,
                 family=sm.families.Binomial(),
                 cov_struct=sm.cov_struct.Exchangeable()
             ).fit()
-
-            if gee.pvalues['is_high'] < ALPHA:
+            if gee.pvalues['trial_level_c:item_type_c'] < ALPHA:
                 significant += 1
-
         except Exception:
             pass
 
@@ -607,85 +694,88 @@ def power_supp_gee_three_conditions(n, effect_d, n_sim=N_SIMULATIONS):
 
 
 # ------------------------------------------------------------------------------
-# Supplementary Analysis 4: GEE with item_type x control interaction
-# (three-level control, no foil dummy assignment needed)
+# Supplementary Analysis 4: 3-way GEE on all trials
+# (mirrors run_supp_analysis_4_glmm_foils in CDmem_analyses.py)
 # ------------------------------------------------------------------------------
 
-def power_supp_gee_interaction_three(n, effect_d, n_sim=N_SIMULATIONS):
+def power_supp_gee_3way_all_trials(n, effect_d, n_sim=N_SIMULATIONS):
     """
-    Simulate power for a trial-level GEE on all trials (old + new foils)
-    with a three-level control_type x item_is_old interaction.
+    Simulate power for a 3-way trial-level GEE on ALL trials (old + foils).
 
     Model:
-        said_old ~ item_is_old * control_type
+        said_old ~ item_is_old_c * trial_level_c * item_type_c
         groups: participant
         family: Binomial, logit link
         working correlation: Exchangeable
 
-    Where:
-        item_is_old  : 1 = any old item (controlled or uncontrolled), 0 = new foil
-        control_type : three levels — high control, low control, uncontrolled
-                       (dummy coded with uncontrolled as reference)
+    Contrast coding:
+        item_is_old_c : Old = +0.5, Foil = -0.5
+        trial_level_c : High = +0.5, Low = -0.5
+        item_type_c   : Controlled = +0.5, Uncontrolled = -0.5
 
-    The interaction captures whether the memory advantage for old vs new items
-    differs across control conditions — i.e., whether d-prime differs between
-    high control, low control, and uncontrolled conditions.
+    Key test: 3-way interaction item_is_old_c:trial_level_c:item_type_c
+      This tests whether the 2x2 pattern in old items (trial_level x item_type)
+      is different from the 2x2 pattern in new foils.
+      For foils the FA rate does not vary with any factor, so if old items
+      show the 2x2 interaction, the 3-way is significant.
 
-    KEY ADVANTAGE over Analysis 4 (primary):
-      Foils no longer need dummy assignment to control conditions because
-      control_type is now a property of old items only. New foils simply
-      have item_is_old = 0 and are not assigned to any control condition.
-      This makes the model conceptually cleaner.
+    Foil dummy assignment: 240 foils split into 4 balanced cells of 60
+    (matching the rotating scheme in run_supp_analysis_4_glmm_foils).
+    All foil cells share the same FA rate, so the dummy assignment does not
+    bias the 3-way interaction estimate.
 
-    We test the interaction between item_is_old and is_high_control, which
-    captures the d-prime difference between high control and uncontrolled items.
+    Uncontrolled items: same mean log-odds for High and Low trial origin —
+    no trial-level effect on memory for items never under participant control.
     """
     hr_diff   = cohens_d_to_hr_diff(effect_d)
     hr_high   = np.clip(BASELINE_HIT_RATE + hr_diff / 2, 0.01, 0.99)
     hr_low    = np.clip(BASELINE_HIT_RATE - hr_diff / 2, 0.01, 0.99)
-    hr_unctrl = hr_low   # conservative. might be overly conservative because uncontrolled items were seen in the same context as controlled items, so they might actually be remembered better than low control items.
-
     lo_high   = hr_to_log_odds(hr_high)
     lo_low    = hr_to_log_odds(hr_low)
-    lo_unctrl = hr_to_log_odds(hr_unctrl)
+    lo_base   = (lo_high + lo_low) / 2   # uncontrolled: no trial-level effect
     lo_fa     = hr_to_log_odds(BASELINE_FA_RATE)
 
-    # 480 trials: 60+60+60+60 old + 240 new foils
-    n_total      = N_TRIALS_PER_CONDITION * 2 + N_UNCONTROLLED + N_FOILS
+    nf4       = N_FOILS // 4    # 60 foils per dummy 2x2 cell
+    n_total   = N_TRIALS_PER_CONDITION * 2 + N_UNCONTROLLED + N_FOILS  # 480
+
     participants = np.repeat(np.arange(n), n_total)
 
-    # item_is_old: 1 for any old item (controlled or uncontrolled), 0 for new foil
-    item_is_old = np.tile(np.concatenate([
-        np.ones(N_TRIALS_PER_CONDITION),              # high control targets
-        np.ones(N_TRIALS_PER_CONDITION),              # low control targets
-        np.ones(N_UNCONTROLLED_PER_CONDITION),        # uncontrolled (high trial)
-        np.ones(N_UNCONTROLLED_PER_CONDITION),        # uncontrolled (low trial)
-        np.zeros(N_FOILS)                             # new foils
+    # item_is_old_c: Old=+0.5, Foil=-0.5
+    item_is_old_c = np.tile(np.concatenate([
+        np.repeat( 0.5, N_TRIALS_PER_CONDITION),         # High controlled old
+        np.repeat( 0.5, N_TRIALS_PER_CONDITION),         # Low  controlled old
+        np.repeat( 0.5, N_UNCONTROLLED_PER_CONDITION),   # High uncontrolled old
+        np.repeat( 0.5, N_UNCONTROLLED_PER_CONDITION),   # Low  uncontrolled old
+        np.repeat(-0.5, N_FOILS)                          # Foils
     ]), n)
 
-    # Dummy code: uncontrolled (both groups) and foils = reference (0, 0)
-    is_high = np.tile(np.concatenate([
-        np.ones(N_TRIALS_PER_CONDITION),              # high control targets
-        np.zeros(N_TRIALS_PER_CONDITION),
-        np.zeros(N_UNCONTROLLED_PER_CONDITION),       # uncontrolled = reference
-        np.zeros(N_UNCONTROLLED_PER_CONDITION),
-        np.zeros(N_FOILS)
+    # trial_level_c: High=+0.5, Low=-0.5  (foils balanced: 2 cells high, 2 low)
+    trial_level_c = np.tile(np.concatenate([
+        np.repeat( 0.5, N_TRIALS_PER_CONDITION),
+        np.repeat(-0.5, N_TRIALS_PER_CONDITION),
+        np.repeat( 0.5, N_UNCONTROLLED_PER_CONDITION),
+        np.repeat(-0.5, N_UNCONTROLLED_PER_CONDITION),
+        np.repeat( 0.5, nf4), np.repeat( 0.5, nf4),     # foil dummy: 2 high cells
+        np.repeat(-0.5, nf4), np.repeat(-0.5, nf4)      # foil dummy: 2 low cells
     ]), n)
 
-    is_low = np.tile(np.concatenate([
-        np.zeros(N_TRIALS_PER_CONDITION),
-        np.ones(N_TRIALS_PER_CONDITION),              # low control targets
-        np.zeros(N_UNCONTROLLED_PER_CONDITION),       # uncontrolled = reference
-        np.zeros(N_UNCONTROLLED_PER_CONDITION),
-        np.zeros(N_FOILS)
+    # item_type_c: Controlled=+0.5, Uncontrolled=-0.5  (foils balanced)
+    item_type_c = np.tile(np.concatenate([
+        np.repeat( 0.5, N_TRIALS_PER_CONDITION),          # controlled
+        np.repeat( 0.5, N_TRIALS_PER_CONDITION),
+        np.repeat(-0.5, N_UNCONTROLLED_PER_CONDITION),    # uncontrolled
+        np.repeat(-0.5, N_UNCONTROLLED_PER_CONDITION),
+        np.repeat( 0.5, nf4), np.repeat(-0.5, nf4),      # foil dummy: ctrl, unctrl
+        np.repeat( 0.5, nf4), np.repeat(-0.5, nf4)       # foil dummy: ctrl, unctrl
     ]), n)
 
+    # True log-odds per trial group
     base_lo = np.tile(np.concatenate([
-        np.repeat(lo_high,   N_TRIALS_PER_CONDITION),
-        np.repeat(lo_low,    N_TRIALS_PER_CONDITION),
-        np.repeat(lo_unctrl, N_UNCONTROLLED_PER_CONDITION),   # uncontrolled from high trials
-        np.repeat(lo_unctrl, N_UNCONTROLLED_PER_CONDITION),   # uncontrolled from low trials
-        np.repeat(lo_fa,     N_FOILS)
+        np.repeat(lo_high, N_TRIALS_PER_CONDITION),
+        np.repeat(lo_low,  N_TRIALS_PER_CONDITION),
+        np.repeat(lo_base, N_UNCONTROLLED_PER_CONDITION),
+        np.repeat(lo_base, N_UNCONTROLLED_PER_CONDITION),
+        np.repeat(lo_fa,   N_FOILS)                       # all foils same FA rate
     ]), n)
 
     significant = 0
@@ -697,28 +787,100 @@ def power_supp_gee_interaction_three(n, effect_d, n_sim=N_SIMULATIONS):
         said_old = np.random.binomial(1, probs)
 
         df_sim = pd.DataFrame({
-            'participant': participants,
-            'item_is_old': item_is_old,
-            'is_high':     is_high,
-            'is_low':      is_low,
-            'said_old':    said_old
+            'participant':   participants,
+            'item_is_old_c': item_is_old_c,
+            'trial_level_c': trial_level_c,
+            'item_type_c':   item_type_c,
+            'said_old':      said_old
         })
 
         try:
-            # item_is_old:is_high captures the d-prime difference between
-            # high control items and uncontrolled items — the cleanest test
-            # of whether motor control specifically boosts memory
             gee = smf.gee(
-                "said_old ~ item_is_old * is_high + item_is_old * is_low",
+                "said_old ~ item_is_old_c * trial_level_c * item_type_c",
                 groups="participant",
                 data=df_sim,
                 family=sm.families.Binomial(),
                 cov_struct=sm.cov_struct.Exchangeable()
             ).fit()
-
-            if gee.pvalues['item_is_old:is_high'] < ALPHA:
+            # 3-way interaction is the key test
+            if gee.pvalues['item_is_old_c:trial_level_c:item_type_c'] < ALPHA:
                 significant += 1
+        except Exception:
+            pass
 
+    return significant / n_sim
+
+
+# ==============================================================================
+# ANALYSIS 7: Agency Rating -> Recognition Memory
+# (mirrors run_analysis_7_agency_glmm in CDmem_analyses.py)
+# ==============================================================================
+
+def power_agency_memory_gee(n, agency_slope, n_sim=N_SIMULATIONS):
+    """
+    Simulate power for a trial-level GEE testing whether within-participant
+    variation in agency_rating predicts subsequent recognition memory.
+
+    Model:
+        recognized ~ agency_rating_z
+        groups: participant
+        family: Binomial, logit link
+        working correlation: Exchangeable
+
+    Predictor: agency_rating_z — agency rating z-scored within each participant.
+    Within-participant z-scoring is done in the actual analysis; here it is
+    implicit because the simulated predictor already has mean=0, SD=1 per
+    participant.
+
+    Effect size parameterisation:
+        agency_slope = change in log-odds per 1 SD increase in agency rating.
+        Small  (AGENCY_SLOPE_SMALL  = 0.20): ~+5%  hit rate at baseline.
+        Medium (AGENCY_SLOPE_MEDIUM = 0.50): ~+12% hit rate at baseline.
+        No published estimate exists for this paradigm; Analysis 7 is
+        exploratory and should be labelled as such.
+
+    Data generating process:
+      1. Each participant has n_total target trials (120: 60 high + 60 low).
+         Agency rating z-scores are drawn i.i.d. N(0,1) per trial.
+      2. Hit probability: p = expit(intercept + ri_i + slope * agency_z)
+      3. GEE tests whether slope != 0.
+
+    Parameters
+    ----------
+    n            : int   -- number of participants
+    agency_slope : float -- log-odds per 1 SD of agency (AGENCY_SLOPE_*)
+    n_sim        : int   -- number of Monte Carlo simulations
+    """
+    lo_baseline = hr_to_log_odds(BASELINE_HIT_RATE)
+    n_total     = N_TRIALS_PER_CONDITION * 2   # 60 high + 60 low target trials
+    participants = np.repeat(np.arange(n), n_total)
+
+    significant = 0
+    for _ in range(n_sim):
+        ri     = np.random.normal(0, RI_SD, n)
+        ri_rep = np.repeat(ri, n_total)
+        # Agency z-scores: i.i.d. within participant (after z-scoring, SD=1)
+        agency_z = np.random.normal(0, 1, n * n_total)
+        lo       = lo_baseline + ri_rep + agency_slope * agency_z
+        probs    = expit(lo)
+        recognized = np.random.binomial(1, probs)
+
+        df_sim = pd.DataFrame({
+            'participant': participants,
+            'agency_z':   agency_z,
+            'recognized': recognized
+        })
+
+        try:
+            gee = smf.gee(
+                "recognized ~ agency_z",
+                groups="participant",
+                data=df_sim,
+                family=sm.families.Binomial(),
+                cov_struct=sm.cov_struct.Exchangeable()
+            ).fit()
+            if gee.pvalues['agency_z'] < ALPHA:
+                significant += 1
         except Exception:
             pass
 
@@ -731,31 +893,45 @@ def power_supp_gee_interaction_three(n, effect_d, n_sim=N_SIMULATIONS):
 
 def run_all():
     """
-    Run the full power analysis grid:
-      2 effect sizes x 4 analyses x 4 sample sizes = 32 cells
-    Prints progress to console and returns a results DataFrame.
+    Run the full power analysis grid.
+
+    Primary:       2 effect sizes x 4 analyses x 4 sample sizes = 32 cells
+    Supplementary: 2 effect sizes x 4 analyses x 4 sample sizes = 32 cells
+    Analysis 7:    2 agency slopes  x 4 sample sizes             =  8 cells
+    Total: 72 cells.
+
+    All analyses mirror the corresponding functions in CDmem_analyses.py.
     """
     effect_sizes = {
         'Small (d=0.2)':  0.2,
         'Medium (d=0.5)': 0.5
     }
-    # Primary analyses: high vs low control only
+
+    # Primary analyses: high vs low control, controlled targets only
     primary_analyses = {
         'Analysis 1: d-prime paired t-test':  power_dprime_ttest,
         'Analysis 2: Hit rate paired t-test': power_hitrate_ttest,
         'Analysis 3: GEE hits only':          power_gee_hits_only,
-        'Analysis 4: GEE with interaction':   power_gee_interaction,
+        'Analysis 4: GEE item_type x control': power_gee_interaction,
     }
-    # Supplementary analyses: include uncontrolled items as third condition
+
+    # Supplementary: 2x2 factorial (Trial Level x Item Type)
     supp_analyses = {
-        'Supp 1: d-prime one-way ANOVA (3 conditions)':      power_supp_dprime_anova,
-        'Supp 2: Hit rate one-way ANOVA (3 conditions)':     power_supp_hitrate_anova,
-        'Supp 3: GEE all old items (3-level control_type)':  power_supp_gee_three_conditions,
-        'Supp 4: GEE interaction (3-level, clean foils)':    power_supp_gee_interaction_three,
+        'Supp 1: d-prime 2x2 RM ANOVA (interaction)':    power_supp_dprime_2x2_anova,
+        'Supp 2: Hit rate 2x2 RM ANOVA (interaction)':   power_supp_hitrate_2x2_anova,
+        'Supp 3: GEE 2x2 old items (interaction)':        power_supp_gee_2x2_old_items,
+        'Supp 4: GEE 3-way all trials (3-way interaction)': power_supp_gee_3way_all_trials,
+    }
+
+    # Analysis 7: agency -> memory (exploratory; effect in log-odds/SD)
+    agency_effect_sizes = {
+        f'Small (b={AGENCY_SLOPE_SMALL})':  AGENCY_SLOPE_SMALL,
+        f'Medium (b={AGENCY_SLOPE_MEDIUM})': AGENCY_SLOPE_MEDIUM,
     }
 
     results = []
-    # Run primary then supplementary, tagging each with its section
+
+    # --- Primary and Supplementary ---
     for section_label, analyses in [('Primary', primary_analyses),
                                      ('Supplementary', supp_analyses)]:
         total = len(effect_sizes) * len(analyses) * len(SAMPLE_SIZES)
@@ -785,6 +961,34 @@ def run_all():
 
         print(f"  Section runtime: {(time.time()-t_start)/60:.1f} min")
 
+    # --- Analysis 7: agency -> memory ---
+    print(f"\n{'='*65}")
+    print("  Analysis 7: Agency -> Memory (Exploratory)")
+    print(f"{'='*65}")
+    t_start = time.time()
+    total7  = len(agency_effect_sizes) * len(SAMPLE_SIZES)
+    done7   = 0
+
+    for effect_label, slope in agency_effect_sizes.items():
+        for n in SAMPLE_SIZES:
+            done7 += 1
+            lbl = f'Analysis 7: GEE agency_z -> recognized'
+            print(f"[{done7}/{total7}] {lbl} | {effect_label} | N={n}...",
+                  flush=True)
+            t0    = time.time()
+            power = power_agency_memory_gee(n, slope)
+            print(f"       -> Power = {power:.3f}  ({time.time()-t0:.1f}s)",
+                  flush=True)
+            results.append({
+                'Section':     'Analysis 7 (Exploratory)',
+                'Effect Size': effect_label,
+                'Analysis':    lbl,
+                'N':           n,
+                'Power':       round(power, 3)
+            })
+
+    print(f"  Section runtime: {(time.time()-t_start)/60:.1f} min")
+
     return pd.DataFrame(results)
 
 
@@ -795,7 +999,7 @@ def run_all():
 def save_markdown(df, path='results_CDmem.md'):
     """
     Save power analysis results as a formatted markdown file.
-    Primary and supplementary analyses are written in separate sections.
+    Primary, supplementary, and Analysis 7 results are in separate sections.
     [80%+] marks cells meeting the 80% power threshold.
     """
     lines = []
@@ -806,28 +1010,41 @@ def save_markdown(df, path='results_CDmem.md'):
     lines.append(f"- Alpha level: {ALPHA}")
     lines.append(f"- Target trials per condition: {N_TRIALS_PER_CONDITION}")
     lines.append(f"- Foil trials total: {N_FOILS}")
-    lines.append(f"- Uncontrolled old items total: {N_UNCONTROLLED} (supplementary analyses only)")
+    lines.append(f"- Uncontrolled old items total: {N_UNCONTROLLED} (2 x {N_UNCONTROLLED_PER_CONDITION})")
     lines.append(f"- Baseline hit rate: {BASELINE_HIT_RATE} (Wu et al., 2025, Exp. 4)")
     lines.append(f"- Baseline false alarm rate: {BASELINE_FA_RATE} (assumed)")
     lines.append(f"- Baseline d-prime: {BASELINE_DPRIME} (avg of Schreiner et al. conditions)")
     lines.append(f"- D-prime pooled SD: {DPRIME_SD} (Schreiner et al.)")
     lines.append(f"- Hit rate SD: {HIT_RATE_SD} (Schreiner et al.)")
-    lines.append(f"- Random intercept SD: {RI_SD} (converted from d-prime SD via log-odds)\n")
+    lines.append(f"- Random intercept SD: {RI_SD} (converted from d-prime SD via log-odds)")
+    lines.append(f"- Within-person correlation (RM ANOVA): {WITHIN_PERSON_CORR}")
+    lines.append(f"- Agency slope small: {AGENCY_SLOPE_SMALL} log-odds/SD")
+    lines.append(f"- Agency slope medium: {AGENCY_SLOPE_MEDIUM} log-odds/SD\n")
 
     lines.append("## Primary Analysis Descriptions\n")
-    lines.append("1. **D-prime paired t-test**: D-prime per participant per condition (loglinear correction), paired t-test. Standard SDT approach (Schreiner et al., 2024).")
-    lines.append("2. **Hit rate paired t-test**: Mean hit rate per participant per condition, paired t-test. Used in Wu et al. (2025).")
-    lines.append("3. **GEE hits only**: Trial-level GEE on target trials only. Predictor: control_level (+-0.5). Binomial family, logit link, exchangeable working correlation.")
-    lines.append("4. **GEE with interaction**: Trial-level GEE on all trials. item_type x control interaction captures d-prime difference. Foils dummy-assigned equally across conditions.\n")
+    lines.append("Analyses 1-4 mirror run_analysis_1 to run_analysis_4 in CDmem_analyses.py.")
+    lines.append("Effect: High > Low control on recognition of controlled (target) items.\n")
+    lines.append("1. **d-prime paired t-test**: D-prime per participant per condition, two-tailed paired t-test (Schreiner et al., 2024).")
+    lines.append("2. **Hit rate paired t-test**: Mean hit rate per participant per condition, paired t-test (Wu et al., 2025).")
+    lines.append("3. **GEE hits only**: Trial-level GEE on target trials only. recognized ~ control_level (±0.5). Binomial/logit/exchangeable.")
+    lines.append("4. **GEE item_type x control**: Trial-level GEE on all trials. said_old ~ item_type_c * control_c. Foils dummy-assigned equally (balanced).\n")
 
     lines.append("## Supplementary Analysis Descriptions\n")
-    lines.append("These analyses incorporate the uncontrolled items (seen simultaneously with controlled items but never under participant control) as a third condition.")
-    lines.append("**Theoretical note**: Uncontrolled items were viewed in the same context as controlled items, so they do not constitute a clean 'no encoding' baseline. Interpret with caution.")
-    lines.append("**Conservative assumption**: Uncontrolled item hit rate is set equal to the low control hit rate (worst case for detecting an effect of motor control per se).\n")
-    lines.append("S1. **D-prime one-way ANOVA**: Three d-primes per participant (high, low, uncontrolled), one-way repeated measures ANOVA. Tests omnibus effect.")
-    lines.append("S2. **Hit rate one-way ANOVA**: Three hit rates per participant, one-way repeated measures ANOVA.")
-    lines.append("S3. **GEE all old items**: Trial-level GEE on all old items. control_type as 3-level predictor (uncontrolled = reference). Tests high control vs uncontrolled contrast.")
-    lines.append("S4. **GEE interaction (3-level)**: Trial-level GEE on all trials. item_is_old x control_type interaction. Foils require no dummy assignment — cleanest version of Analysis 4.\n")
+    lines.append("Analyses Supp1-4 mirror run_supp_analysis_1 to run_supp_analysis_4 in CDmem_analyses.py.")
+    lines.append("Design: 2x2 factorial — trial_level (High/Low) x item_type (Controlled/Uncontrolled).")
+    lines.append("**Key test in all supplementary analyses: trial_level x item_type INTERACTION.**")
+    lines.append("  Significant interaction => motor control per se (not co-presence) drives memory.")
+    lines.append("**Conservative assumption**: Uncontrolled items have the grand mean hit rate (no trial-level effect).\n")
+    lines.append("S1. **d-prime 2x2 RM ANOVA**: Four d-primes per participant (2x2 cells), statsmodels AnovaRM. Same estimator as CDmem_analyses.py.")
+    lines.append("S2. **Hit rate 2x2 RM ANOVA**: Same 2x2 design on hit rates.")
+    lines.append("S3. **GEE 2x2 old items**: recognized ~ trial_level_c * item_type_c on all 240 old trials. Interaction = motor control effect.")
+    lines.append("S4. **GEE 3-way all trials**: said_old ~ item_is_old_c * trial_level_c * item_type_c. Foils dummy-assigned to balanced 2x2 cells. 3-way interaction is key test.\n")
+
+    lines.append("## Analysis 7 Description (Exploratory)\n")
+    lines.append("Mirrors run_analysis_7_agency_glmm in CDmem_analyses.py.")
+    lines.append("Model: recognized ~ agency_rating_z (within-participant z-scored agency).")
+    lines.append("Effect parameterised as log-odds slope per 1 SD of agency (no prior estimate; exploratory).")
+    lines.append(f"Small slope: b={AGENCY_SLOPE_SMALL} (~+5% hit rate per SD). Medium: b={AGENCY_SLOPE_MEDIUM} (~+12% per SD).\n")
 
     lines.append("## Effect Size Conversions\n")
     for d in [0.2, 0.5]:
@@ -840,10 +1057,18 @@ def save_markdown(df, path='results_CDmem.md'):
         )
     lines.append("")
 
-    # Write primary and supplementary results in separate sections
-    for section in ['Primary', 'Supplementary']:
-        lines.append(f"## {'Primary' if section == 'Primary' else 'Supplementary'} Analysis Results\n")
+    # Write results for each section
+    for section in ['Primary', 'Supplementary', 'Analysis 7 (Exploratory)']:
+        sec_label = {
+            'Primary': 'Primary',
+            'Supplementary': 'Supplementary',
+            'Analysis 7 (Exploratory)': 'Analysis 7 (Exploratory)'
+        }[section]
+        lines.append(f"## {sec_label} Analysis Results\n")
         section_df = df[df['Section'] == section]
+        if section_df.empty:
+            lines.append("*(no results)*\n")
+            continue
 
         for effect_label in section_df['Effect Size'].unique():
             lines.append(f"### {effect_label}\n")
@@ -858,13 +1083,14 @@ def save_markdown(df, path='results_CDmem.md'):
             lines.append("\n[80%+] = meets 80% power threshold\n")
 
     lines.append("## Notes and Limitations\n")
-    lines.append("- **GEE**: Estimates population-average effects. Robust to misspecification of working correlation. Does not require specifying random slopes (advantageous with small N).")
-    lines.append("- **Random intercept SD**: Estimated indirectly from d-prime SD. Actual between-participant variability is unknown.")
-    lines.append("- **False alarm rate**: Assumed 0.20. Does not directly affect Analyses 1, 2, 3, S1, S2, or S3.")
-    lines.append("- **Foil dummy assignment**: Only relevant for primary Analysis 4 — resolved in Supplementary Analysis S4.")
-    lines.append("- **Effect size uncertainty**: Parameters from a choice paradigm (Schreiner et al.) — true effect in a control paradigm may differ.")
-    lines.append("- **Supplementary conservative assumption**: Uncontrolled hit rate = low control hit rate. Power for S1-S4 would be higher if uncontrolled items are remembered less well than low control items.")
-    lines.append("- **Recommendation**: For small effects (d=0.2), N=30-60 is likely underpowered regardless of analysis. Frame as exploratory. For medium effects (d=0.5), GEE analyses offer more power by leveraging trial-level variance.")
+    lines.append("- **GEE vs GLMM**: Power simulation uses GEE (statsmodels); confirmatory analyses use GLMM (pymer4/lme4). GEE power estimates are conservative due to non-collapsibility of the logit link (Skrondal & Rabe-Hesketh, 2004). Actual GLMM power >= estimated.")
+    lines.append("- **GEE citation**: Rochon (1998) and Liu & Liang (1997) recommend GEE simulation for planning studies with correlated binary outcomes.")
+    lines.append("- **RM ANOVA**: Supp 1-2 use AnovaRM (statsmodels), matching CDmem_analyses.py. Within-person correlation modelled via random intercept decomposition (rho=0.50).")
+    lines.append("- **Random intercept SD**: Estimated from d-prime SD via log-odds conversion. Actual between-participant variability is unknown.")
+    lines.append("- **False alarm rate**: Assumed 0.20. Affects only Analysis 4 (foil log-odds) and Supp 4 (foil dummy cells).")
+    lines.append("- **Supplementary interaction**: Power reported for trial_level x item_type interaction (2x2). Conservative: uncontrolled items have no trial-level effect in DGP.")
+    lines.append("- **Analysis 7**: Exploratory. No prior estimate for agency-memory slope; power reported to inform sample size planning only.")
+    lines.append("- **Recommendation**: For small effects (d=0.2 or b=0.20), N=30-60 is likely underpowered. Frame as exploratory. For medium effects, GEE/GLMM trial-level analyses offer more power by leveraging within-participant trial variance.")
 
     with open(path, 'w') as f:
         f.write('\n'.join(lines))
