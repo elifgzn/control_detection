@@ -65,8 +65,7 @@ for _d in (OUTPUT_DIR, POOLED_DIR, PER_PARTICIPANT_DIR):
 # Participant filter: set to a non-empty list to restrict analyses to specific
 # participant IDs, e.g. PARTICIPANT_FILTER = [2, 3].
 # Leave as an empty list [] to include ALL participants found in data files.
-PARTICIPANT_FILTER = [2,3,4]  # e.g. [2, 3]
-
+PARTICIPANT_FILTER = [2,3,4,5]  # e.g. [2, 3]
 # ============================================================================
 # DATA LOADING
 # ============================================================================
