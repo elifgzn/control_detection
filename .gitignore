@@ -24,3 +24,6 @@ Thumbs.db
 
 # MTI subfolder — not actively maintained, exclude from tracking
 MTI/
+
+# Experiment documents — keep locally but exclude from git
+experiment_documents/
