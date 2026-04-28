@@ -758,7 +758,7 @@ SPEED_MULTIPLIER = 1.3    # Multiply trajectory velocities to make shapes move f
 # ── Visual Angle / Stimulus Size Setup ───────────────────────────────────────
 DIST_CM    = 90.0    # Distance from eyes to monitor
 WIDTH_CM   = 53.0    # Physical width of the monitor
-STIM_SZ_DEG = 1.7  # Desired visual angle size of the stimuli in degrees
+STIM_SZ_DEG = 3.0  # Desired visual angle size of the stimuli in degrees
 
 def vis_ang_to_pix(deg, dist_cm, width_cm, win_width_pix):
     """
@@ -937,7 +937,11 @@ win.setMouseVisible(False)
 # SCALED_TEXT_HEIGHT = int(win.size[1] * 0.048)   # For instructions and messages
 # SCALED_WRAP_WIDTH  = int(win.size[0] * 0.8)     # 80% of screen width for text wrapping
 
-# Calculate dynamic stimulus size based on 2.0 visual degrees
+# Calculate dynamic stimulus size based on STIM_SZ_DEG visual degrees
+# At 90 cm viewing distance, 53 cm monitor width, 1920px wide screen:
+#   1.7° ≈  97 px  (previous — too small)
+#   4.0° ≈ 228 px  (current  — between old test and old recognition size)
+#  300px  (old recognition hardcoded)
 target_size_pix = vis_ang_to_pix(STIM_SZ_DEG, DIST_CM, WIDTH_CM, win.size[0])
 IMAGE_SIZE = (target_size_pix, target_size_pix)
 
@@ -2035,8 +2039,9 @@ def run_memory_test(seen_images, foil_images_list):
 
     print(f"\nMemory test: {len(mem_items)} items ({len(seen_images)} seen + {len(foil_images_list)} unseen)")
 
-    # Pre-create a large ImageStim; we'll update its image each trial
-    mem_img_stim = visual.ImageStim(win, size=(300, 300))
+    # Pre-create a large ImageStim; we'll update its image each trial.
+    # Use IMAGE_SIZE so the recognition phase matches the test phase exactly.
+    mem_img_stim = visual.ImageStim(win, size=IMAGE_SIZE)
 
     # Question text sits below the image
     mem_question = visual.TextStim(
