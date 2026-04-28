@@ -68,14 +68,23 @@ import json
 
 import numpy as np
 from psychopy import visual, event, core
+from scipy.signal import butter, sosfilt_zi, sosfilt
 
 # =============================================================================
 # ▶▶  TUNE THESE TWO PARAMETERS  ◀◀
 # =============================================================================
 
-# ALPHA: EWMA smoothing on raw mouse position (0.0 = no filter, 1.0 = frozen)
-# This is the anti-jiggle filter. Higher = more aggressive jiggle suppression.
-ALPHA = 0.90
+# CUTOFF_HZ: Butterworth low-pass cutoff frequency for the anti-jiggle filter.
+#   Frequencies ABOVE this are attenuated. Lower = more aggressive jiggle removal.
+#   Deliberate hand movement ≈ 0–2 Hz. Hand tremor / jiggle ≈ 6–20 Hz.
+#   Try: 6.0 (gentle), 3.5 (moderate ← current), 2.0 (very aggressive, some lag)
+CUTOFF_HZ   = 3.5    # Hz
+BUTTER_ORDER = 2     # Filter order (2 = -40 dB/decade roll-off, good balance)
+SAMPLE_HZ   = 60.0  # Approximate monitor refresh rate (frames per second)
+
+# Design the filter ONCE at startup (efficient — reuse the sos across trials)
+_butter_sos = butter(BUTTER_ORDER, CUTOFF_HZ, btype='low', fs=SAMPLE_HZ, output='sos')
+_butter_zi  = sosfilt_zi(_butter_sos)  # template initial-state (shape: n_sections × 2)
 
 # LOWPASS: smoothing on shape velocity output (same as CDmem_1.py, line 1459)
 # This makes the shape's motion look smooth. Does NOT stop jiggling.
@@ -318,7 +327,7 @@ for trial_num, trial in enumerate(trials):
     msg.text = (
         f"Trial {trial_num + 1} / {len(trials)}\n\n"
         f"Condition: {cond_name}  (prop = {prop})\n"
-        f"ALPHA (mouse filter) = {ALPHA}    LOWPASS (velocity) = {LOWPASS}\n\n"
+        f"Butterworth cutoff = {CUTOFF_HZ} Hz (order {BUTTER_ORDER})    LOWPASS (velocity) = {LOWPASS}\n\n"
         f"One shape is yours. Try to figure out which one!\n"
         f"Press  A  (left shape)  or  S  (right shape)\n\n"
         f"Press SPACE to start."
@@ -374,29 +383,32 @@ for trial_num, trial in enumerate(trials):
     vt = np.zeros(2, np.float32)
     vd = np.zeros(2, np.float32)
 
-    # EWMA-filtered mouse position (anti-jiggle, NEW)
-    filtered_mouse = np.array(last_raw, dtype=float)
+    # Butterworth filter state — reset each trial to zero (no startup transient
+    # because displacement starts at 0 when the mouse is stationary).
+    # Separate state for X and Y axes.
+    zi_x = _butter_zi.copy() * 0.0
+    zi_y = _butter_zi.copy() * 0.0
 
-    last_raw = list(mouse.getPos())
+    last_raw = list(mouse.getPos())  # track RAW position
 
     event.clearEvents(eventType='keyboard')
 
     while clk.getTime() < MOTION_DURATION:
 
-        # 1. RAW MOUSE POSITION
+        # 1. RAW MOUSE POSITION & RAW DISPLACEMENT
         raw_pos = np.array(mouse.getPos(), dtype=float)
+        raw_dx  = raw_pos - np.array(last_raw)   # per-frame displacement
+        last_raw = list(raw_pos)                  # always track RAW position
 
-        # 2. EWMA LOW-PASS FILTER ON MOUSE INPUT (anti-jiggle)
-        #    This is an Exponentially Weighted Moving Average (EWMA) / Low-Pass Filter.
-        #    It attenuates high-frequency jiggle movements before they enter the
-        #    direction-mixing step. Fast back-and-forth jiggles average out to ~zero,
-        #    so mix_direction_only() sees almost no mouse movement and ignores them.
-        filtered_mouse = ALPHA * filtered_mouse + (1 - ALPHA) * raw_pos
-
-        # Mouse displacement from filtered position
-        dx = filtered_mouse[0] - last_raw[0]
-        dy = filtered_mouse[1] - last_raw[1]
-        last_raw = [filtered_mouse[0], filtered_mouse[1]]
+        # 2. BUTTERWORTH LOW-PASS FILTER ON MOUSE DISPLACEMENT (anti-jiggle)
+        #    Applied to the velocity (displacement per frame), not the position.
+        #    Jiggle = rapid ±displacement → high frequency → attenuated by filter.
+        #    Deliberate movement = slow, sustained displacement → low frequency → passes.
+        #    sosfilt() processes one sample at a time and updates the filter state (zi)
+        #    so it works correctly frame-by-frame in real time.
+        filt_x, zi_x = sosfilt(_butter_sos, [raw_dx[0]], zi=zi_x)
+        filt_y, zi_y = sosfilt(_butter_sos, [raw_dx[1]], zi=zi_y)
+        dx, dy = float(filt_x[0]), float(filt_y[0])
 
         # 3. CAP MOUSE SPEED
         mouse_speed = math.hypot(dx, dy)

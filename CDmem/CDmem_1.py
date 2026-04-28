@@ -137,6 +137,7 @@ def send_trigger(val):
 import numpy as np
 import pandas as pd
 from psychopy import visual, event, core, data, gui
+from scipy.signal import butter, sosfilt_zi, sosfilt
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1272,6 +1273,17 @@ class QuestPlusStaircase:
 # Below this threshold, the target follows its trajectory without mouse mixing.
 MOUSE_MOVE_THRESHOLD = 0.5
 
+# ── Butterworth anti-jiggle filter (ported from CDmem_jigglefree.py) ────────
+# Applied to the raw mouse DISPLACEMENT each frame. Jiggle = rapid alternating
+# ±displacement that cancels out above CUTOFF_HZ. Deliberate movement = low-
+# frequency sustained displacement that passes through.
+CUTOFF_HZ    = 3.5   # Hz  — frequencies above this are attenuated
+BUTTER_ORDER = 2     # 2nd order → -40 dB/decade roll-off past cutoff
+SAMPLE_HZ    = 60.0  # approximate monitor refresh rate
+_butter_sos  = butter(BUTTER_ORDER, CUTOFF_HZ, btype='low', fs=SAMPLE_HZ, output='sos')
+_butter_zi   = sosfilt_zi(_butter_sos)  # template state vector (n_sections × 2)
+# ────────────────────────────────────────────────────────────────────────────
+
 # Fixed duration of the motion phase in seconds.
 MOTION_DURATION = 3.0
 
@@ -1410,6 +1422,13 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
     vt    = np.zeros(2, np.float32)
     vd    = np.zeros(2, np.float32)
 
+    # ── Butterworth filter state — reset each trial ──────────────────────────
+    # Initialised to zero because displacement starts at 0 (mouse stationary).
+    zi_x = _butter_zi.copy() * 0.0
+    zi_y = _butter_zi.copy() * 0.0
+    last = list(mouse.getPos())  # track RAW position for displacement
+    # ────────────────────────────────────────────────────────────────────────
+
     event.clearEvents(eventType='keyboard')
 
     # ── EEG Triggers: Motion Start ───────────────────────────────────────────
@@ -1426,8 +1445,16 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
 
     while clk.getTime() < MOTION_DURATION:
         x, y = mouse.getPos()
-        dx, dy = x - last[0], y - last[1]
-        last = (x, y)
+
+        # ── Butterworth anti-jiggle filter on mouse displacement ─────────────
+        raw_dx = x - last[0]
+        raw_dy = y - last[1]
+        last = [x, y]  # always update from RAW position
+
+        filt_x, zi_x = sosfilt(_butter_sos, [raw_dx], zi=zi_x)
+        filt_y, zi_y = sosfilt(_butter_sos, [raw_dy], zi=zi_y)
+        dx, dy = float(filt_x[0]), float(filt_y[0])
+        # ────────────────────────────────────────────────────────────────────
 
         target_traj_dx,     target_traj_dy     = target_snippet[frame % len(target_snippet)]
         distractor_traj_dx, distractor_traj_dy = distractor_snippet[frame % len(distractor_snippet)]
