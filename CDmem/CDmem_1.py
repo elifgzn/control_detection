@@ -973,13 +973,13 @@ image_condition_map = {}
 # the paired counterparts to the `sampled_test_images`.
 
 # Fixation cross shown at the start of each trial
-fix = visual.TextStim(win, "+", color="white", height=60)
+fix = visual.TextStim(win, "+", color="#616161", height=60)
 
 # General-purpose message text (instructions, response prompts, etc.)
-msg = visual.TextStim(win, "", color="white", height=26, wrapWidth=1000, bold=True)
+msg = visual.TextStim(win, "", color="#616161", height=26, wrapWidth=1000, bold=True)
 
 # Feedback text shown after calibration trials ("Right" / "Wrong")
-feedbackTxt = visual.TextStim(win, "", color="white", height=40)
+feedbackTxt = visual.TextStim(win, "", color="#616161", height=40)
 
 # Helper: confine a position to a circle of radius l around the screen center.
 # Prevents shapes from flying off-screen.
@@ -1041,7 +1041,7 @@ def show_break_screen(trials_completed, total_trials_in_block, block_label):
         text=f"BREAK TIME\n\nCompleted {trials_completed} trials.\n"
              f"Progress: {trials_completed}/{total_trials_in_block} ({block_label})\n\n"
              f"Break time remaining: 30 seconds",
-        pos=(0, 50), color='white', height=30, wrapWidth=800, bold=True
+        pos=(0, 50), color='#616161', height=30, wrapWidth=800, bold=True
     )
     countdown_text = visual.TextStim(win=win, text='30', pos=(0, -100), color='yellow', height=60, bold=True)
 
@@ -1065,7 +1065,7 @@ def show_break_screen(trials_completed, total_trials_in_block, block_label):
     visual.TextStim(
         win=win,
         text=f"BREAK COMPLETE\n\nCompleted {trials_completed}/{total_trials_in_block} trials.\n\nPress SPACE to continue.",
-        pos=(0, 0), color='white', height=30, wrapWidth=800, bold=True
+        pos=(0, 0), color='#616161', height=30, wrapWidth=800, bold=True
     ).draw()
     win.flip()
     wait_keys(['space', 'escape'])
@@ -1341,7 +1341,7 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
         stim_right_label = 'dot'
 
     # ── Fixation cross ───────────────────────────────────────────────────────
-    fix.color = "white"
+    fix.color = "#616161"
     if not use_images:
         square.fillColor = square.lineColor = "black"
         dot.fillColor    = dot.lineColor    = "black"
@@ -1568,17 +1568,17 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
 
     key_label_A_stim = visual.TextStim(
         win, text="A", pos=(left_img_x, label_y),
-        height=30, color='white', bold=True, alignText='center'
+        height=30, color='#616161', bold=True, alignText='center'
     )
     key_label_S_stim = visual.TextStim(
         win, text="S", pos=(right_img_x, label_y),
-        height=30, color='white', bold=True, alignText='center'
+        height=30, color='#616161', bold=True, alignText='center'
     )
 
     question_text = "Which image did you control?" if use_images else "Which shape did you control?"
     choice_question = visual.TextStim(
         win, text=question_text,
-        pos=(0, int(win.size[1] * 0.2)), height=26, color='white', wrapWidth=1000, bold=True
+        pos=(0, int(win.size[1] * 0.2)), height=26, color='#616161', wrapWidth=1000, bold=True
     )
 
     def draw_choice_screen():
@@ -1679,17 +1679,17 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
 
             scale_line = visual.Line(
                 win, start=(start_x, line_y), end=(-start_x, line_y),
-                lineColor='white', lineWidth=5
+                lineColor='#616161', lineWidth=5
             )
             tick_half_height = scale_text_height * 0.3
             scale_ticks = [
                 visual.Line(win, start=(x, line_y + tick_half_height), end=(x, line_y - tick_half_height),
-                            lineColor='white', lineWidth=5)
+                            lineColor='#616161', lineWidth=5)
                 for x, _ in scale_positions
             ]
             scale_stimuli = [
                 visual.TextStim(win, text=label, pos=pos, height=scale_text_height,
-                                color='white', alignText='center', bold=True)
+                                color='#616161', alignText='center', bold=True)
                 for pos, label in zip(scale_positions, scale_labels)
             ]
 
@@ -2047,20 +2047,20 @@ def run_memory_test(seen_images, foil_images_list):
     mem_question = visual.TextStim(
         win,
         text="Have you seen this image during the experiment before?",
-        pos=(0, int(-win.size[1] * 0.18)), color='white', height=26, wrapWidth=1000, bold=True
+        pos=(0, int(-win.size[1] * 0.18)), color='#616161', height=26, wrapWidth=1000, bold=True
     )
     # Key labels: Y = Yes (left), N = No (right)
     mem_key_Y = visual.TextStim(
         win, text="Y\nYes", pos=(-int(win.size[0] * 0.05), int(-win.size[1] * 0.25)),
-        height=30, color='white', bold=True, alignText='center'
+        height=30, color='#616161', bold=True, alignText='center'
     )
     mem_key_N = visual.TextStim(
         win, text="N\nNo", pos=(int(win.size[0] * 0.05), int(-win.size[1] * 0.25)),
-        height=30, color='white', bold=True, alignText='center'
+        height=30, color='#616161', bold=True, alignText='center'
     )
 
     # Fixation cross for inter-trial interval
-    mem_fix = visual.TextStim(win, text='+', pos=(0, 0), color='white',
+    mem_fix = visual.TextStim(win, text='+', pos=(0, 0), color='#616161',
                               height=60, bold=True)
 
     for item_num, item in enumerate(mem_items, start=1):
@@ -2076,8 +2076,8 @@ def run_memory_test(seen_images, foil_images_list):
         core.wait(fix_dur)
 
         # Reset key label colours to white for every new trial
-        mem_key_Y.color = 'white'
-        mem_key_N.color = 'white'
+        mem_key_Y.color = '#616161'
+        mem_key_N.color = '#616161'
 
         # Draw image + key labels and start timing
         event.clearEvents(eventType='keyboard')
