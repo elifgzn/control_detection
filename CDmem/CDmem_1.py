@@ -777,7 +777,7 @@ def vis_ang_to_pix(deg, dist_cm, width_cm, win_width_pix):
 #  each pair in the test phase and the other in the memory test phase.
 # ─────────────────────────────────────────────────────────────────────────────
 
-STIM_DIR     = pathlib.Path(r"C:\Users\elifg\Desktop\PHD\control_detection\CDmem\chosen_stimuli")
+STIM_DIR     = pathlib.Path(r"C:\Users\elifg\Desktop\PHD\control_detection\CDmem\chosen_stimuli_nolures")
 IMAGE_SEED   = 42         # Fixed seed for reproducible sampling across runs
 # IMAGE_SIZE will be calculated dynamically based on window width after win is created.
 
@@ -794,81 +794,51 @@ IMAGE_LOG    = pathlib.Path(__file__).parent / "image_stimuli_log.json"
 
 def sample_and_log_images(img_dir, n, seed):
     """
-    Randomly sample `n` unique pairs from `img_dir` and split them.
-    
-    Images in `chosen_stimuli` are named like `alpaca_03s.jpg`, `alpaca_07s.jpg`.
-    We group them by the stem before the last underscore, randomly assign one 
-    to test_group and one to recognition_group. Then we sample `n` objects from 
-    these to use in the experiment, leaving the extras unused.
-    
-    Returns:
-       test_images: list of dicts for the test phase
-       recognition_images: list of dicts for the recognition phase (as foils)
+    Split all images in `img_dir` into two non-overlapping groups.
+
+    - All .jpg files are sorted (for determinism) then shuffled with `seed`.
+    - First `n` images  → test phase (shown during motion trials).
+    - Remaining images  → foils for the yes/no recognition memory test.
+
+    No image appears in both phases.
+
+    Returns
+    -------
+    test_images      : list of dicts {'filename', 'path'} — n images for test
+    recognition_foils: list of dicts {'filename', 'path'} — remaining images
     """
-    all_jpgs = sorted(img_dir.glob("*.jpg"))  # Sort for determinism
-    
-    # Group by object name (everything before the last underscore)
-    from collections import defaultdict
-    pairs = defaultdict(list)
-    for p in all_jpgs:
-        # e.g. "alpaca_03s.jpg" -> stem "alpaca_03s" -> split "_" -> "alpaca"
-        object_name = "_".join(p.stem.split("_")[:-1])
-        pairs[object_name].append(p)
-        
-    # Keep only valid pairs (exactly 2 images)
-    valid_pairs = {k: v for k, v in pairs.items() if len(v) == 2}
-    
-    rng_img  = random.Random(seed)            # Isolated RNG so experiment RNG is unaffected
-    sampled_object_keys = rng_img.sample(list(valid_pairs.keys()), n)
-    
-    test_images = []
-    recognition_images = []
-    
-    for obj_key in sampled_object_keys:
-        img_list = valid_pairs[obj_key]
-        # Randomly assign one to test, one to recognition
-        if rng_img.choice([True, False]):
-            test_images.append({'filename': img_list[0].stem, 'path': str(img_list[0])})
-            recognition_images.append({'filename': img_list[1].stem, 'path': str(img_list[1])})
-        else:
-            test_images.append({'filename': img_list[1].stem, 'path': str(img_list[1])})
-            recognition_images.append({'filename': img_list[0].stem, 'path': str(img_list[0])})
+    all_imgs = sorted(img_dir.glob("*.jpg"))  # sorted for determinism before shuffle
+
+    if len(all_imgs) < n:
+        raise ValueError(
+            f"Not enough images in {img_dir}: found {len(all_imgs)}, need at least {n}."
+        )
+
+    rng_img  = random.Random(seed)   # isolated RNG — does not affect the experiment RNG
+    shuffled = list(all_imgs)
+    rng_img.shuffle(shuffled)
+
+    test_imgs = shuffled[:n]
+    foil_imgs = shuffled[n:n * 2]   # exactly n foils — any extras beyond n*2 are discarded
+
+    test_images       = [{'filename': p.stem, 'path': str(p)} for p in test_imgs]
+    recognition_foils = [{'filename': p.stem, 'path': str(p)} for p in foil_imgs]
 
     records = {
-        'seed': seed, 
-        'n_pairs_sampled': n, 
+        'seed':        seed,
+        'n_test':      n,
+        'n_foils':     len(recognition_foils),
         'test_images': test_images,
-        'recognition_images': recognition_images
+        'foil_images': recognition_foils,
     }
 
     with open(IMAGE_LOG, 'w', encoding='utf-8') as f:
         json.dump(records, f, indent=2)
 
-    print(f"[IMAGINE] Sampled {n} object pairs. Log saved to: {IMAGE_LOG}")
-    return test_images, recognition_images
-    """
-    Randomly sample `n` PNG images from `img_dir` and write a JSON log.
+    print(f"[Stimuli] {n} test + {len(recognition_foils)} foil images. Log → {IMAGE_LOG}")
+    return test_images, recognition_foils
 
-    The log is saved to IMAGE_LOG and contains, for each sampled image:
-      - 'filename'  : stem name (no extension)
-      - 'path'      : absolute path to the PNG file
 
-    Returns a list of dicts with keys 'filename' and 'path'.
-    """
-    all_pngs = sorted(img_dir.glob("*.png"))  # Sort for determinism
-    rng_img  = random.Random(seed)            # Isolated RNG so experiment RNG is unaffected
-    sampled  = rng_img.sample(all_pngs, n)
-
-    records = [
-        {'filename': p.stem, 'path': str(p)}
-        for p in sampled
-    ]
-
-    with open(IMAGE_LOG, 'w', encoding='utf-8') as f:
-        json.dump({'seed': seed, 'n_images': n, 'images': records}, f, indent=2)
-
-    print(f"[IMAGINE] Sampled {n} images. Log saved to: {IMAGE_LOG}")
-    return records
 
 
 def make_image_pairs(images, seed):
