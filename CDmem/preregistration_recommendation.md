@@ -27,24 +27,27 @@ These are already in the script and well-justified — include both verbatim.
 
 ---
 
-### 1. Manipulation Check — Control Detection Accuracy (`run_cd_accuracy_analysis`)
+### 1. Manipulation Check — Control Detection Accuracy & SoA Ratings
 
-> **Pre-register as a prerequisite.** If control detection does not differ between conditions, the memory effect cannot be attributed to the control manipulation.
+> **Pre-register as a prerequisite.** If control detection and sense of agency do not differ between conditions, the memory effect cannot be attributed to the control manipulation.
 
-**Test:** Paired t-test on participant-level mean accuracy (High vs. Low) + binomial GLMM with contrast-coded `control_c` (High = +0.5, Low = −0.5) and random intercepts/slopes per participant.
+**Tests:** 
+1. **Control Detection Accuracy:** Paired t-test on participant-level mean accuracy (High vs. Low) + binomial GLMM with contrast-coded `control_c` (High = +0.5, Low = −0.5) and random intercepts/slopes per participant.
+2. **Sense of Agency (SoA) Ratings:** Paired t-test on participant-level mean SoA ratings across conditions.
 
 **Why appropriate:**
 - The QUEST+ staircase targets 85% (High) and 55% (Low) — these targets must be reached for the memory comparison to be interpretable.
-- Paired t-test is standard for 2-condition within-subject designs and matches the power analysis.
-- The GLMM handles trial-level binary data correctly and accounts for participant random effects.
+- The SoA ratings provide a subjective manipulation check confirming that the objective control differences translated into subjective feelings of agency.
+- Paired t-tests are standard for 2-condition within-subject designs.
+- The GLMM handles trial-level binary accuracy data correctly and accounts for participant random effects.
 
 ---
 
-### 2. Primary Analysis — d-prime: High vs. Low Control (`run_analysis_1_dprime_ttest`)
+### 2. Primary Analysis 1 — d-prime: High vs. Low Control (`run_analysis_1_dprime_ttest`)
 
 > **Pre-register as the primary confirmatory test.**
 
-**Test:** Paired t-test comparing participant-level d-prime between the **High-control** and **Low-control** conditions (controlled items only). Report Cohen's *d*.
+**Test:** Paired t-test comparing participant-level d-prime between the **High-control** and **Low-control** conditions (all items). Report Cohen's *d*.
 
 **Why this is the primary measure:**
 - d-prime is the gold-standard SDT measure; it corrects hit rates for response bias (false alarm rate), making it a pure index of memory discriminability — critical when participants might show yes-bias.
@@ -53,20 +56,20 @@ These are already in the script and well-justified — include both verbatim.
 - Precedent: virtually all recognition memory × agency studies use d-prime as the primary DV (e.g., Eitam & Higgins, 2010; Chambon et al., 2014; Humphreys et al., 2023).
 
 > [!IMPORTANT]
-> d-prime from **controlled items only** (rows where `item_type == 'controlled'`), using the shared foil false alarm rate as the noise baseline. This is the cleanest test of the hypothesis.
+> d-prime from **all items**, using the shared foil false alarm rate as the noise baseline.
 
 ---
 
-### 3. Primary Analysis (trial-level) — GLMM Interaction on All Trials (`run_analysis_4_interaction_glmm`)
+### 3. Primary Analysis 2 (trial-level) — GLMM Interaction on All Trials (`run_analysis_4_interaction_glmm`)
 
 > **Pre-register as confirmatory, alongside Analysis 1.**
 
 **Test:** Binomial GLMM on **all recognition trials** (targets + foils):
 ```
-said_old ~ item_type_c * control_c + (1 + item_type_c * control_c | participant)
+said_old ~ item_type_c * control_c + (1 | participant)
 ```
 Contrast coding: Target = +0.5 / Foil = −0.5; High = +0.5 / Low = −0.5.  
-Use maximal-then-fallback random effects structure (report which was used).
+Use the simpler fallback random effects structure `(1 | participant)`.
 
 **Why Analysis 4, not Analysis 3, is the correct trial-level primary test:**
 
@@ -83,22 +86,9 @@ This is the proper trial-level signal-detection GLM (see DeCarlo, 1998; Sheu & C
 
 ---
 
-### 4. Secondary Analysis — Hit Rate Comparison (`run_analysis_2_hitrate_ttest`)
+### 4. Primary Analysis 3 — False Alarm Rate Sanity Check (`run_supp_analysis_5_fa_check`)
 
-> **Pre-register as secondary / supporting.**
-
-**Test:** Paired t-test on participant-level hit rates (High vs. Low, controlled items only).
-
-**Why secondary (not primary):**
-- Hit rates are not corrected for response bias; they can be inflated by liberal responding.
-- However, including it alongside d-prime is standard practice (readers expect both), and it provides the descriptive means most easily communicated.
-- **Do not treat this as a separate hypothesis** — it tests the same thing as Analysis 2 in a less controlled way. Report it as a consistency check.
-
----
-
-### 5. Secondary Analysis — False Alarm Rate Sanity Check (`run_supp_analysis_5_fa_check`)
-
-> **Pre-register as a manipulation/data quality check.**
+> **Pre-register as a primary data quality check.**
 
 **Test:** One-sample t-test of FA rates against 0.
 
@@ -109,13 +99,13 @@ This is the proper trial-level signal-detection GLM (see DeCarlo, 1998; Sheu & C
 
 ---
 
-### 6. Planned Secondary — 2×2 GLMM: Trial Level × Item Type (`run_supp_analysis_3_glmm_2x2`)
+### 5. Secondary Analysis — 2×2 GLMM: Trial Level × Item Type (`run_supp_analysis_3_glmm_2x2`)
 
-> **Pre-register as a planned secondary analysis** (not primary — it goes beyond the core hypothesis but is theoretically motivated).
+> **Pre-register as a secondary analysis** (not primary — it goes beyond the core hypothesis but is theoretically motivated).
 
 **Test:** Binomial GLMM on all old items (controlled + uncontrolled):
 ```
-said_old ~ trial_level_c * item_type_c + (1 + trial_level_c * item_type_c | participant)
+said_old ~ trial_level_c * item_type_c + (1 | participant)
 ```
 Contrast coding: High = +0.5 / Low = −0.5; Controlled = +0.5 / Uncontrolled = −0.5.
 
@@ -131,13 +121,13 @@ Contrast coding: High = +0.5 / Low = −0.5; Controlled = +0.5 / Uncontrolled = 
 
 ---
 
-### 7. Exploratory (Pre-registered as Exploratory) — Agency → Memory (`run_analysis_7_agency_glmm`)
+### 6. Exploratory (Pre-registered as Exploratory) — Agency → Memory (`run_analysis_7_agency_glmm`)
 
 > **Pre-register as an exploratory analysis** (openly, not as confirmatory). Label it clearly in the paper.
 
 **Test:** Binomial GLMM on old items with continuous, within-participant z-scored agency rating as predictor:
 ```
-said_old ~ agency_rating_z + (1 + agency_rating_z | participant)
+said_old ~ agency_rating_z + (1 | participant)
 ```
 
 **Why include:**
@@ -146,60 +136,3 @@ said_old ~ agency_rating_z + (1 + agency_rating_z | participant)
 - Multiple studies show that within-trial SoA ratings predict memory independently of accuracy (e.g., Damen et al., 2024; Humphreys et al., 2023 style analyses).
 - Within-participant z-scoring (already implemented) is best practice to remove scale-use bias.
 
----
-
-## What NOT to Pre-register (run post-hoc / exploratory only)
-
-| Analysis | Reason to exclude from preregistration |
-|---|---|
-| **Analysis 3** (GLMM, targets only) | Without foils, the `control_c` effect is a hit-rate GLMM, not a d-prime analog. Superseded by Analysis 4 as the primary trial-level test. Can still be reported as a supplementary sensitivity check. |
-| **Supp Analysis 4** (3-way GLMM with foils) | Model is very complex (3-way interaction), singular fits likely with small N. The foil dummy 2×2 assignment is harder to defend. Run as exploratory only. |
-| **Analysis 5a** (OLS: agency ~ accuracy + prop_used) | Pools across participants without accounting for clustering — mixed LMM is preferable and would need more justification. |
-| **Supp 1 & 2** (RM-ANOVAs on d-prime / hit rate) | RM-ANOVA on bounded/binary-derived DVs is less appropriate than GLMM. Include as descriptive summaries only. |
-
----
-
-## Recommended Preregistration Structure
-
-```
-1. Exclusion Criteria
-   1a. Timeout rate ≥ 50% per condition (participant-level)
-   1b. Accuracy z-score > ±2.5 SD (participant-level)
-   1c. Recognition RT > mean + 3 SD (trial-level)
-
-2. Manipulation Check
-   2a. Paired t-test: detection accuracy (High vs. Low)
-   2b. Binomial GLMM: detection_accuracy ~ control_c + (1 + control_c | participant)
-
-3. Primary Confirmatory Analyses (Memory: High vs. Low Control)
-   3a. Analysis 1 — Paired t-test on d-prime
-         (controlled items only, shared FA rate; participant-level)
-   3b. Analysis 4 — Binomial GLMM on ALL recognition trials (targets + foils)
-         said_old ~ item_type_c * control_c + (1 + item_type_c * control_c | participant)
-         → item_type_c × control_c interaction = trial-level d-prime analog
-         (Note foil dummy-coding in methods)
-
-4. Secondary Analyses
-   4a. Analysis 2 — Paired t-test on hit rate (controlled items; consistency check for 3a)
-   4b. FA rate sanity check (one-sample t-test vs. 0)
-
-5. Planned Secondary: 2×2 Design (Trial Level × Item Type)
-   5a. Supp Analysis 3 — 2×2 GLMM on all old items
-         said_old ~ trial_level_c * item_type_c + (1 + trial_level_c * item_type_c | participant)
-
-6. Exploratory (pre-registered as exploratory)
-   6a. Analysis 7 — Continuous agency → memory GLMM
-         said_old ~ agency_rating_z + (1 + agency_rating_z | participant)
-```
-
----
-
-## Key Literature Supporting These Choices
-
-- **d-prime as primary:** Macmillan & Creelman (2004); Green & Swets (1966) — SDT is the standard for recognition memory.
-- **SDT-GLMM equivalence:** DeCarlo (1998, Psychological Methods); Sheu & Chen (2024) — including foils as a separate item_type level in a GLMM is the trial-level equivalent of signal detection theory.
-- **Control → memory effect:** Eitam & Higgins (2010, Psychological Review) — "relevance" drives memory encoding; control is a key relevance cue.
-- **Controlled vs. uncontrolled item distinction:** Elsner & Hommel (2001, JEP:General) — action-effect binding selectively links outcomes to their causative actions.
-- **Agency ratings → memory:** Chambon et al. (2014, Cognition); Humphreys et al. (2023) — within-person SoA variation predicts subsequent memory.
-- **GLMM for binary recognition:** Ren et al. (2026) — maximal random effects structure with binomial link for recognition data.
-- **Within-participant z-scoring of agency ratings:** removes between-person scale-use variance before entering as predictor (standard practice in SoA / metacognition literature).
