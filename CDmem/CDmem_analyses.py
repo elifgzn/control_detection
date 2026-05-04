@@ -55,7 +55,7 @@ from pymer4.models import lmer, glmer
 
 SCRIPT_DIR = Path(__file__).parent
 # DATA_DIR = SCRIPT_DIR / "data" / "subjects"
-DATA_DIR = Path(r"C:\Users\elifg\Desktop\PHD\control_detection\pilot_data")
+DATA_DIR = Path(r"H:\PHD\control_detection\pilot_data")
 OUTPUT_DIR          = SCRIPT_DIR / "analysis_output"
 POOLED_DIR          = OUTPUT_DIR / "pooled"
 PER_PARTICIPANT_DIR = OUTPUT_DIR / "per_participant"
@@ -65,7 +65,7 @@ for _d in (OUTPUT_DIR, POOLED_DIR, PER_PARTICIPANT_DIR):
 # Participant filter: set to a non-empty list to restrict analyses to specific
 # participant IDs, e.g. PARTICIPANT_FILTER = [2, 3].
 # Leave as an empty list [] to include ALL participants found in data files.
-PARTICIPANT_FILTER = [2,3,4,5,6,7]  # e.g. [2, 3]
+PARTICIPANT_FILTER = [2,3,4,5,6,8,9,11]  # e.g. [2, 3]
 # ============================================================================
 # DATA LOADING
 # ============================================================================
@@ -548,9 +548,11 @@ def fit_glmm_with_fallback(formula_maximal, formula_minimal, data_pl, family="bi
         Either "maximal" or "intercept-only", for transparent reporting.
     """
     print(f"  Attempting maximal model: {formula_maximal}")
+    sys.stdout.flush()  # Flush Python buffer before R/C stdout takes over
     try:
         model = glmer(formula_maximal, data=data_pl, family=family)
         result = model.fit()
+        sys.stdout.flush()  # Flush after R finishes printing
 
         # Check for singular fit: any variance component near zero
         singular = False
@@ -565,7 +567,15 @@ def fit_glmm_with_fallback(formula_maximal, formula_minimal, data_pl, family="bi
             raise ValueError("Singular fit")
 
         print("  -> Maximal random effects model converged without singular fit.")
-        print(result)
+        if result is not None:
+            print(result)
+        else:
+            # On Windows, rpy2 C-level stdout is often lost. Explicitly print properties:
+            if hasattr(model, 'coefs') and model.coefs is not None:
+                print(model.coefs)
+            elif hasattr(model, 'summary'):
+                print(model.summary() if callable(model.summary) else model.summary)
+        sys.stdout.flush()
         return model, "maximal"
 
     except Exception as e:
@@ -573,14 +583,24 @@ def fit_glmm_with_fallback(formula_maximal, formula_minimal, data_pl, family="bi
             print(f"  [WARNING] Maximal model failed ({e}). Falling back to intercept-only.")
 
     print(f"  Fitting intercept-only model: {formula_minimal}")
+    sys.stdout.flush()
     try:
         model = glmer(formula_minimal, data=data_pl, family=family)
         result = model.fit()
+        sys.stdout.flush()
         print("  -> Intercept-only model used (report this in methods).")
-        print(result)
+        if result is not None:
+            print(result)
+        else:
+            if hasattr(model, 'coefs') and model.coefs is not None:
+                print(model.coefs)
+            elif hasattr(model, 'summary'):
+                print(model.summary() if callable(model.summary) else model.summary)
+        sys.stdout.flush()
         return model, "intercept-only"
     except Exception as e:
         print(f"  [ERROR] Intercept-only model also failed: {e}")
+        sys.stdout.flush()
         return None, None
 
 
