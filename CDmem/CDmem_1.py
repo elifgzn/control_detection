@@ -777,7 +777,7 @@ def vis_ang_to_pix(deg, dist_cm, width_cm, win_width_pix):
 #  each pair in the test phase and the other in the memory test phase.
 # ─────────────────────────────────────────────────────────────────────────────
 
-STIM_DIR     = pathlib.Path(r"C:\Users\elifg\Desktop\PHD\control_detection\CDmem\chosen_stimuli_nolures")
+STIM_DIR     = pathlib.Path(r"H:\PHD\control_detection\CDmem\chosen_stimuli_nolures")
 IMAGE_SEED   = 42         # Fixed seed for reproducible sampling across runs
 # IMAGE_SIZE will be calculated dynamically based on window width after win is created.
 
