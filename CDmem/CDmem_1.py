@@ -1417,8 +1417,18 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
 
     _SCREENSHOT_FRAMES = {1: 'frame001', 30: 'frame030'}
 
-    while clk.getTime() < MOTION_DURATION:
+    # ── Motion phase: accumulate time only while mouse is actively moving ─────
+    # Shapes freeze (and MOTION_DURATION countdown pauses) whenever the
+    # participant stops moving. Trial ends after MOTION_DURATION seconds of
+    # *actual* mouse movement have elapsed.
+    active_motion_time = 0.0   # Seconds of mouse-active movement accumulated
+    last_flip_time     = clk.getTime()  # Wall-clock time at last frame
+
+    while active_motion_time < MOTION_DURATION:
         x, y = mouse.getPos()
+        now = clk.getTime()
+        frame_dt = now - last_flip_time   # Elapsed wall-clock time this frame
+        last_flip_time = now
 
         # ── Butterworth anti-jiggle filter on mouse displacement ─────────────
         raw_dx = x - last[0]
@@ -1429,16 +1439,6 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
         filt_y, zi_y = sosfilt(_butter_sos, [raw_dy], zi=zi_y)
         dx, dy = float(filt_x[0]), float(filt_y[0])
         # ────────────────────────────────────────────────────────────────────
-
-        target_traj_dx,     target_traj_dy     = target_snippet[frame % len(target_snippet)]
-        distractor_traj_dx, distractor_traj_dy = distractor_snippet[frame % len(distractor_snippet)]
-
-        target_traj_dx     *= SPEED_MULTIPLIER
-        target_traj_dy     *= SPEED_MULTIPLIER
-        distractor_traj_dx *= SPEED_MULTIPLIER
-        distractor_traj_dy *= SPEED_MULTIPLIER
-
-        frame += 1
 
         mouse_speed = math.hypot(dx, dy)
         MAX_SPEED = 20.0
@@ -1451,40 +1451,50 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
         mouse_is_moving = mouse_speed > MOUSE_MOVE_THRESHOLD
 
         if mouse_is_moving:
+            # Advance trajectory frame and accumulate active time
+            active_motion_time += frame_dt
+            frame += 1
+
+            target_traj_dx,     target_traj_dy     = target_snippet[frame % len(target_snippet)]
+            distractor_traj_dx, distractor_traj_dy = distractor_snippet[frame % len(distractor_snippet)]
+
+            target_traj_dx     *= SPEED_MULTIPLIER
+            target_traj_dy     *= SPEED_MULTIPLIER
+            distractor_traj_dx *= SPEED_MULTIPLIER
+            distractor_traj_dy *= SPEED_MULTIPLIER
+
             tdx, tdy = mix_direction_only(dx, dy, target_traj_dx, target_traj_dy, prop)
+            ddx, ddy = distractor_traj_dx, distractor_traj_dy
+
+            vt = LOWPASS * vt + (1 - LOWPASS) * np.array([tdx, tdy])
+            vd = LOWPASS * vd + (1 - LOWPASS) * np.array([ddx, ddy])
+
+            vm       = np.array([dx, dy], dtype=float)
+            vm_speed = np.linalg.norm(vm) + 1e-9
+
+            vt_disp = np.array(vt, dtype=float)
+            vd_disp = np.array(vd, dtype=float)
+
+            ut = vt_disp / (np.linalg.norm(vt_disp) + 1e-9)
+            ud = vd_disp / (np.linalg.norm(vd_disp) + 1e-9)
+
+            cos_T = np.dot(vm, ut) / vm_speed
+            cos_D = np.dot(vm, ud) / vm_speed
+
+            evidence = (cos_T - cos_D) * mouse_speed
+
+            # Update shape positions only when mouse is moving
+            if (left_stim == 'A' and target == left_label) or \
+               (left_stim == 'B' and target == right_label):
+                stim_A.pos = confine(tuple(np.array(stim_A.pos) + vt))
+                stim_B.pos = confine(tuple(np.array(stim_B.pos) + vd))
+            else:
+                stim_B.pos = confine(tuple(np.array(stim_B.pos) + vt))
+                stim_A.pos = confine(tuple(np.array(stim_A.pos) + vd))
+
         else:
-            tdx, tdy = target_traj_dx, target_traj_dy
-
-        ddx, ddy = distractor_traj_dx, distractor_traj_dy
-
-        vt = LOWPASS * vt + (1 - LOWPASS) * np.array([tdx, tdy])
-        vd = LOWPASS * vd + (1 - LOWPASS) * np.array([ddx, ddy])
-
-        vm       = np.array([dx, dy], dtype=float)
-        vm_speed = np.linalg.norm(vm) + 1e-9
-
-        vt_disp = np.array(vt, dtype=float)
-        vd_disp = np.array(vd, dtype=float)
-
-        ut = vt_disp / (np.linalg.norm(vt_disp) + 1e-9)
-        ud = vd_disp / (np.linalg.norm(vd_disp) + 1e-9)
-
-        cos_T = np.dot(vm, ut) / vm_speed
-        cos_D = np.dot(vm, ud) / vm_speed
-
-        evidence = (cos_T - cos_D) * mouse_speed if mouse_is_moving else 0.0
-
-        # FIX: motion update now uses left_label/right_label (same system as target)
-        # instead of stim_left_label/stim_right_label.
-        # stim_A moves as target when stim_A is the controlled stimulus,
-        # i.e. when target matches the label on stim_A's side.
-        if (left_stim == 'A' and target == left_label) or \
-           (left_stim == 'B' and target == right_label):
-            stim_A.pos = confine(tuple(np.array(stim_A.pos) + vt))
-            stim_B.pos = confine(tuple(np.array(stim_B.pos) + vd))
-        else:
-            stim_B.pos = confine(tuple(np.array(stim_B.pos) + vt))
-            stim_A.pos = confine(tuple(np.array(stim_A.pos) + vd))
+            # Mouse is stationary: shapes stay frozen; no position update
+            evidence = 0.0
 
         trial_kinematics.append({
             'timestamp':       clk.getTime(),
@@ -1493,6 +1503,7 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
             'mouse_y':         y,
             'mouse_speed':     mouse_speed,
             'mouse_is_moving': mouse_is_moving,
+            'active_motion_time': active_motion_time,
             'stim_A_x':        stim_A.pos[0],
             'stim_A_y':        stim_A.pos[1],
             'stim_B_x':        stim_B.pos[0],
