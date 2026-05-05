@@ -12,7 +12,7 @@ Located in: CDmem/data/subjects/
 
 - add cd accuracy analysis -> see run_cd_accuracy_analysis() below.
 
-- ren et al 2026: Trims RT outliers on a rolling, per-participant basis. Any trial with an RT greater than mean + 3 * SD for that specific participant is discarded. // CDmem_analyses.py: Uses an absolute cutoff across the board. Any recognition trial with an RT greater than 20 seconds is discarded unconditionally (following Haridi et al., 2025).
+- ren et al 2026: Trims RT outliers on a rolling, per-participant basis. Any trial with an RT greater than mean + 3 * SD for that specific participant is discarded.
 
 - TODO 
 
@@ -25,15 +25,22 @@ Located in: CDmem/data/subjects/
 
 import os
 import sys
+import io
 
 # Set R_HOME for pymer4/rpy2 on Windows
 os.environ["R_HOME"] = r"C:\Program Files\R\R-4.5.2"
+
+# Reconfigure stdout to UTF-8 so that rpy2/pymer4 can parse R's unicode output
+# (e.g. ± and × symbols) without raising UnicodeEncodeError on Windows.
+if hasattr(sys.stdout, 'buffer'):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 import re
 import glob
 import numpy as np
 import pandas as pd
 import polars as pl
+import pingouin as pg
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend: writes directly to file, no GUI window.
                        # Ensures plots are saved reliably on Windows regardless of whether
@@ -44,10 +51,8 @@ from pathlib import Path
 from scipy import stats
 from scipy.stats import norm
 from scipy.optimize import curve_fit
-from statsmodels.stats.anova import AnovaRM
 import statsmodels.formula.api as smf
-from statsmodels.stats.multitest import multipletests
-from pymer4.models import lmer, glmer
+from pymer4.models import glmer
 
 # ============================================================================
 # CONFIGURATION
@@ -547,55 +552,73 @@ def fit_glmm_with_fallback(formula_maximal, formula_minimal, data_pl, family="bi
     random_structure_used : str
         Either "maximal" or "intercept-only", for transparent reporting.
     """
-    print(f"  Attempting maximal model: {formula_maximal}")
-    sys.stdout.flush()  # Flush Python buffer before R/C stdout takes over
-    try:
-        model = glmer(formula_maximal, data=data_pl, family=family)
-        result = model.fit()
-        sys.stdout.flush()  # Flush after R finishes printing
-
-        # Check for singular fit: any variance component near zero
-        singular = False
-        if hasattr(model, 'ranef_var') and model.ranef_var is not None:
-            variances = model.ranef_var.select(pl.col("^Var.*$")).to_numpy().flatten()
-            if np.any(variances < 1e-6):
-                singular = True
-
-        if singular:
-            print("  [WARNING] Singular fit detected in maximal model.")
-            print("  Falling back to random-intercept-only model.")
-            raise ValueError("Singular fit")
-
-        print("  -> Maximal random effects model converged without singular fit.")
-        if result is not None:
-            print(result)
-        else:
-            # On Windows, rpy2 C-level stdout is often lost. Explicitly print properties:
-            if hasattr(model, 'coefs') and model.coefs is not None:
-                print(model.coefs)
-            elif hasattr(model, 'summary'):
-                print(model.summary() if callable(model.summary) else model.summary)
-        sys.stdout.flush()
-        return model, "maximal"
-
-    except Exception as e:
-        if "Singular fit" not in str(e):
-            print(f"  [WARNING] Maximal model failed ({e}). Falling back to intercept-only.")
+    # print(f"  Attempting maximal model: {formula_maximal}")
+    # sys.stdout.flush()  # Flush Python buffer before R/C stdout takes over
+    # try:
+    #     model = glmer(formula_maximal, data=data_pl, family=family)
+    #     result = model.fit()
+    #     sys.stdout.flush()  # Flush after R finishes printing
+    # 
+    #     # Check for singular fit: any variance component near zero
+    #     singular = False
+    #     if hasattr(model, 'ranef_var') and model.ranef_var is not None:
+    #         variances = model.ranef_var.select(pl.col("^Var.*$")).to_numpy().flatten()
+    #         if np.any(variances < 1e-6):
+    #             singular = True
+    # 
+    #     if singular:
+    #         print("  [WARNING] Singular fit detected in maximal model.")
+    #         print("  Falling back to random-intercept-only model.")
+    #         raise ValueError("Singular fit")
+    # 
+    #     print("  -> Maximal random effects model converged without singular fit.")
+    #     if result is not None:
+    #         print(result)
+    #     else:
+    #         # On Windows, rpy2 C-level stdout is often lost. Explicitly print coefficients:
+    #         if hasattr(model, 'coefs') and model.coefs is not None:
+    #             print(model.coefs)
+    #     sys.stdout.flush()
+    #     return model, "maximal"
+    # 
+    # except Exception as e:
+    #     if "Singular fit" not in str(e):
+    #         print(f"  [WARNING] Maximal model failed ({e}). Falling back to intercept-only.")
 
     print(f"  Fitting intercept-only model: {formula_minimal}")
     sys.stdout.flush()
     try:
         model = glmer(formula_minimal, data=data_pl, family=family)
-        result = model.fit()
-        sys.stdout.flush()
-        print("  -> Intercept-only model used (report this in methods).")
-        if result is not None:
-            print(result)
+
+        # Suppress R's verbose console output (warnings, singular-fit messages,
+        # convergence info) during fitting. We print only model.coefs ourselves.
+        try:
+            import rpy2.rinterface_lib.callbacks as _rpy2_cb
+            _orig_print = _rpy2_cb.consolewrite_print
+            _orig_warn  = _rpy2_cb.consolewrite_warnerror
+            _rpy2_cb.consolewrite_print        = lambda x: None
+            _rpy2_cb.consolewrite_warnerror    = lambda x: None
+        except Exception:
+            _orig_print = _orig_warn = None
+
+        try:
+            model.fit()
+        finally:
+            if _orig_print is not None:
+                _rpy2_cb.consolewrite_print     = _orig_print
+                _rpy2_cb.consolewrite_warnerror = _orig_warn
+
+        print("  -> Intercept-only random effects structure used (as pre-registered).")
+        coefs = getattr(model, 'coefs', None)
+        if coefs is not None:
+            print(coefs.to_string())
         else:
-            if hasattr(model, 'coefs') and model.coefs is not None:
-                print(model.coefs)
-            elif hasattr(model, 'summary'):
-                print(model.summary() if callable(model.summary) else model.summary)
+            try:
+                summ = model.summary()
+                if summ is not None:
+                    print(str(summ).encode('utf-8', errors='replace').decode('utf-8'))
+            except Exception as pe:
+                print(f"  [WARNING] Could not print model coefficients: {pe}")
         sys.stdout.flush()
         return model, "intercept-only"
     except Exception as e:
@@ -607,6 +630,66 @@ def fit_glmm_with_fallback(formula_maximal, formula_minimal, data_pl, family="bi
 # ============================================================================
 # RECOGNITION DATA PREPARATION
 # ============================================================================
+
+
+def _compute_detection_breakdown(targets, fa_rates):
+    """
+    Compute hit rates and d-prime for controlled items split by
+    detection_accuracy (detected vs not detected), plus uncontrolled items
+    as a single reference group.
+
+    Used for per-participant subplot showing whether correct control detection
+    influenced subsequent recognition memory.
+
+    Parameters
+    ----------
+    targets : pd.DataFrame
+        Trial-level target data; must contain 'detection_accuracy', 'item_type',
+        'trial_level', 'said_old', 'participant'.
+    fa_rates : pd.DataFrame
+        Per-participant false alarm rates (columns: participant, FA_rate).
+
+    Returns
+    -------
+    pd.DataFrame or None
+        Columns: participant, trial_level, item_subtype, Hit_rate, FA_rate, d_prime.
+        item_subtype is one of: 'ctrl_detected', 'ctrl_not_detected', 'uncontrolled'.
+    """
+    if targets is None or 'detection_accuracy' not in targets.columns:
+        return None
+
+    df = targets.copy()
+    df['detection_accuracy'] = pd.to_numeric(df['detection_accuracy'], errors='coerce')
+
+    # Controlled items: split by whether participant correctly detected control.
+    # Uncontrolled items: keep as a single reference category.
+    def _subtype(row):
+        if row['item_type'] == 'controlled':
+            if row['detection_accuracy'] == 1:
+                return 'ctrl_detected'
+            elif row['detection_accuracy'] == 0:
+                return 'ctrl_not_detected'
+        elif row['item_type'] == 'uncontrolled':
+            return 'uncontrolled'
+        return None
+
+    df['item_subtype'] = df.apply(_subtype, axis=1)
+    df = df.dropna(subset=['item_subtype'])
+
+    if len(df) == 0:
+        return None
+
+    breakdown = (
+        df.groupby(['participant', 'trial_level', 'item_subtype'])['said_old']
+        .mean().reset_index().rename(columns={'said_old': 'Hit_rate'})
+        .merge(fa_rates, on='participant', how='left')
+    )
+    breakdown['d_prime'] = breakdown.apply(
+        lambda row: calc_dprime(row['Hit_rate'], row['FA_rate']), axis=1
+    )
+
+    return breakdown
+
 
 def analyze_recognition(main_data, recog_data):
     """
@@ -632,7 +715,7 @@ def analyze_recognition(main_data, recog_data):
     
     if len(foils) == 0:
         print("[WARNING] No foil ('unseen') trials found in recognition data.")
-        return None, None, None
+        return None, None, None, None
         
     fa_rates = foils.groupby('participant')['said_old'].mean().reset_index()
     fa_rates.rename(columns={'said_old': 'FA_rate'}, inplace=True)
@@ -653,19 +736,22 @@ def analyze_recognition(main_data, recog_data):
         target_img = row['true_controlled']
 
         _agency = row['agency_rating'] if 'agency_rating' in row.index and pd.notna(row.get('agency_rating')) else np.nan
+        _det_acc = row['detection_accuracy'] if 'detection_accuracy' in row.index and pd.notna(row.get('detection_accuracy')) else np.nan
         img_lookups.append({
             'participant':      px,
             'mem_filename':     row['img_A_name' if target_img == 'img_A' else 'img_B_name'],
             'trial_level':      cond,
             'item_type':        'controlled',
-            'agency_rating':    _agency
+            'agency_rating':    _agency,
+            'detection_accuracy': _det_acc
         })
         img_lookups.append({
             'participant':      px,
             'mem_filename':     row['img_B_name' if target_img == 'img_A' else 'img_A_name'],
             'trial_level':      cond,
             'item_type':        'uncontrolled',
-            'agency_rating':    _agency
+            'agency_rating':    _agency,
+            'detection_accuracy': _det_acc
         })
     img_lookup = pd.DataFrame(img_lookups)
     img_lookup.dropna(subset=['mem_filename'], inplace=True)
@@ -678,9 +764,9 @@ def analyze_recognition(main_data, recog_data):
         print("[INFO] Recognition data lacks condition tracking columns. Falling back to filename matching.")
         targets = targets.merge(img_lookup, on=['participant', 'mem_filename'], how='left')
     else:
-        # Merge agency_rating if tracking columns already exist
+        # Merge agency_rating and detection_accuracy if tracking columns already exist
         targets = targets.merge(
-            img_lookup[['participant', 'mem_filename', 'agency_rating']],
+            img_lookup[['participant', 'mem_filename', 'agency_rating', 'detection_accuracy']],
             on=['participant', 'mem_filename'],
             how='left'
         )
@@ -716,7 +802,10 @@ def analyze_recognition(main_data, recog_data):
         lambda row: calc_dprime(row['Hit_rate'], row['FA_rate']), axis=1
     )
 
-    return results, targets, results_supp
+    # 6. Detection Breakdown: controlled items split by detection_accuracy
+    det_breakdown = _compute_detection_breakdown(targets, fa_rates)
+
+    return results, targets, results_supp, det_breakdown
 
 
 # ==============================================================================
@@ -730,6 +819,7 @@ def analyze_recognition(main_data, recog_data):
 def run_analysis_1_dprime_ttest(mem_results):
     """
     Paired t-test comparing d-prime between high and low control conditions.
+    Uses pingouin for rich output (CI, Cohen's d, BF10, power).
     """
     if mem_results is None:
         print("[WARNING] mem_results is None. Skipping Analysis 1.")
@@ -743,21 +833,12 @@ def run_analysis_1_dprime_ttest(mem_results):
 
     pivoted = pivoted.dropna(subset=['high', 'low'])
 
-    t_stat, p_val = stats.ttest_rel(pivoted['high'], pivoted['low'])
-    diff = pivoted['high'] - pivoted['low']
-    cohens_d = diff.mean() / (diff.std() + 1e-9)
-
-    return {
-        'analysis':   'Analysis 1: d-prime paired t-test',
-        't_stat':     t_stat,
-        'p_val':      p_val,
-        'mean_high':  pivoted['high'].mean(),
-        'mean_low':   pivoted['low'].mean(),
-        'sd_high':    pivoted['high'].std(),
-        'sd_low':     pivoted['low'].std(),
-        'cohens_d':   cohens_d,
-        'n':          len(pivoted)
-    }
+    print(f"\nAnalysis 1: d-prime paired t-test (High vs. Low, N={len(pivoted)})")
+    print(f"  Mean (SD) High : {pivoted['high'].mean():.3f} ({pivoted['high'].std():.3f})")
+    print(f"  Mean (SD) Low  : {pivoted['low'].mean():.3f} ({pivoted['low'].std():.3f})")
+    result = pg.ttest(pivoted['high'], pivoted['low'], paired=True)
+    print(result.to_string(index=False))
+    return result
 
 
 # ------------------------------------------------------------------------------
@@ -767,6 +848,7 @@ def run_analysis_1_dprime_ttest(mem_results):
 def run_analysis_2_hitrate_ttest(mem_results):
     """
     Paired t-test comparing hit rates between high and low control conditions.
+    Uses pingouin for rich output (CI, Cohen's d, BF10, power).
     """
     if mem_results is None:
         print("[WARNING] mem_results is None. Skipping Analysis 2.")
@@ -780,21 +862,12 @@ def run_analysis_2_hitrate_ttest(mem_results):
 
     pivoted = pivoted.dropna(subset=['high', 'low'])
 
-    t_stat, p_val = stats.ttest_rel(pivoted['high'], pivoted['low'])
-    diff = pivoted['high'] - pivoted['low']
-    cohens_d = diff.mean() / (diff.std() + 1e-9)
-
-    return {
-        'analysis':   'Analysis 2: Hit rate paired t-test',
-        't_stat':     t_stat,
-        'p_val':      p_val,
-        'mean_high':  pivoted['high'].mean(),
-        'mean_low':   pivoted['low'].mean(),
-        'sd_high':    pivoted['high'].std(),
-        'sd_low':     pivoted['low'].std(),
-        'cohens_d':   cohens_d,
-        'n':          len(pivoted)
-    }
+    print(f"\nAnalysis 2: Hit rate paired t-test (High vs. Low, N={len(pivoted)})")
+    print(f"  Mean (SD) High : {pivoted['high'].mean():.3f} ({pivoted['high'].std():.3f})")
+    print(f"  Mean (SD) Low  : {pivoted['low'].mean():.3f} ({pivoted['low'].std():.3f})")
+    result = pg.ttest(pivoted['high'], pivoted['low'], paired=True)
+    print(result.to_string(index=False))
+    return result
 
 
 # ------------------------------------------------------------------------------
@@ -1039,15 +1112,15 @@ def run_supp_analysis_1_dprime_2x2_anova(supp_mem_results):
 
     print(f"\nSupplementary Analysis 1: 2x2 RM ANOVA on d-prime (N={len(valid_subjs)})...")
     try:
-        anova = AnovaRM(
-            data=df_anova, depvar='d_prime',
-            subject='participant', within=['trial_level', 'item_type']
+        res = pg.rm_anova(
+            data=df_anova, dv='d_prime',
+            within=['trial_level', 'item_type'],
+            subject='participant', detailed=True
         )
-        res = anova.fit()
-        print(res.summary())
+        print(res.to_string(index=False))
         return res
     except Exception as e:
-        print(f"  [ERROR] AnovaRM failed: {e}")
+        print(f"  [ERROR] rm_anova failed: {e}")
         return None
 
 
@@ -1076,15 +1149,15 @@ def run_supp_analysis_2_hitrate_2x2_anova(supp_mem_results):
 
     print(f"\nSupplementary Analysis 2: 2x2 RM ANOVA on hit rates (N={len(valid_subjs)})...")
     try:
-        anova = AnovaRM(
-            data=df_anova, depvar='Hit_rate',
-            subject='participant', within=['trial_level', 'item_type']
+        res = pg.rm_anova(
+            data=df_anova, dv='Hit_rate',
+            within=['trial_level', 'item_type'],
+            subject='participant', detailed=True
         )
-        res = anova.fit()
-        print(res.summary())
+        print(res.to_string(index=False))
         return res
     except Exception as e:
-        print(f"  [ERROR] AnovaRM failed: {e}")
+        print(f"  [ERROR] rm_anova failed: {e}")
         return None
 
 
@@ -1284,20 +1357,14 @@ def run_supp_analysis_5_fa_check(recog_data):
     group_min  = fa_per_px['FA_rate'].min()
     group_max  = fa_per_px['FA_rate'].max()
 
-    # One-sample t-test against 0
-    t_stat, p_val = stats.ttest_1samp(fa_per_px['FA_rate'], popmean=0)
-
-    print("\nSupplementary Analysis 5: False Alarm Rate Manipulation Check")
+    print("\nSupplementary Analysis 5: False Alarm Rate Sanity Check")
     print("=" * 60)
     print(f"  N participants : {len(fa_per_px)}")
     print(f"  FA rate M (SD) : {group_mean:.3f} ({group_sd:.3f})")
     print(f"  FA rate range  : {group_min:.3f} - {group_max:.3f}")
     print(f"\n  One-sample t-test (FA rate vs. 0):")
-    print(f"    t({len(fa_per_px)-1}) = {t_stat:.3f}, p = {p_val:.4f}")
-    if p_val < 0.05:
-        print("    -> FA rate is significantly above 0. Check for response bias.")
-    else:
-        print("    -> FA rate does not significantly differ from 0. No evidence of response bias.")
+    res = pg.ttest(fa_per_px['FA_rate'], 0)
+    print(res.to_string(index=False))
 
     print("\n  Per-participant FA rates:")
     for _, row in fa_per_px.sort_values('participant').iterrows():
@@ -1430,15 +1497,8 @@ def run_agency_current_trial_analysis(test_data):
 # ============================================================================
 
 def print_stat_results(res):
-    """Print formatted t-test results."""
-    if res is None:
-        return
-    print(f"\n{res['analysis']}:")
-    print(f"  t({res['n']-1}) = {res['t_stat']:.3f}, p = {res['p_val']:.4f}")
-    print(f"  Mean (SD) High: {res['mean_high']:.3f} ({res['sd_high']:.3f})")
-    print(f"  Mean (SD) Low:  {res['mean_low']:.3f} ({res['sd_low']:.3f})")
-    if 'cohens_d' in res:
-        print(f"  Cohen's d       : {res['cohens_d']:.3f}")
+    """No-op: analysis functions now print pingouin output directly."""
+    pass
 
 
 def run_recognition_stats(mem_results, targets, supp_mem_results, recog_data):
@@ -1480,6 +1540,7 @@ def run_recognition_stats(mem_results, targets, supp_mem_results, recog_data):
     run_supp_analysis_5_fa_check(recog_data)
 
     # --- Bonferroni correction summary for supplementary ANOVAs ---
+    # pingouin rm_anova returns a DataFrame with columns: Source, SS, DF, MS, F, p-unc, ng2, eps
     k_supp = 4  # Supp 1-4 constitute the supplementary family
     alpha_adj = 0.05 / k_supp
     print("\n" + "-" * 60)
@@ -1492,10 +1553,10 @@ def run_recognition_stats(mem_results, targets, supp_mem_results, recog_data):
             print(f"  {label}: not available.")
             continue
         try:
-            tbl = anova.anova_table
-            int_keys = [idx for idx in tbl.index if ':' in str(idx)]
-            if int_keys:
-                p_raw = tbl.loc[int_keys[0], 'Pr > F']
+            # pingouin: interaction row has 'Source' containing '*'
+            int_rows = anova[anova['Source'].str.contains('\*', regex=False, na=False)]
+            if not int_rows.empty:
+                p_raw = int_rows.iloc[0]['p-unc']
                 p_adj = min(1.0, p_raw * k_supp)
                 sig   = " *" if p_adj < 0.05 else ""
                 print(f"  {label}: interaction p_uncorr={p_raw:.4f}, "
@@ -1503,7 +1564,6 @@ def run_recognition_stats(mem_results, targets, supp_mem_results, recog_data):
         except Exception as e:
             print(f"  {label}: could not extract p-values ({e}).")
     print(f"  NOTE: Supp 3 & 4 GLMM p-values should also be compared against alpha={alpha_adj:.4f}.")
-
 
     print("\n" + "=" * 60)
 
@@ -1789,57 +1849,125 @@ def plot_calibration_convergence(data, output_dir, suffix=""):
     print("Saved plot: " + str(out_path))
 
 
-def plot_recognition_performance(supp_mem_results, output_dir, suffix=""):
+def _draw_detection_breakdown_bars(ax, bd, y_col, conditions=('high', 'low')):
     """
-    Create a bar plot for recognition hit rates.
-    X-axis: Trial Level (High vs Low), Hue: Item Type (Controlled vs Uncontrolled).
+    Draw grouped bars for the detection-accuracy breakdown with a visual gap
+    between the controlled bars (two greens) and the uncontrolled bar (orange).
+    """
+    colors = {
+        'ctrl_detected':     '#2e8b57',   # dark green
+        'ctrl_not_detected': '#90ee90',   # light green
+        'uncontrolled':      '#fc8d62',   # orange (matches Set2)
+    }
+    labels = {
+        'ctrl_detected':     'Controlled (Detected)',
+        'ctrl_not_detected': 'Controlled (Not Detected)',
+        'uncontrolled':      'Uncontrolled',
+    }
+    subtypes = ['ctrl_detected', 'ctrl_not_detected', 'uncontrolled']
+    bar_w = 0.22
+    # positions: two greens side-by-side, then a gap, then orange
+    offsets = [-bar_w - 0.02, 0.0 - 0.02, bar_w + 0.12]
+
+    for ci, cond in enumerate(conditions):
+        cx = ci * 1.5  # centre of each condition group
+        for si, sub in enumerate(subtypes):
+            subset = bd[(bd['trial_level'] == cond) & (bd['item_subtype'] == sub)]
+            val = subset[y_col].mean() if len(subset) > 0 else 0
+            ax.bar(cx + offsets[si], val, width=bar_w,
+                   color=colors[sub], edgecolor='white', linewidth=0.5,
+                   label=labels[sub] if ci == 0 else None)
+
+    ax.set_xticks([ci * 1.5 for ci in range(len(conditions))])
+    ax.set_xticklabels([c.capitalize() for c in conditions])
+    # Deduplicate legend
+    handles, lbls = ax.get_legend_handles_labels()
+    by_label = dict(zip(lbls, handles))
+    ax.legend(by_label.values(), by_label.keys(),
+              title='Item Subtype', frameon=True, loc='upper right')
+
+
+def plot_recognition_performance(supp_mem_results, output_dir, suffix="",
+                                  detection_breakdown=None):
+    """
+    Create bar plots for recognition hit rates.
+
+    Row 1 : Trial Level x Item Type (controlled / uncontrolled) — unchanged.
+    Row 2 : Detection breakdown — controlled split into detected (dark green)
+            and not-detected (light green), uncontrolled (orange), with a gap.
+    Row 3 : Overall hit rate per condition (high vs low, single bar each).
+    Rows 2-3 only appear when *detection_breakdown* is provided.
     """
     if supp_mem_results is None or len(supp_mem_results) == 0:
         print("[WARNING] No supplementary recognition data for plotting.")
         return
 
     plt.style.use('seaborn-v0_8-whitegrid')
-    
-    plt.figure(figsize=(10, 7))
-    
-    # Sort for consistent plotting
+
     plot_df = supp_mem_results.copy()
-    if 'trial_level' in plot_df.columns and 'item_type' in plot_df.columns:
-        plot_df['trial_level'] = pd.Categorical(plot_df['trial_level'], categories=['high', 'low'], ordered=True)
-        plot_df['item_type'] = pd.Categorical(plot_df['item_type'], categories=['controlled', 'uncontrolled'], ordered=True)
-        plot_df = plot_df.sort_values(['trial_level', 'item_type'])
-
-        # Create the grouped bar plot
-        # High Control Blue, Low Control Orange (standard colors from sanity check)
-        # But here we have two factors, so using a standard palette like 'Set2'
-        ax = sns.barplot(
-            data=plot_df, 
-            x='trial_level', 
-            y='Hit_rate', 
-            hue='item_type',
-            errorbar='se',
-            palette='Set2',
-            capsize=0.1
-        )
-
-        plt.title(f'Recognition Performance: Hit Rate by Condition  {_px_label(plot_df)}',
-                  fontsize=14, fontweight='bold')
-        plt.xlabel('Control Task Level', fontsize=12)
-        plt.ylabel('Hit Rate (Mean Accuracy to Old Items)', fontsize=12)
-        plt.ylim(0, 1)
-        plt.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5, label='Chance')
-        
-        plt.legend(title='Item Type', frameon=True, loc='upper right')
-
-        plt.tight_layout()
-        out_dir = Path(output_dir)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / f'recognition_performance{suffix}.png'
-        plt.savefig(out_path, dpi=150)
-        plt.close()
-        print(f"Saved recognition plot: {out_path}")
-    else:
+    if 'trial_level' not in plot_df.columns or 'item_type' not in plot_df.columns:
         print("[WARNING] Missing required columns for recognition plot.")
+        return
+
+    plot_df['trial_level'] = pd.Categorical(plot_df['trial_level'], categories=['high', 'low'], ordered=True)
+    plot_df['item_type'] = pd.Categorical(plot_df['item_type'], categories=['controlled', 'uncontrolled'], ordered=True)
+    plot_df = plot_df.sort_values(['trial_level', 'item_type'])
+
+    has_breakdown = detection_breakdown is not None and len(detection_breakdown) > 0
+    n_rows = 3 if has_breakdown else 1
+    fig, axes = plt.subplots(n_rows, 1, figsize=(10, 6 * n_rows))
+    if n_rows == 1:
+        axes = [axes]
+
+    # --- Row 1: existing 2x2 plot (unchanged) ---
+    ax = axes[0]
+    sns.barplot(
+        data=plot_df, x='trial_level', y='Hit_rate', hue='item_type',
+        errorbar='se', palette='Set2', capsize=0.1, ax=ax
+    )
+    ax.set_title(f'Recognition Performance: Hit Rate by Condition  {_px_label(plot_df)}',
+                 fontsize=14, fontweight='bold')
+    ax.set_xlabel('Control Task Level', fontsize=12)
+    ax.set_ylabel('Hit Rate (Mean Accuracy to Old Items)', fontsize=12)
+    ax.set_ylim(0, 1)
+    ax.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5, label='Chance')
+    ax.legend(title='Item Type', frameon=True, loc='upper right')
+
+    if has_breakdown:
+        bd = detection_breakdown.copy()
+
+        # --- Row 2: detection breakdown (green shades + orange, gap) ---
+        ax2 = axes[1]
+        _draw_detection_breakdown_bars(ax2, bd, 'Hit_rate')
+        ax2.set_title('Hit Rate: Controlled (Detected vs Not Detected) + Uncontrolled',
+                      fontsize=14, fontweight='bold')
+        ax2.set_xlabel('Control Task Level', fontsize=12)
+        ax2.set_ylabel('Hit Rate', fontsize=12)
+        ax2.set_ylim(0, 1)
+        ax2.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5)
+
+        # --- Row 3: overall hit rate per condition (single bar) ---
+        ax3 = axes[2]
+        overall = plot_df.groupby('trial_level', observed=True)['Hit_rate'].mean().reindex(['high', 'low'])
+        color_map = {'high': '#1f77b4', 'low': '#ff7f0e'}
+        ax3.bar(['High', 'Low'], overall.values,
+                color=[color_map['high'], color_map['low']],
+                edgecolor='white', width=0.45)
+        ax3.set_title('Overall Hit Rate by Control Level',
+                      fontsize=14, fontweight='bold')
+        ax3.set_xlabel('Control Task Level', fontsize=12)
+        ax3.set_ylabel('Hit Rate', fontsize=12)
+        ax3.set_ylim(0, 1)
+        ax3.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5)
+
+    plt.tight_layout()
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f'recognition_performance{suffix}.png'
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+    print(f"Saved recognition plot: {out_path}")
+
 
 
 # ============================================================================
@@ -2161,20 +2289,11 @@ def run_cd_accuracy_analysis(data):
         print("\n  [WARNING] Too few participants for paired t-test. Skipping.")
         return
 
-    t_stat, p_val = stats.ttest_rel(acc_px['high'], acc_px['low'])
-    diff = acc_px['high'] - acc_px['low']
-    cohens_d = diff.mean() / (diff.std() + 1e-9)
-
     print(f"\n  Paired t-test (High vs. Low, participant-level means):")
-    print(f"    t({len(acc_px)-1}) = {t_stat:.3f}, p = {p_val:.4f}")
-    print(f"    Cohen's d = {cohens_d:.3f}")
-    print(f"    Mean (SD) High: {acc_px['high'].mean():.3f} ({acc_px['high'].std():.3f})")
-    print(f"    Mean (SD) Low:  {acc_px['low'].mean():.3f} ({acc_px['low'].std():.3f})")
-    if p_val < 0.05:
-        print("    -> Significant: manipulation successfully differentiated accuracy levels.")
-    else:
-        print("    -> NOT significant: accuracy did not differ between conditions. "
-              "Interpret memory effects with caution.")
+    print(f"    Mean (SD) High : {acc_px['high'].mean():.3f} ({acc_px['high'].std():.3f})")
+    print(f"    Mean (SD) Low  : {acc_px['low'].mean():.3f} ({acc_px['low'].std():.3f})")
+    result = pg.ttest(acc_px['high'], acc_px['low'], paired=True)
+    print(result.to_string(index=False))
 
     # 3. Binomial GLMM
     print("\n  Binomial GLMM: detection_accuracy ~ control_c + (1 + control_c | participant)")
@@ -2196,14 +2315,68 @@ def run_cd_accuracy_analysis(data):
 
 
 # ============================================================================
+# SENSE OF AGENCY (SoA) RATINGS ANALYSIS (Manipulation Check)
+# ============================================================================
+
+def run_soa_analysis(data):
+    """
+    Verify the subjective feeling of agency differed between High and Low 
+    control conditions using a paired t-test on participant-level mean SoA ratings.
+    """
+    if data is None or len(data) == 0:
+        print("[WARNING] No data for SoA analysis. Skipping.")
+        return
+
+    test_data = data[data['phase'] == 'test'].copy() if 'phase' in data.columns else data.copy()
+    
+    if 'agency_rating' not in test_data.columns or test_data['agency_rating'].isna().all():
+        print("[WARNING] 'agency_rating' column missing or empty. Skipping SoA analysis.")
+        return
+        
+    if 'control_condition' not in test_data.columns:
+        print("[WARNING] 'control_condition' column missing. Skipping SoA analysis.")
+        return
+
+    test_data['agency_rating'] = pd.to_numeric(test_data['agency_rating'], errors='coerce')
+
+    print("\n" + "=" * 60)
+    print("SENSE OF AGENCY RATINGS (Manipulation Check)")
+    print("=" * 60)
+
+    # Participant-level means
+    soa_px = (
+        test_data
+        .groupby(['participant', 'control_condition'])['agency_rating']
+        .mean().reset_index()
+        .pivot(index='participant', columns='control_condition', values='agency_rating')
+        .dropna(subset=['high', 'low'])
+    )
+    if len(soa_px) < 2:
+        print("\n  [WARNING] Too few participants for paired t-test. Skipping.")
+        return
+
+    print(f"\n  Paired t-test (High vs. Low, participant-level mean SoA ratings):")
+    print(f"    Mean (SD) High : {soa_px['high'].mean():.3f} ({soa_px['high'].std():.3f})")
+    print(f"    Mean (SD) Low  : {soa_px['low'].mean():.3f} ({soa_px['low'].std():.3f})")
+    result = pg.ttest(soa_px['high'], soa_px['low'], paired=True)
+    print(result.to_string(index=False))
+    print("=" * 60 + "\n")
+
+
+# ============================================================================
 # PLOT: d-prime by condition (2x2)
 # ============================================================================
 
-def plot_dprime_by_condition(supp_mem_results, output_dir, suffix=""):
+def plot_dprime_by_condition(supp_mem_results, output_dir, suffix="",
+                             detection_breakdown=None):
     """
     Bar chart of mean d' grouped by the 2x2 design:
       Trial Level (High / Low) x Item Type (Controlled / Uncontrolled).
     A d' = 0 reference line marks chance memory performance.
+
+    If *detection_breakdown* is provided the figure gains a second row that
+    splits controlled items by detection accuracy (detected vs not detected)
+    while keeping uncontrolled items as a single reference group.
     """
     if supp_mem_results is None or len(supp_mem_results) == 0:
         print("[WARNING] No supplementary data for d-prime plot.")
@@ -2221,7 +2394,14 @@ def plot_dprime_by_condition(supp_mem_results, output_dir, suffix=""):
         plot_df['item_type'], categories=['controlled', 'uncontrolled'], ordered=True
     )
 
-    fig, ax = plt.subplots(figsize=(10, 7))
+    has_breakdown = detection_breakdown is not None and len(detection_breakdown) > 0
+    n_rows = 3 if has_breakdown else 1
+    fig, axes = plt.subplots(n_rows, 1, figsize=(10, 6 * n_rows))
+    if n_rows == 1:
+        axes = [axes]
+
+    # --- Row 1: existing 2x2 plot (unchanged) ---
+    ax = axes[0]
     sns.barplot(
         data=plot_df, x='trial_level', y='d_prime', hue='item_type',
         errorbar='se', palette='Set2', capsize=0.1, ax=ax,
@@ -2235,6 +2415,36 @@ def plot_dprime_by_condition(supp_mem_results, output_dir, suffix=""):
     ax.set_ylabel("d\u2032 (Mean \u00b1 SE)", fontsize=12)
     ax.set_ylim(0, 2)
     ax.legend(title='Item Type', frameon=True, loc='lower right')
+
+    if has_breakdown:
+        bd = detection_breakdown.copy()
+
+        # --- Row 2: detection breakdown (green shades + orange, gap) ---
+        ax2 = axes[1]
+        _draw_detection_breakdown_bars(ax2, bd, 'd_prime')
+        ax2.axhline(y=0, color='black', linestyle='--', linewidth=1.2, alpha=0.6,
+                    label="d\u2032 = 0 (chance)")
+        ax2.set_title("d\u2032: Controlled (Detected vs Not Detected) + Uncontrolled",
+                      fontsize=14, fontweight='bold')
+        ax2.set_xlabel("Control Task Level", fontsize=12)
+        ax2.set_ylabel("d\u2032 (Mean \u00b1 SE)", fontsize=12)
+        ax2.set_ylim(0, 2)
+
+        # --- Row 3: overall d' per condition (single bar) ---
+        ax3 = axes[2]
+        overall = plot_df.groupby('trial_level', observed=True)['d_prime'].mean().reindex(['high', 'low'])
+        color_map = {'high': '#1f77b4', 'low': '#ff7f0e'}
+        ax3.bar(['High', 'Low'], overall.values,
+                color=[color_map['high'], color_map['low']],
+                edgecolor='white', width=0.45)
+        ax3.axhline(y=0, color='black', linestyle='--', linewidth=1.2, alpha=0.6,
+                    label="d\u2032 = 0 (chance)")
+        ax3.set_title("Overall d\u2032 by Control Level",
+                      fontsize=14, fontweight='bold')
+        ax3.set_xlabel("Control Task Level", fontsize=12)
+        ax3.set_ylabel("d\u2032", fontsize=12)
+        ax3.set_ylim(0, 2)
+
     plt.tight_layout()
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -2370,18 +2580,17 @@ if __name__ == "__main__":
     assert data is not None
 
     # ------------------------------------------------------------------
-    # 2. Print column names and overall shape
+    # 2. Print overall shape (column/row printing commented out)
     # ------------------------------------------------------------------
-    print("=" * 60)
-    print("COLUMN NAMES")
-    print("=" * 60)
-    print(f"Total columns: {len(data.columns)}\n")
-    for i, col in enumerate(data.columns, start=1):
-        print(f"  {i:>3}. {col}")
-
-    print("\nFirst 10 rows:")
-    print(data.head(10).to_string())
-    print()
+    # print("=" * 60)
+    # print("COLUMN NAMES")
+    # print("=" * 60)
+    # print(f"Total columns: {len(data.columns)}\n")
+    # for i, col in enumerate(data.columns, start=1):
+    #     print(f"  {i:>3}. {col}")
+    # print("\nFirst 10 rows:")
+    # print(data.head(10).to_string())
+    # print()
 
     # ------------------------------------------------------------------
     # 2b. Image Uniqueness Check
@@ -2418,12 +2627,12 @@ if __name__ == "__main__":
     if recog_data is None:
         print("No recognition data loaded. Skipping recognition analyses.")
     else:
-        print(f"\nRecognition column names (total: {len(recog_data.columns)}):")
-        for i, col in enumerate(recog_data.columns, start=1):
-            print(f"  {i:>3}. {col}")
-        print("\nFirst 10 rows of recognition data:")
-        print(recog_data.head(10).to_string())
-        print()
+        # print(f"\nRecognition column names (total: {len(recog_data.columns)}):")
+        # for i, col in enumerate(recog_data.columns, start=1):
+        #     print(f"  {i:>3}. {col}")
+        # print("\nFirst 10 rows of recognition data:")
+        # print(recog_data.head(10).to_string())
+        # print()
 
         # ------------------------------------------------------------------
         # 6. Recognition exclusion - long RTs (> 20 s)
@@ -2487,6 +2696,11 @@ if __name__ == "__main__":
 
     plot_sanity_check(data, POOLED_DIR)
     plot_calibration_convergence(data, POOLED_DIR)
+
+    # -- Manipulation Checks (run here alongside sanity checks) --
+    run_cd_accuracy_analysis(data)
+    run_soa_analysis(data)
+
     sys.stdout.flush()
 
     # ------------------------------------------------------------------
@@ -2497,7 +2711,7 @@ if __name__ == "__main__":
         print("RECOGNITION MEMORY (D-PRIME)")
         print("=" * 60)
 
-        mem_results, targets, supp_mem_results = analyze_recognition(data, recog_data)
+        mem_results, targets, supp_mem_results, det_breakdown = analyze_recognition(data, recog_data)
 
         if mem_results is not None:
             print("\nPer-participant Hit Rate, FA Rate, and D-prime (Primary):")
@@ -2524,8 +2738,10 @@ if __name__ == "__main__":
             run_recognition_stats(mem_results, targets, supp_mem_results, recog_data)
 
             # Recognition Performance Plots (pooled)
-            plot_recognition_performance(supp_mem_results, POOLED_DIR)
-            plot_dprime_by_condition(supp_mem_results, POOLED_DIR)
+            plot_recognition_performance(supp_mem_results, POOLED_DIR,
+                                          detection_breakdown=det_breakdown)
+            plot_dprime_by_condition(supp_mem_results, POOLED_DIR,
+                                     detection_breakdown=det_breakdown)
 
             # Analysis 7: Agency -> Memory (continuous agency_rating_z)
             targets_agency = run_agency_recognition_stats(targets)
@@ -2551,8 +2767,11 @@ if __name__ == "__main__":
                 supp_mem_results['participant'] == _px
             ].copy()
             if not _px_supp.empty:
-                plot_recognition_performance(_px_supp, PER_PARTICIPANT_DIR, suffix=_px_suffix)
-                plot_dprime_by_condition(_px_supp, PER_PARTICIPANT_DIR, suffix=_px_suffix)
+                _px_det = det_breakdown[det_breakdown['participant'] == _px].copy() if det_breakdown is not None else None
+                plot_recognition_performance(_px_supp, PER_PARTICIPANT_DIR, suffix=_px_suffix,
+                                             detection_breakdown=_px_det)
+                plot_dprime_by_condition(_px_supp, PER_PARTICIPANT_DIR, suffix=_px_suffix,
+                                         detection_breakdown=_px_det)
             else:
                 print(f"    [WARNING] No supplementary recognition data for participant {int(_px)}. Skipping recognition plots.")
 
@@ -2562,11 +2781,6 @@ if __name__ == "__main__":
                     plot_agency_recognition(_px_targets, PER_PARTICIPANT_DIR, suffix=_px_suffix)
 
     # ------------------------------------------------------------------
-    # 13. Control Detection Accuracy (Manipulation Check)
-    # ------------------------------------------------------------------
-    run_cd_accuracy_analysis(data)
-
-    # ------------------------------------------------------------------
-    # 14. Analysis 5a: Agency ~ Accuracy + Control Level (Test Phase)
+    # 13. Analysis 5a: Agency ~ Accuracy + Control Level (Test Phase)
     # ------------------------------------------------------------------
     run_agency_current_trial_analysis(test_data)

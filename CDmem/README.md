@@ -22,8 +22,8 @@ In the **Test Phase**, the shapes are replaced by images from the [IMAGINE datas
 
 | Phase | Description |
 |---|---|
-| **Calibration** | 3-up-1-down staircase → finds each participant's 75% accuracy threshold (`prop`) |
-| **Test** (4 blocks) | Four difficulty levels derived from the calibrated `prop`, counterbalanced across blocks |
+| **Calibration** | Quest+ staircase → finds each participant's 75% & 55% accuracy threshold (`prop`) |
+| **Test** (4 blocks) | Two difficulty levels (high & low) derived from the two Quest+ staircasescounterbalanced across blocks |
 | **Memory Test** | Recognition memory for images seen during the test phase |
 
 **Control manipulation**: `prop` ∈ [0, 1] blends the participant's mouse direction with the pre-recorded trajectory direction, while keeping speed constant. Lower `prop` = harder to detect control.

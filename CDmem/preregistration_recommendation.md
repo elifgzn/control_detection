@@ -2,7 +2,7 @@
 
 ## Experiment Overview (for context)
 
-Participants detect which of two moving shapes they are controlling (via partial mouse-direction coupling), across **High** (~85% accuracy target) and **Low** (~55% accuracy target) control conditions calibrated individually with QUEST+. After the control-detection task, a surprise recognition memory test probes whether images encoded during High vs. Low control trials are remembered differently. A foil set (never-seen images) provides the false-alarm baseline for SDT measures.
+Participants detect which of two moving shapes they are controlling (via partial mouse-direction coupling), across **High** (~75% accuracy target) and **Low** (~55% accuracy target) control conditions calibrated individually with QUEST+. After the control-detection task, a surprise recognition memory test probes whether images encoded during High vs. Low control trials are remembered differently. A foil set (never-seen images) provides the false-alarm baseline for SDT measures.
 
 Key design features relevant to analysis choice:
 - **Within-participant 2-condition design** (High vs. Low control at the trial level).
