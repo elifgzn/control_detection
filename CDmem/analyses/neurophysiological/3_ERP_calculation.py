@@ -15,7 +15,7 @@ plist = [31]
 
 # Paths
 eeg_path = r"C:\Users\elifg\Desktop\PHD\MNE_learn\eeg3_clean"
-log_path = r"C:\Users\elifg\Desktop\LMU\thesis\main_logdat\main_logdat"
+log_path = r"H:\PHD\control_detection\pilot_data"
 
 # Accumulates one summary dict per participant (FieldTrip: behavSummary array)
 # so we can do a cross-participant trial-count check after the loop.
@@ -25,15 +25,21 @@ all_summaries = []
 for sub in plist:
     sub_id = f"{sub:04d}"
     epo_file = os.path.join(eeg_path, f"MCRL_{sub_id}-epo-clean.fif")
-    log_file = os.path.join(log_path, f"MC_RL{sub}.txt")
+    
+    # Find behavioral log file
+    import glob
+    log_files = glob.glob(os.path.join(log_path, f"CDmem_1_{sub}*.csv"))
+    log_files = [f for f in log_files if 'kinematics' not in f and 'recognition' not in f]
 
     # Check that files exist
     if not os.path.exists(epo_file):
         print(f"Cleaned epochs file not found: {epo_file}")
         continue
-    if not os.path.exists(log_file):
-        print(f"Behavioral log file not found: {log_file}")
+    if not log_files:
+        print(f"Behavioral log file not found for participant {sub}")
         continue
+        
+    log_file = log_files[0]
 
     print(f"\n{'='*60}")
     print(f"  Participant {sub}")
@@ -72,7 +78,7 @@ for sub in plist:
     eeg_triggers = np.array([event_id_rev[e] for e in epochs.events[:, 2]])
 
     # Get the trigger sequence from the full log (chronological order)
-    log_triggers = logdat['trigger_feedback'].values  # shape (352,) for all trials
+    log_triggers = logdat['trigger_motion_start'].values  # shape (352,) for all trials
 
     # Walk through the log and mark which rows have a matching EEG trigger
     # (same logic as ismember in FieldTrip, but sequence-aware)
@@ -94,20 +100,19 @@ for sub in plist:
     print(f"  Trials surviving preprocessing: {len(logdat)}")
 
     # ── 3. Filter for relevant trials ───────────────────────
-    # OPTION B): ONLY HV TRIALS (High-Value item chosen)
-    # FieldTrip: logdat = logdat(logdat.correctAction == 1,:);
-    is_hv = (logdat['correctAction'] == 1)
-    logdat = logdat[is_hv].copy()
+    # Filter for trials with correct agency responses (Wen et al., 2017)
+    is_correct_agency = (logdat['detection_accuracy'] == 1)
+    logdat = logdat[is_correct_agency].copy()
     
     # Match EEG data accordingly
     # In MNE, we can use the boolean mask directly if it matches the current number of epochs
-    epochs = epochs[is_hv.values]
+    epochs = epochs[is_correct_agency.values]
     
-    print(f"  Trials after HV filtering: {len(logdat)} (Behavioral == EEG: {len(logdat) == len(epochs)})")
+    print(f"  Trials after agency filtering: {len(logdat)} (Behavioral == EEG: {len(logdat) == len(epochs)})")
 
     # ── 4. Sanity Check: Match Triggers ────────────────────
-    # Compare logdat.trigger_feedback with epochs.events[:, 2]
-    # Note: Trigger values in logdat (77, 88, 99, 98) might be different from 
+    # Compare logdat.trigger_motion_start with epochs.events[:, 2]
+    # Note: Trigger values in logdat (21, 23) might be different from 
     # the event IDs MNE assigned if not explicitly handled.
     # In 20_reading_eeg_data.py, event_id was used, mapping 'Stimulus/S 77' to some integer.
     
@@ -119,7 +124,7 @@ for sub in plist:
     for i in range(len(epochs)):
         eeg_trigger_str = event_id_rev[epochs.events[i, 2]] # e.g. 'Stimulus/S 77'
         eeg_trigger_val = int(eeg_trigger_str.split('S ')[1])
-        log_trigger_val = logdat.iloc[i]['trigger_feedback']
+        log_trigger_val = logdat.iloc[i]['trigger_motion_start']
         
         if eeg_trigger_val != log_trigger_val:
             print(f"  ERROR: Mismatch in Trigger Sequence at trial index {i}!")
@@ -145,10 +150,9 @@ for sub in plist:
     # ft_timelockanalysis with keeptrials='no': it returns an Evoked object
     # containing the trial-averaged ERP for the selected subset.
     #
-    # Conditions: control × feedback_valence
-    #   control          1 = high control (free choice)   2 = low control (forced/mixed)
-    #   feedbackvalence  1 = positive feedback            2 = negative feedback
-    # → 4 conditions total: cc1fb1, cc1fb2, cc2fb1, cc2fb2
+    # Conditions: control_condition
+    #   control_condition  'high' = high control   'low' = low control
+    # → 2 conditions total: high_control, low_control
 
     # Output folder — create it if it doesn't exist (FieldTrip assumes it exists;
     # we add os.makedirs to be safe, equivalent to a one-time mkdir in the shell)
@@ -164,19 +168,15 @@ for sub in plist:
     summary   = {'sub': sub}  # trial counts per condition  (FieldTrip: summary struct)
 
     cnum = 0
-    for control in [1, 2]:           # 1 = high control, 2 = low control
-        for fb_val in [1, 2]:        # 1 = positive feedback, 2 = negative feedback
-            cnum += 1
+    for control in ['high', 'low']:  # high control, low control
+        cnum += 1
 
-            # Build condition label, e.g. 'cc1fb1'
-            # FieldTrip: cond_name{cnum} = ['cc' num2str(control) 'fb' num2str(feedback_val)];
-            label = f"cc{control}fb{fb_val}"
-            cond_name.append(label)
+        # Build condition label, e.g. 'high_control'
+        label = f"{control}_control"
+        cond_name.append(label)
 
-            # Boolean mask over the current (HV-filtered, preprocessed) trials
-            # FieldTrip: cfgerp.trials = logdat.condition == control & logdat.feedbackvalence == feedback_val;
-            mask = (logdat_reset['condition'] == control) & \
-                   (logdat_reset['feedbackvalence'] == fb_val)
+        # Boolean mask over the current (filtered, preprocessed) trials
+        mask = (logdat_reset['control_condition'] == control)
 
             n_trials = mask.sum()
 

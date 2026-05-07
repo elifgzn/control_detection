@@ -27,29 +27,16 @@ os.makedirs(save_to, exist_ok=True)
 # Electrode and time window selection for Reward Positivity
 # ──────────────────────────────────────────────────────────────
 
-electrodes_select = ['Fz', 'FCz', 'FC1', 'FC2']
+electrodes_select = ['FCz', 'Cz', 'CPz', 'Pz']
 
-# Time window for Reward Positivity analysis and topoplots
-# FieldTrip: time_select = [0.20 0.30];  % literature-based time window
-# (alternative data-driven window for topoplots, also in FieldTrip):
-# time_select = [0.26, 0.30]   # test = 1, data-driven for topoplots
-time_select = [0.20, 0.30]     # test = 1, literature-based
-
-# For difference wave analysis (comment time_select above and use this):
-# FieldTrip: %test = 1.1 / time_select = [0.28 0.32]
-# time_select = [0.28, 0.32]
+# Time window for P500 analysis and topoplots (Wen et al., 2017)
+time_select = [0.45, 0.65]
 
 # ──────────────────────────────────────────────────────────────
 # Condition layout (matches ERP_calculation.py output)
 # ──────────────────────────────────────────────────────────────
-# FieldTrip: num_cond = 4
-# cond index → label:
-#   0 → cc1fb1 = high control + positive feedback
-#   1 → cc1fb2 = high control + negative feedback
-#   2 → cc2fb1 = low  control + positive feedback
-#   3 → cc2fb2 = low  control + negative feedback
-num_cond = 4
-cond_names = ['cc1fb1', 'cc1fb2', 'cc2fb1', 'cc2fb2']
+num_cond = 2
+cond_names = ['high_control', 'low_control']
 
 # ──────────────────────────────────────────────────────────────
 # Load data for all participants + build grand-average structures
@@ -90,32 +77,7 @@ for p_idx, pnum in enumerate(plist):
         summary_row = pd.read_csv(csv_file).iloc[0].to_dict()
         all_summaries.append(summary_row)
 
-    # ── Difference waves ──────────────────────────────────────
-    # FieldTrip:
-    #   cfg.operation = 'x1-x2';  % positive minus negative
-    #   cfg.parameter = 'avg';
-    #   difference_wave{p,1} = ft_math(cfg, alleeg{p,1}, alleeg{p,2}); %high control
-    #   difference_wave{p,2} = ft_math(cfg, alleeg{p,3}, alleeg{p,4}); %low control
-    #
-    # MNE equivalent: mne.combine_evoked() with weights [+1, -1]
-    # This subtracts negative-feedback ERP from positive-feedback ERP,
-    # isolating / enhancing the Reward Positivity (RewP).
-
-    diff_hc = mne.combine_evoked(          # high control: pos - neg
-        [alleeg[p_idx]['cc1fb1'], alleeg[p_idx]['cc1fb2']],
-        weights=[1, -1]
-    )
-    diff_hc.comment = 'cc1_diff'
-
-    diff_lc = mne.combine_evoked(          # low control: pos - neg
-        [alleeg[p_idx]['cc2fb1'], alleeg[p_idx]['cc2fb2']],
-        weights=[1, -1]
-    )
-    diff_lc.comment = 'cc2_diff'
-
-    # Store difference waves alongside alleeg for grand averaging below
-    alleeg[p_idx]['cc1_diff'] = diff_hc
-    alleeg[p_idx]['cc2_diff'] = diff_lc
+    # ── (Difference waves removed based on user request) ───────────────────────
 
 # Print behavioral summary table across participants
 # FieldTrip: struct2table(behavSummary)
@@ -150,25 +112,7 @@ for cond_label in cond_names:
         GA_dat[cond_label].comment = cond_label
         print(f"  GA [{cond_label}]: averaged across {len(evokeds_this_cond)} participant(s)")
 
-# ── Difference wave grand averages ───────────────────────────
-# FieldTrip:
-#   num_cond_diff = size(difference_wave, 2);
-#   cfg = [];
-#   for cond=1:num_cond_diff
-#       GA_dat_diff{cond} = ft_timelockgrandaverage(cfg, difference_wave{:,cond});
-#   end
-#   cond_names_diff = {'cc1', 'cc2'};
-
-cond_names_diff = ['cc1_diff', 'cc2_diff']   # FieldTrip: cond_names_diff = {'cc1', 'cc2'}
-GA_dat_diff = {}                               # FieldTrip: GA_dat_diff{cond}
-
-for diff_label in cond_names_diff:
-    evokeds_diff = [alleeg[p][diff_label]
-                    for p in alleeg if diff_label in alleeg[p]]
-    if evokeds_diff:
-        GA_dat_diff[diff_label] = mne.grand_average(evokeds_diff)
-        GA_dat_diff[diff_label].comment = diff_label
-        print(f"  GA_diff [{diff_label}]: averaged across {len(evokeds_diff)} participant(s)")
+# ── (Difference wave grand averages removed) ───────────────────────────
 
 print("\nGrand averages ready.")
 print(f"  Electrodes selected : {electrodes_select}")
@@ -210,7 +154,6 @@ if missing:
 print(f"  Using electrodes: {picked_channels}")
 
 n_timepoints = len(times)
-num_cond_diff = len(cond_names_diff)
 
 # ── Non-difference wave pMeanList ──────────────────────────────
 pMeanList = np.zeros((n_participants, num_cond, n_timepoints))   # [P, C, T]
@@ -241,46 +184,16 @@ else:
     subjMean  = np.squeeze(np.mean(pMeanList, axis=1))   # [P, T] -- mean over conditions
     grandMean = np.mean(subjMean, axis=0)                 # [T]    -- mean over participants
 
-# ── Difference wave pMeanList ─────────────────────────────────
-pMeanList_diff = np.zeros((n_participants, num_cond_diff, n_timepoints))
-
-for p_idx, p_key in enumerate(loaded_plist):
-    for cond_idx, diff_label in enumerate(cond_names_diff):
-        evoked_diff = alleeg[p_key][diff_label].copy().pick(picked_channels)
-        data_uv = evoked_diff.data * 1e6
-        pMeanList_diff[p_idx, cond_idx, :] = np.mean(data_uv, axis=0)
-
-if n_participants == 1:
-    grandMean_diff = np.squeeze(np.mean(pMeanList_diff, axis=1))
-    subjMean_diff  = grandMean_diff
-else:
-    subjMean_diff  = np.squeeze(np.mean(pMeanList_diff, axis=1))   # [P, T]
-    grandMean_diff = np.mean(subjMean_diff, axis=0)                 # [T]
-
-
 # ──────────────────────────────────────────────────────────────
 # Plot settings
 # ──────────────────────────────────────────────────────────────
-# FieldTrip: plotType = 2; ylimits = [-3 3];
-# 1 = non-difference wave (4 conditions)
-# 2 = difference wave (high vs. low control, pos-neg)
-plotType = 2
 
 ylimits  = [-3, 3]   # µV y-axis range
 
-# Line colors per condition [purple, blue, red, green]
-# FieldTrip: colors = {[0.8,0.47,0.65], [0,0.44,0.69], [1 0 0], [0 1 0]}
-colors      = [[0.8, 0.47, 0.65], [0, 0.44, 0.69], [1, 0, 0], [0, 1, 0]]
-linestyles  = ['-', '-', '-', '-']   # FieldTrip: linestyle = {'-','-','-','-'}
-
-# Linecol for single-participant simple plots
-# FieldTrip: linecol = {'-b','-r','-g','-m'}
-linecol_colors = ['blue', 'red', 'green', 'magenta']
-
-# Difference wave colors [blue, purple] for high and low control
-# FieldTrip: diffcolours = {'-a','-c'} → commented out: {[1 1 0],[0 0 1]}
-diff_colors     = [[0, 0.44, 0.69], [0.8, 0.47, 0.65]]   # blue (HC), purple (LC)
-linestyles_diff = ['--', '--']       # FieldTrip: linestyle_diff = {'--','--'}
+# Line colors per condition [blue for high, purple for low]
+colors      = [[0, 0.44, 0.69], [0.8, 0.47, 0.65]]
+linestyles  = ['-', '-']   
+linecol_colors = ['blue', 'magenta']
 
 # Figure dimensions matching FieldTrip's PaperPosition [0 0 30 20] (cm)
 fig_w_cm, fig_h_cm = 30, 20
@@ -288,131 +201,35 @@ fig_w_in = fig_w_cm / 2.54
 fig_h_in = fig_h_cm / 2.54
 font_size = 20   # FieldTrip: fontsz = 20
 
-# ──────────────────────────────────────────────────────────────
-# PRELIMINARY FIGURE — always shows difference waves
-# (equivalent to the first un-labelled figure; hold on; block in FieldTrip)
-# ──────────────────────────────────────────────────────────────
-plt.close('all')   # FieldTrip: close all
-
-fig0, ax0 = plt.subplots(figsize=(fig_w_in, fig_h_in))
-
-H0 = []
-for cond_idx, diff_label in enumerate(cond_names_diff):
-    y_diff = pMeanList_diff[:, cond_idx, :]   # [P, T]
-
-    if n_participants == 1:
-        # Single participant: plot the raw time series directly
-        # FieldTrip: H(cond) = plot(x, y_diff, 'Color', diffcolours{cond});
-        h, = ax0.plot(times, y_diff[0, :],
-                      linestyle=linestyles_diff[cond_idx],
-                      color=diff_colors[cond_idx])
-    else:
-        # Multiple participants: Cousineau-Morey within-subject correction
-        # FieldTrip:
-        #   yCorrect_diff = y_diff - subjMean_diff;
-        #   yCorrect_diff = (bsxfun(@plus, yCorrect_diff, grandMean_diff)) * (4/3);
-        #   errbar = std(yCorrect_diff, 0, 1) / sqrt(size(yCorrect_diff, 1));
-        #
-        # The *(4/3) factor is the Cousineau-Morey correction for 4 conditions
-        # (num_cond / (num_cond - 1) = 4/3).
-        yCorrect_diff = y_diff - subjMean_diff
-        yCorrect_diff = (yCorrect_diff + grandMean_diff) * (4 / 3)
-        errbar = np.std(yCorrect_diff, axis=0, ddof=0) / np.sqrt(n_participants)
-
-        # Simple line plot (error bars commented out below)
-        # FieldTrip: H(cond) = plot(x, mean(yCorrect_diff,1), linecol{cond});
-        h, = ax0.plot(times, np.mean(yCorrect_diff, axis=0),
-                      linestyle=linestyles_diff[cond_idx],
-                      color=diff_colors[cond_idx])
-
-        # Shaded error bar (commented out — uncomment to show):
-        # FieldTrip: H(cond) = shadedErrorBar(x, mean(y_diff,1), errbar, 'lineProps', ...)
-        # ax0.fill_between(times,
-        #                  np.mean(yCorrect_diff, axis=0) - errbar,
-        #                  np.mean(yCorrect_diff, axis=0) + errbar,
-        #                  alpha=0.2, color=diff_colors[cond_idx])
-
-    H0.append(h)
-
-# FieldTrip: set(gca,'YDir','reverse'); ylim(ylimits)
-ax0.set_ylim(ylimits)
-ax0.invert_yaxis()           # EEG convention: negative up
-ax0.axhline(0, color='black', linestyle='--', linewidth=0.5)
-ax0.axvline(0, color='black', linestyle='--', linewidth=0.5)
-plt.tight_layout()
+plt.close('all')
 
 # ──────────────────────────────────────────────────────────────
-# MAIN FIGURE — plotType-controlled, with labels and saving
-# (equivalent to the second figure; hold on; block in FieldTrip)
+# MAIN FIGURE
 # ──────────────────────────────────────────────────────────────
 fig1, ax1 = plt.subplots(figsize=(fig_w_in, fig_h_in))
 
 H1 = []
 
-if plotType == 1:
-    # ── Non-difference wave: 4 conditions ───────────────────
-    labels = ['High Control, Positive FB', 'High Control, Negative FB',
-              'Low Control, Positive FB',  'Low Control, Negative FB']
-    # FieldTrip: for cond=1:num_cond
-    for cond_idx, cond_label in enumerate(cond_names):
-        y = pMeanList[:, cond_idx, :]   # [P, T]
+# ── Non-difference wave: 2 conditions ───────────────────
+labels = ['High Control', 'Low Control']
+for cond_idx, cond_label in enumerate(cond_names):
+    y = pMeanList[:, cond_idx, :]   # [P, T]
 
-        if n_participants == 1:
-            # FieldTrip: H(cond) = plot(x, y, linecol{cond});
-            h, = ax1.plot(times, y[0, :],
-                          linestyle='-', color=linecol_colors[cond_idx])
-        else:
-            # Cousineau-Morey correction
-            # FieldTrip: yCorrect = y - subjMean; yCorrect = (..) * (4/3);
-            yCorrect = y - subjMean
-            yCorrect = (yCorrect + grandMean) * (4 / 3)
-            errbar   = np.std(yCorrect, axis=0, ddof=0) / np.sqrt(n_participants)
+    if n_participants == 1:
+        h, = ax1.plot(times, y[0, :],
+                      linestyle='-', color=linecol_colors[cond_idx])
+    else:
+        # Cousineau-Morey correction (factor for 2 conditions is 2/1 = 2.0)
+        yCorrect = y - subjMean
+        yCorrect = (yCorrect + grandMean) * (2.0)
+        errbar   = np.std(yCorrect, axis=0, ddof=0) / np.sqrt(n_participants)
 
-            # FieldTrip: H(cond) = plot(x, mean(y,1), linecol{cond});
-            h, = ax1.plot(times, np.mean(y, axis=0),
-                          linestyle=linestyles[cond_idx],
-                          color=colors[cond_idx])
+        h, = ax1.plot(times, np.mean(y, axis=0),
+                      linestyle=linestyles[cond_idx],
+                      color=colors[cond_idx])
 
-            # Shaded error bars (uncomment to show):
-            # FieldTrip: H(cond) = shadedErrorBar(x, mean(y,1), errbar, 'lineProps', ...)
-            # ax1.fill_between(times,
-            #                  np.mean(y, axis=0) - errbar,
-            #                  np.mean(y, axis=0) + errbar,
-            #                  alpha=0.2, color=colors[cond_idx])
-        H1.append(h)
-    save_name = '00_lineplot_allconds_plain.svg'   # FieldTrip: '00_lineplot_allconds_plain'
-
-elif plotType == 2:
-    # ── Difference wave: 2 conditions (high vs. low control) ─
-    labels = ['High Control [pos-neg]', 'Low Control [pos-neg]']
-    # FieldTrip: for cond = 1:num_cond_diff
-    for cond_idx, diff_label in enumerate(cond_names_diff):
-        y_diff = pMeanList_diff[:, cond_idx, :]   # [P, T]
-
-        if n_participants == 1:
-            # FieldTrip: H(cond) = plot(x, y_diff, linecol{cond});
-            h, = ax1.plot(times, y_diff[0, :],
-                          linestyle=linestyles_diff[cond_idx],
-                          color=diff_colors[cond_idx])
-        else:
-            # Cousineau-Morey correction
-            yCorrect_diff = y_diff - subjMean_diff
-            yCorrect_diff = (yCorrect_diff + grandMean_diff) * (4 / 3)
-            errbar        = np.std(yCorrect_diff, axis=0, ddof=0) / np.sqrt(n_participants)
-
-            # FieldTrip: H(cond) = plot(x, mean(yCorrect_diff,1), linecol{cond});
-            h, = ax1.plot(times, np.mean(yCorrect_diff, axis=0),
-                          linestyle=linestyles_diff[cond_idx],
-                          color=diff_colors[cond_idx])
-
-            # Shaded error bars (uncomment to show):
-            # FieldTrip: H(cond) = shadedErrorBar(x, mean(y_diff,1), errbar, 'lineprops', ...)
-            # ax1.fill_between(times,
-            #                  np.mean(yCorrect_diff, axis=0) - errbar,
-            #                  np.mean(yCorrect_diff, axis=0) + errbar,
-            #                  alpha=0.2, color=diff_colors[cond_idx])
-        H1.append(h)
-    save_name = '00_lineplot_diffwave_plain_allchoices.svg'
+    H1.append(h)
+save_name = '00_lineplot_main_effects.svg'
 
 
 # ── Formatting ────────────────────────────────────────────────
@@ -502,77 +319,41 @@ def make_highlight_mask(evoked, highlight_names):
 mask_params = dict(marker='*', markerfacecolor='black', markeredgecolor='black',
                    markersize=10, zorder=10)
 
-if plotType == 1:
-    # ── Non-difference wave: one topo per condition ──────────
-    topo_labels = ['High Control, Positive FB', 'High Control, Negative FB',
-                   'Low Control, Positive FB',  'Low Control, Negative FB']
-    topo_prefix = '00_topo_allconds_allchoices'
+# ── Non-difference wave: one topo per condition ──────────
+topo_labels = ['High Control', 'Low Control']
+topo_prefix = '00_topo_main_effects'
 
-    for cond_idx, cond_label in enumerate(cond_names):
-        evoked_topo = GA_dat[cond_label].copy()
-        evoked_topo.crop(tmin=t_min, tmax=t_max)
-        topo_data = evoked_topo.data.mean(axis=1)   # [n_channels] in Volts
+for cond_idx, cond_label in enumerate(cond_names):
+    evoked_topo = GA_dat[cond_label].copy()
+    evoked_topo.crop(tmin=t_min, tmax=t_max)
+    topo_data = evoked_topo.data.mean(axis=1)   # [n_channels] in Volts
 
-        fig_topo, ax_topo = plt.subplots(figsize=(topo_fig_in, topo_fig_in))
+    fig_topo, ax_topo = plt.subplots(figsize=(topo_fig_in, topo_fig_in))
 
-        # FieldTrip: ft_topoplotER(cfg, GA_dat{num_plot})
-        highlight_mask = make_highlight_mask(evoked_topo, picked_channels)
-        mne.viz.plot_topomap(
-            topo_data, evoked_topo.info,
-            axes=ax_topo,
-            cmap=topo_cmap,
-            vlim=(topo_vlim[0] * 1e-6, topo_vlim[1] * 1e-6),   # µV → V
-            mask=highlight_mask,
-            mask_params=mask_params,
-            show=False,
-            contours=6,
-        )
+    # FieldTrip: ft_topoplotER(cfg, GA_dat{num_plot})
+    highlight_mask = make_highlight_mask(evoked_topo, picked_channels)
+    mne.viz.plot_topomap(
+        topo_data, evoked_topo.info,
+        axes=ax_topo,
+        cmap=topo_cmap,
+        vlim=(topo_vlim[0] * 1e-6, topo_vlim[1] * 1e-6),   # µV → V
+        mask=highlight_mask,
+        mask_params=mask_params,
+        show=False,
+        contours=6,
+    )
 
-        ax_topo.set_title(topo_labels[cond_idx], fontsize=12)
-        fig_topo.patch.set_facecolor('white')
-        fig_topo.tight_layout()
+    ax_topo.set_title(topo_labels[cond_idx], fontsize=12)
+    fig_topo.patch.set_facecolor('white')
+    fig_topo.tight_layout()
 
-        # Save as SVG and TIFF
-        # FieldTrip: print(gcf, '-dsvg', [...], dpi); print(gcf, '-dtiff', [...], dpi)
-        for fmt in ['svg', 'tiff']:
-            topo_save = os.path.join(save_to, f"{topo_prefix}_{cond_label}.{fmt}")
-            fig_topo.savefig(topo_save, format=fmt, dpi=600,
-                             bbox_inches='tight', facecolor='white')
-        print(f"  Topo saved: {topo_prefix}_{cond_label} (.svg + .tiff)")
-
-elif plotType == 2:
-    # ── Difference wave: one topo per control level ──────────
-    topo_labels_diff = ['High Control [pos-neg]', 'Low Control [pos-neg]']
-    topo_prefix = '00_difftopo_allconds_allchoices'
-
-    for cond_idx, diff_label in enumerate(cond_names_diff):
-        evoked_topo = GA_dat_diff[diff_label].copy()
-        evoked_topo.crop(tmin=t_min, tmax=t_max)
-        topo_data = evoked_topo.data.mean(axis=1)
-
-        fig_topo, ax_topo = plt.subplots(figsize=(topo_fig_in, topo_fig_in))
-
-        highlight_mask = make_highlight_mask(evoked_topo, picked_channels)
-        mne.viz.plot_topomap(
-            topo_data, evoked_topo.info,
-            axes=ax_topo,
-            cmap=topo_cmap,
-            vlim=(topo_vlim[0] * 1e-6, topo_vlim[1] * 1e-6),
-            mask=highlight_mask,
-            mask_params=mask_params,
-            show=False,
-            contours=6,
-        )
-
-        ax_topo.set_title(topo_labels_diff[cond_idx], fontsize=12)
-        fig_topo.patch.set_facecolor('white')
-        fig_topo.tight_layout()
-
-        for fmt in ['svg', 'tiff']:
-            topo_save = os.path.join(save_to, f"{topo_prefix}_{diff_label}.{fmt}")
-            fig_topo.savefig(topo_save, format=fmt, dpi=600,
-                             bbox_inches='tight', facecolor='white')
-        print(f"  Topo saved: {topo_prefix}_{diff_label} (.svg + .tiff)")
+    # Save as SVG and TIFF
+    # FieldTrip: print(gcf, '-dsvg', [...], dpi); print(gcf, '-dtiff', [...], dpi)
+    for fmt in ['svg', 'tiff']:
+        topo_save = os.path.join(save_to, f"{topo_prefix}_{cond_label}.{fmt}")
+        fig_topo.savefig(topo_save, format=fmt, dpi=600,
+                         bbox_inches='tight', facecolor='white')
+    print(f"  Topo saved: {topo_prefix}_{cond_label} (.svg + .tiff)")
 
 plt.show()   # display all figures interactively; close windows to end script
 

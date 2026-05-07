@@ -79,12 +79,17 @@ for sub in plist:
             raw.drop_channels(bads)
             print(f"  Dropped bad channels: {bads}")
         
-        # Apply 1–40 Hz band-pass filter
+        # Apply band-pass filter
         # In MNE, l_freq is the lower cutoff frequency and h_freq is the upper cutoff frequency. 
         # So, l_freq specifies the high-pass filter and h_freq specifies the low-pass filter.
         # by default, MNE uses FIR filter. this is very costly takes a lot of time. 
         # fieldtrip default is an IIR butterworth filter. to match our classical fieldtrip workflow and be more
         # efficient, we set an IIR butterworth filter here as well
+        # Note: We currently apply a 1.0 Hz high-pass filter. Wen et al. (2017) used a 0.1 Hz filter.
+        # The P500 is a "late, slow" brain wave. High-pass filters at 1.0 Hz or higher are known to 
+        # severely attenuate and distort late slow waves. 
+        # If the P500 looks small/non-existent, consider using the commented out 0.1 Hz filter instead.
+        # raw.filter(l_freq=0.1, h_freq=40.)
         raw.filter(
             l_freq=1.,
             h_freq=40.,
@@ -98,6 +103,9 @@ for sub in plist:
         #   cfg.reref       = 'yes';
         #   cfg.refchannel  = 'all';    → common average reference
         #   cfg.refmethod   = 'avg';
+        # Note: Wen et al. (2017) used Earlobe referencing. Because the P500 is a broadly 
+        # distributed positive component, the Common Average Reference may subtract it out, 
+        # causing it to appear smaller in amplitude compared to an earlobe/mastoid reference.
         #
         # Step 1: Add the implicit reference channel (FCz) back to the data.
         #   During recording, FCz was the online reference so it's not in the data.
@@ -121,11 +129,10 @@ for sub in plist:
         #   converts them to an (N, 3) array of [sample, 0, event_id].
         events, event_id = mne.events_from_annotations(raw, verbose=False)
         
-        # Step 2: Select only our triggers of interest (feedback onset)
-        #   S 77 = free choice,  S 88 = forced choice
-        #   S 99 = mixed choice, S 98 = mixed choice
+        # Step 2: Select only our triggers of interest (movement onset)
+        #   S 21 = low control, S 23 = high control (based on Wen et al., 2017)
         # Note: BrainVision annotations in MNE use the full 'Stimulus/S XX' format.
-        wanted_triggers = ['Stimulus/S 77', 'Stimulus/S 88', 'Stimulus/S 99', 'Stimulus/S 98']
+        wanted_triggers = ['Stimulus/S 21', 'Stimulus/S 23']
         triggers = {}
         for t in wanted_triggers:
             if t in event_id:
