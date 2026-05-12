@@ -1374,6 +1374,329 @@ def run_supp_analysis_5_fa_check(recog_data):
 
 
 # ------------------------------------------------------------------------------
+# SUPPLEMENTARY 6: Detection Breakdown — Detected vs. Not Detected (controlled items only)
+# ------------------------------------------------------------------------------
+
+def run_supp_analysis_6_detection_glmm(targets):
+    """
+    Trial-level GLMM (Binomial, logit link) testing whether correctly detecting
+    control at encoding predicts subsequent recognition memory.
+
+    Restricted to CONTROLLED items only — detection accuracy is only meaningful
+    for items the participant actively controlled. Uncontrolled items are excluded.
+
+    Model formula:
+      Maximal : said_old_int ~ detection_c + (1 + detection_c | participant)
+      Fallback: said_old_int ~ detection_c + (1 | participant)
+
+    detection_c is contrast-coded: Detected = +0.5, Not Detected = -0.5.
+    """
+    if targets is None or len(targets) == 0:
+        print("[WARNING] No target data for Supp Analysis 6. Skipping.")
+        return None
+
+    df = targets.copy()
+
+    # Filter to controlled items only
+    if 'item_type' in df.columns:
+        df = df[df['item_type'] == 'controlled'].copy()
+    else:
+        print("[WARNING] 'item_type' column missing. Cannot filter controlled items. Skipping Supp 6.")
+        return None
+
+    if 'detection_accuracy' not in df.columns:
+        print("[WARNING] 'detection_accuracy' column missing. Skipping Supp Analysis 6.")
+        return None
+
+    df['detection_accuracy'] = pd.to_numeric(df['detection_accuracy'], errors='coerce')
+    df['said_old_int'] = df['said_old'].astype(int)
+
+    # Contrast code: Detected = +0.5, Not Detected = -0.5
+    df['detection_c'] = df['detection_accuracy'].map({1: 0.5, 0: -0.5})
+    df = df.dropna(subset=['said_old_int', 'detection_c', 'participant'])
+
+    if len(df) == 0:
+        print("[WARNING] No valid trials after preprocessing for Supp Analysis 6.")
+        return None
+
+    n_detected     = (df['detection_c'] == 0.5).sum()
+    n_not_detected = (df['detection_c'] == -0.5).sum()
+
+    print("\nSupplementary Analysis 6: Detection Breakdown GLMM (controlled items only)")
+    print(f"  Trials: {len(df)} | Participants: {df['participant'].nunique()}")
+    print(f"  Detected: {n_detected} | Not Detected: {n_not_detected}")
+    print(f"  Contrast coding: Detected = +0.5, Not Detected = -0.5")
+
+    df_pl = pl.from_pandas(df)
+
+    model, structure = fit_glmm_with_fallback(
+        formula_maximal="said_old_int ~ detection_c + (1 + detection_c | participant)",
+        formula_minimal="said_old_int ~ detection_c + (1 | participant)",
+        data_pl=df_pl,
+        family="binomial"
+    )
+    if model is not None:
+        print(f"  [REPORT] Random effects structure used: {structure}")
+    return model
+
+
+# ------------------------------------------------------------------------------
+# ANALYSIS 10: Recognition RT ~ Detection Accuracy (controlled items only)
+# ------------------------------------------------------------------------------
+
+def run_analysis_10_rt_detection(targets, recog_data):
+    """
+    Lognormal LMM testing whether correctly detecting control at encoding
+    predicts recognition RT for controlled items.
+
+    Restricted to CONTROLLED target items only — detection accuracy is only
+    meaningful for items the participant actively controlled.
+
+    The DV is log(mem_rt). Fitting a Gaussian LMM on log-transformed RT is
+    equivalent to fitting a lognormal distribution on raw RT
+    (Ulrich & Miller, 1993; Van der Linden, 2006).
+
+    Model formula:
+      log_mem_rt ~ detection_c + (1 | participant)
+
+    detection_c: Detected = +0.5, Not Detected = -0.5.
+
+    Two versions:
+      - All trials: commented out.
+      - Correct trials only (hits): active.
+    """
+    print("\n" + "=" * 60)
+    print("ANALYSIS 10: Recognition RT ~ Detection (controlled items)")
+    print("  Lognormal LMM: log(mem_rt) ~ detection_c")
+    print("  (Ulrich & Miller, 1993; Van der Linden, 2006)")
+    print("=" * 60)
+
+    if targets is None or recog_data is None:
+        print("  [WARNING] Missing data for Analysis 10. Skipping.")
+        return None
+
+    # Get controlled targets with detection_accuracy
+    ctrl_targets = targets.copy()
+    if 'item_type' in ctrl_targets.columns:
+        ctrl_targets = ctrl_targets[ctrl_targets['item_type'] == 'controlled'].copy()
+    else:
+        print("  [WARNING] 'item_type' column missing. Skipping Analysis 10.")
+        return None
+
+    if 'detection_accuracy' not in ctrl_targets.columns:
+        print("  [WARNING] 'detection_accuracy' column missing. Skipping Analysis 10.")
+        return None
+
+    ctrl_targets['detection_accuracy'] = pd.to_numeric(ctrl_targets['detection_accuracy'], errors='coerce')
+
+    # Merge mem_rt from recog_data
+    recog = recog_data.copy()
+    recog['mem_rt'] = pd.to_numeric(recog['mem_rt'], errors='coerce')
+    recog['said_old_int'] = (recog['mem_response'].str.lower() == 'yes').astype(int)
+
+    # Build lookup: controlled target filenames with detection_accuracy
+    ctrl_info = ctrl_targets[['participant', 'mem_filename', 'detection_accuracy']].drop_duplicates(
+        subset=['participant', 'mem_filename']
+    )
+
+    # Merge into recognition data (targets only — controlled)
+    recog_ctrl = recog[recog['mem_ground_truth'] == 'seen'].copy()
+    recog_ctrl = recog_ctrl.merge(ctrl_info, on=['participant', 'mem_filename'], how='inner')
+
+    # Contrast code: Detected = +0.5, Not Detected = -0.5
+    recog_ctrl['detection_c'] = recog_ctrl['detection_accuracy'].map({1: 0.5, 0: -0.5})
+
+    # Prepare RT columns
+    recog_ctrl = recog_ctrl.dropna(subset=['mem_rt', 'detection_c'])
+    recog_ctrl = recog_ctrl[recog_ctrl['mem_rt'] > 0].copy()
+    recog_ctrl['log_mem_rt'] = np.log(recog_ctrl['mem_rt'])
+
+    # All trials
+    rt_all = recog_ctrl[['participant', 'mem_rt', 'log_mem_rt', 'detection_c', 'said_old_int']].dropna().copy()
+
+    # Correct trials (hits only — these are all old/controlled items, so correct = said_old)
+    rt_correct = rt_all[rt_all['said_old_int'] == 1].copy()
+
+    n_detected_all = (rt_all['detection_c'] == 0.5).sum()
+    n_not_det_all  = (rt_all['detection_c'] == -0.5).sum()
+    n_detected_cor = (rt_correct['detection_c'] == 0.5).sum()
+    n_not_det_cor  = (rt_correct['detection_c'] == -0.5).sum()
+
+    print(f"\n  Data summary (controlled targets only):")
+    print(f"    All trials   : {len(rt_all)} (detected={n_detected_all}, not={n_not_det_all})")
+    print(f"    Hits only    : {len(rt_correct)} (detected={n_detected_cor}, not={n_not_det_cor})")
+    if len(rt_all) > 0:
+        print(f"    RT (raw) M (SD) : {rt_all['mem_rt'].mean():.3f} ({rt_all['mem_rt'].std():.3f}) s")
+
+    # ------------------------------------------------------------------
+    # 10a. ALL TRIALS (commented out)
+    # ------------------------------------------------------------------
+    # Use this version if recognition sensitivity does not differ between
+    # detected and not-detected controlled items.
+    #
+    # if len(rt_all) > 0:
+    #     print("\n  [10a] All controlled target trials:")
+    #     print(f"    Trials: {len(rt_all)} | Participants: {rt_all['participant'].nunique()}")
+    #     df_pl = pl.from_pandas(rt_all[['participant', 'log_mem_rt', 'detection_c']])
+    #     model_all, struct_all = fit_lmm_with_fallback(
+    #         formula_maximal="log_mem_rt ~ detection_c + (1 + detection_c | participant)",
+    #         formula_minimal="log_mem_rt ~ detection_c + (1 | participant)",
+    #         data_pl=df_pl
+    #     )
+    #     if model_all is not None:
+    #         print(f"    [REPORT] Random effects: {struct_all}")
+    # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # 10b. CORRECT TRIALS ONLY — hits (active)
+    # ------------------------------------------------------------------
+    if len(rt_correct) == 0:
+        print("  [WARNING] No hit trials for Analysis 10. Skipping.")
+        return None
+
+    print(f"\n  [10b] Hits only (correctly recognised controlled targets):")
+    print(f"    Trials: {len(rt_correct)} | Participants: {rt_correct['participant'].nunique()}")
+
+    df_pl = pl.from_pandas(rt_correct[['participant', 'log_mem_rt', 'detection_c']])
+
+    model, structure = fit_lmm_with_fallback(
+        formula_maximal="log_mem_rt ~ detection_c + (1 + detection_c | participant)",
+        formula_minimal="log_mem_rt ~ detection_c + (1 | participant)",
+        data_pl=df_pl
+    )
+    if model is not None:
+        print(f"    [REPORT] Random effects structure used: {structure}")
+
+    return model
+
+
+# ------------------------------------------------------------------------------
+# ANALYSIS 11: Recognition RT ~ Item Type × Trial Level (target items only)
+# Mirrors Supp 3 (2×2 GLMM on sensitivity) but with RT as the DV.
+# ------------------------------------------------------------------------------
+
+def run_analysis_11_rt_itemtype(targets, recog_data):
+    """
+    Lognormal LMM testing whether recognition RT differs between controlled
+    and uncontrolled items, across high and low control trial levels.
+
+    Mirrors Supplementary Analysis 3's 2×2 factorial structure
+    (trial_level × item_type) but uses log(mem_rt) as the DV instead of
+    binary said_old.
+
+    Restricted to TARGET items only (both controlled and uncontrolled).
+
+    The DV is log(mem_rt). Fitting a Gaussian LMM on log-transformed RT is
+    equivalent to fitting a lognormal distribution on raw RT
+    (Ulrich & Miller, 1993; Van der Linden, 2006).
+
+    Model formula:
+      log_mem_rt ~ trial_level_c * item_type_c + (1 | participant)
+
+    Contrast coding:
+      trial_level_c: High = +0.5, Low = -0.5
+      item_type_c  : Controlled = +0.5, Uncontrolled = -0.5
+
+    Two versions:
+      - All trials: commented out.
+      - Correct trials only (hits): active.
+    """
+    print("\n" + "=" * 60)
+    print("ANALYSIS 11: Recognition RT ~ Item Type × Trial Level")
+    print("  Lognormal LMM: log(mem_rt) ~ trial_level_c * item_type_c")
+    print("  (Ulrich & Miller, 1993; Van der Linden, 2006)")
+    print("=" * 60)
+
+    if targets is None or recog_data is None:
+        print("  [WARNING] Missing data for Analysis 11. Skipping.")
+        return None
+
+    # Get target trial info (item_type, trial_level)
+    target_info = targets[['participant', 'mem_filename', 'item_type', 'trial_level']].copy()
+    target_info = target_info.drop_duplicates(subset=['participant', 'mem_filename'])
+
+    if 'item_type' not in target_info.columns or 'trial_level' not in target_info.columns:
+        print("  [WARNING] 'item_type' or 'trial_level' column missing. Skipping Analysis 11.")
+        return None
+
+    # Merge mem_rt from recog_data
+    recog = recog_data.copy()
+    recog['mem_rt'] = pd.to_numeric(recog['mem_rt'], errors='coerce')
+    recog['said_old_int'] = (recog['mem_response'].str.lower() == 'yes').astype(int)
+
+    # Filter to targets only
+    recog_targets = recog[recog['mem_ground_truth'] == 'seen'].copy()
+    recog_targets = recog_targets.merge(target_info, on=['participant', 'mem_filename'], how='inner')
+
+    # Contrast codes
+    recog_targets['trial_level_c'] = recog_targets['trial_level'].map({'high': 0.5, 'low': -0.5})
+    recog_targets['item_type_c']   = recog_targets['item_type'].map({'controlled': 0.5, 'uncontrolled': -0.5})
+
+    # Prepare RT columns
+    recog_targets = recog_targets.dropna(subset=['mem_rt', 'trial_level_c', 'item_type_c'])
+    recog_targets = recog_targets[recog_targets['mem_rt'] > 0].copy()
+    recog_targets['log_mem_rt'] = np.log(recog_targets['mem_rt'])
+
+    # All trials
+    keep_cols = ['participant', 'mem_rt', 'log_mem_rt', 'trial_level_c', 'item_type_c', 'said_old_int']
+    rt_all = recog_targets[keep_cols].dropna().copy()
+
+    # Correct trials (hits only — all targets, so correct = said_old = 1)
+    rt_correct = rt_all[rt_all['said_old_int'] == 1].copy()
+
+    print(f"\n  Data summary (target items only):")
+    print(f"    All trials : {len(rt_all)} ({rt_all['participant'].nunique()} participants)")
+    print(f"      Controlled   : {(rt_all['item_type_c'] == 0.5).sum()}")
+    print(f"      Uncontrolled : {(rt_all['item_type_c'] == -0.5).sum()}")
+    print(f"    Hits only  : {len(rt_correct)}")
+    print(f"      Controlled   : {(rt_correct['item_type_c'] == 0.5).sum()}")
+    print(f"      Uncontrolled : {(rt_correct['item_type_c'] == -0.5).sum()}")
+    if len(rt_all) > 0:
+        print(f"    RT (raw) M (SD) : {rt_all['mem_rt'].mean():.3f} ({rt_all['mem_rt'].std():.3f}) s")
+
+    # ------------------------------------------------------------------
+    # 11a. ALL TRIALS (commented out)
+    # ------------------------------------------------------------------
+    # Use this version if recognition sensitivity does not differ between
+    # controlled and uncontrolled items or across trial levels.
+    #
+    # if len(rt_all) > 0:
+    #     print("\n  [11a] All target trials:")
+    #     print(f"    Trials: {len(rt_all)} | Participants: {rt_all['participant'].nunique()}")
+    #     df_pl = pl.from_pandas(rt_all[['participant', 'log_mem_rt', 'trial_level_c', 'item_type_c']])
+    #     model_all, struct_all = fit_lmm_with_fallback(
+    #         formula_maximal="log_mem_rt ~ trial_level_c * item_type_c + (1 + trial_level_c * item_type_c | participant)",
+    #         formula_minimal="log_mem_rt ~ trial_level_c * item_type_c + (1 | participant)",
+    #         data_pl=df_pl
+    #     )
+    #     if model_all is not None:
+    #         print(f"    [REPORT] Random effects: {struct_all}")
+    # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # 11b. CORRECT TRIALS ONLY — hits (active)
+    # ------------------------------------------------------------------
+    if len(rt_correct) == 0:
+        print("  [WARNING] No hit trials for Analysis 11. Skipping.")
+        return None
+
+    print(f"\n  [11b] Hits only (correctly recognised targets):")
+    print(f"    Trials: {len(rt_correct)} | Participants: {rt_correct['participant'].nunique()}")
+
+    df_pl = pl.from_pandas(rt_correct[['participant', 'log_mem_rt', 'trial_level_c', 'item_type_c']])
+
+    model, structure = fit_lmm_with_fallback(
+        formula_maximal="log_mem_rt ~ trial_level_c * item_type_c + (1 + trial_level_c * item_type_c | participant)",
+        formula_minimal="log_mem_rt ~ trial_level_c * item_type_c + (1 | participant)",
+        data_pl=df_pl
+    )
+    if model is not None:
+        print(f"    [REPORT] Random effects structure used: {structure}")
+
+    return model
+
+
+# ------------------------------------------------------------------------------
 # ANALYSIS 5a: Agency as a function of current accuracy and control level
 # (adapted from MT_Inference_Analysis.py Analysis 5a)
 # ------------------------------------------------------------------------------
@@ -1538,6 +1861,13 @@ def run_recognition_stats(mem_results, targets, supp_mem_results, recog_data):
     run_supp_analysis_3_glmm_2x2(targets)
     run_supp_analysis_4_glmm_foils(targets, recog_data)
     run_supp_analysis_5_fa_check(recog_data)
+
+    # --- Detection Breakdown (controlled items: detected vs. not detected) ---
+    run_supp_analysis_6_detection_glmm(targets)
+    run_analysis_10_rt_detection(targets, recog_data)
+
+    # --- Item Type RT (controlled vs. uncontrolled × trial level) ---
+    run_analysis_11_rt_itemtype(targets, recog_data)
 
     # --- Bonferroni correction summary for supplementary ANOVAs ---
     # pingouin rm_anova returns a DataFrame with columns: Source, SS, DF, MS, F, p-unc, ng2, eps

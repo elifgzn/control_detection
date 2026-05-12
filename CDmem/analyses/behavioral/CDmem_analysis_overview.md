@@ -245,6 +245,46 @@ Fallback: said_old_int ~ item_is_old_c * trial_level_c * item_type_c + (1 | part
 
 ---
 
+#### Supplementary Analysis 6 — Detection Breakdown GLMM (controlled items only)
+
+| Attribute | Detail |
+|---|---|
+| Analysis type | Generalized Linear Mixed Model (Binomial, logit link) |
+| Package | `pymer4` (lme4/R via rpy2) |
+| Independent variable | `detection_c`: Detected = +0.5, Not Detected = −0.5 |
+| Dependent variable | `said_old_int`: binary recognition response (0 = no, 1 = yes) |
+| Scope | **Controlled items only** — detection accuracy is only meaningful for items the participant actively controlled |
+
+**Model formulas:**
+```
+Maximal:  said_old_int ~ detection_c + (1 + detection_c | participant)
+Fallback: said_old_int ~ detection_c + (1 | participant)
+```
+
+> Tests whether correctly detecting that one is controlling an item at encoding predicts better subsequent recognition memory for that item. Uncontrolled items are excluded because detection accuracy is not applicable to them.
+
+---
+
+#### Analysis 10 — Recognition RT ~ Detection Accuracy (controlled items only)
+
+| Attribute | Detail |
+|---|---|
+| Analysis type | Linear Mixed Model (Gaussian on log-RT = lognormal on raw RT) |
+| Package | `pymer4` (lme4/R via rpy2) |
+| Independent variable | `detection_c`: Detected = +0.5, Not Detected = −0.5 |
+| Dependent variable | `log_mem_rt`: log-transformed recognition RT |
+| Scope | **Controlled items only** — correct trials (hits) active; all-trials version commented out |
+| References | Ulrich & Miller, 1993; Van der Linden, 2006 |
+
+**Model formula:**
+```
+log_mem_rt ~ detection_c + (1 | participant)
+```
+
+> Tests whether correctly detecting control at encoding affects recognition RT for controlled items. Faster RT for detected items would suggest stronger/more accessible memory traces.
+
+---
+
 ### Analysis 7 — Sense of Agency → Recognition Memory (Continuous)
 
 Agency_rating (1–7) is used as a **continuous predictor**, z-scored *within each participant*. Within-participant z-scoring removes individual differences in rating scale use (some participants habitually rate higher or lower than others), so the GLMM slope captures trial-to-trial variation within a person only.
@@ -322,6 +362,26 @@ log_mem_rt ~ is_old + is_old:agency_z + (1 | participant)
 
 ---
 
+#### Analysis 11 — Recognition RT ~ Item Type × Trial Level (targets only)
+
+| Attribute | Detail |
+|---|---|
+| Analysis type | Linear Mixed Model (Gaussian on log-RT = lognormal on raw RT) |
+| Package | `pymer4` (lme4/R via rpy2) |
+| Independent variables | `trial_level_c`: High = +0.5, Low = −0.5; `item_type_c`: Controlled = +0.5, Uncontrolled = −0.5; interaction |
+| Dependent variable | `log_mem_rt`: log-transformed recognition RT |
+| Scope | **Target items only** (controlled + uncontrolled); correct trials (hits) active, all-trials commented out |
+| References | Ulrich & Miller, 1993; Van der Linden, 2006 |
+
+**Model formula:**
+```
+log_mem_rt ~ trial_level_c * item_type_c + (1 | participant)
+```
+
+> Mirrors Supp Analysis 3's 2×2 factorial structure but uses RT as the DV. The **`trial_level_c:item_type_c` interaction** tests whether the RT difference between controlled and uncontrolled items depends on control level (high vs. low).
+
+---
+
 ### Manipulation Check & Additional Analyses
 
 ---
@@ -371,7 +431,8 @@ agency_rating ~ detection_accuracy + prop_used + detection_accuracy:prop_used
 | Supplementary (Supp 1–4) | Supp 1 d′ ANOVA, Supp 2 HR ANOVA, Supp 3 GLMM, Supp 4 GLMM | Bonferroni (k = 4) | 0.05 / 4 = **0.0125** |
 | Primary (Analyses 1–4) | Analyses 1–4 | No correction (pre-registered primary family) | α = 0.05 |
 | Agency (7a–7c) | Analyses 7a–7c | No correction (exploratory) | α = 0.05 |
-| RT (Analyses 8–9) | Analysis 8 (RT ~ control), Analysis 9 (RT ~ agency) | No correction (exploratory) | α = 0.05 |
+| RT (Analyses 8–9, 11) | Analysis 8 (RT ~ control), Analysis 9 (RT ~ agency), Analysis 11 (RT ~ item_type × trial_level) | No correction (exploratory) | α = 0.05 |
+| Detection (Supp 6 + A10) | Supp 6 (sensitivity ~ detection), Analysis 10 (RT ~ detection) | No correction (exploratory) | α = 0.05 |
 
 The Bonferroni-corrected p-values for Supp 1 and Supp 2 interaction terms are computed automatically (`p_corrected = min(1.0, p_uncorr × 4)`). GLMM p-values (Supp 3 & 4) should also be compared against α = 0.0125.
 
@@ -402,6 +463,7 @@ All predictors use **sum/deviation contrast coding (±0.5)** so that main effect
 | `trial_level_c` | High | Low |
 | `item_type_c` | Controlled | Uncontrolled |
 | `item_is_old_c` | Old (target) | Foil |
+| `detection_c` | Detected (detection_accuracy = 1) | Not Detected (detection_accuracy = 0) |
 | `item_type_c` (foils in A4/S4) | Dummy: rotating 4-cell balanced assignment | Not experimentally meaningful |
 
 ---

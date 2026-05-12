@@ -174,3 +174,54 @@ log(mem_rt) ~ is_old + is_old:agency_z + (1 | participant)
 - Within-participant z-scoring removes scale-use bias, isolating trial-to-trial variation in felt agency.
 - Same lognormal model rationale as Analysis 8.
 
+---
+
+### 9. Exploratory — Recognition Sensitivity by Detection (`run_supp_analysis_6_detection_glmm`)
+
+> **Pre-register as an exploratory analysis.** Tests whether correctly detecting control at encoding predicts better subsequent memory for controlled items.
+
+**Test:** Binomial GLMM on **controlled target items only**:
+```
+said_old ~ detection_c + (1 | participant)
+```
+`detection_c`: Detected = +0.5, Not Detected = −0.5. Uncontrolled items are excluded (detection accuracy is not applicable to them).
+
+**Why include:**
+- This analysis directly tests the "awareness of control → memory" link: do participants remember controlled items better when they *noticed* the control?
+- It goes beyond the trial-level control condition (high vs. low) by asking whether the participant's *subjective detection* of control matters for memory.
+- The existing detection breakdown plots (hit rate and d′ split by detected/not-detected) already visualise this effect — this adds the corresponding statistical test.
+
+---
+
+### 10. Exploratory — Recognition RT by Detection (`run_analysis_10_rt_detection`)
+
+> **Pre-register as an exploratory analysis.** Tests whether correct detection of control at encoding predicts recognition processing speed for controlled items.
+
+**Test:** Lognormal LMM on **controlled target items** (hits only):
+```
+log(mem_rt) ~ detection_c + (1 | participant)
+```
+`detection_c`: Detected = +0.5, Not Detected = −0.5.
+
+**Why include:**
+- Complements Supp 6: even if detection accuracy does not predict *whether* a controlled item is recognised, it may predict *how quickly* it is recognised.
+- Faster recognition RT for detected items would suggest that awareness of control at encoding creates stronger or more accessible memory representations.
+- Same lognormal model rationale as Analyses 8 and 9.
+
+---
+
+### 11. Exploratory — Recognition RT by Item Type × Trial Level (`run_analysis_11_rt_itemtype`)
+
+> **Pre-register as an exploratory analysis.** Tests whether recognition RT differs between controlled and uncontrolled items, and whether this depends on the control level (high vs. low).
+
+**Test:** Lognormal LMM on **target items** (hits only):
+```
+log(mem_rt) ~ trial_level_c * item_type_c + (1 | participant)
+```
+`trial_level_c`: High = +0.5, Low = −0.5. `item_type_c`: Controlled = +0.5, Uncontrolled = −0.5.
+
+**Why include:**
+- This is the RT counterpart to Supplementary Analysis 3 (the 2×2 GLMM on recognition sensitivity).
+- The **main effect of `item_type_c`** tests whether controlled items are recognised faster than uncontrolled items — suggesting preferential encoding of the actively controlled object.
+- The **interaction** tests whether the controlled/uncontrolled RT difference depends on trial-level control conditions — a selective RT advantage for controlled items in high-control trials would support action-binding accounts over general attention/arousal.
+- Same lognormal model rationale as Analyses 8–10.
