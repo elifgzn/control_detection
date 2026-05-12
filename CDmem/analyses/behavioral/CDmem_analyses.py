@@ -52,7 +52,7 @@ from scipy import stats
 from scipy.stats import norm
 from scipy.optimize import curve_fit
 import statsmodels.formula.api as smf
-from pymer4.models import glmer
+from pymer4.models import glmer, Lmer
 
 # ============================================================================
 # CONFIGURATION
@@ -1697,6 +1697,405 @@ def run_agency_recognition_stats(targets):
     return targets_agency
 
 
+# ==============================================================================
+# LMM FITTING HELPER (for continuous DVs, e.g. RT)
+# ==============================================================================
+
+def fit_lmm_with_fallback(formula_maximal, formula_minimal, data_pl):
+    """
+    Attempt to fit a linear mixed model with maximal random effects.
+    If singular, fall back to random-intercept-only.
+
+    Uses pymer4's Lmer class (Gaussian family).
+
+    Parameters
+    ----------
+    formula_maximal : str
+    formula_minimal : str
+    data_pl : pl.DataFrame
+
+    Returns
+    -------
+    model : fitted pymer4 Lmer model (or None)
+    random_structure_used : str  ('maximal' or 'intercept-only' or None)
+    """
+    print(f"  Fitting intercept-only model: {formula_minimal}")
+    sys.stdout.flush()
+    try:
+        model = Lmer(formula_minimal, data=data_pl)
+
+        # Suppress R's verbose console output during fitting.
+        try:
+            import rpy2.rinterface_lib.callbacks as _rpy2_cb
+            _orig_print = _rpy2_cb.consolewrite_print
+            _orig_warn  = _rpy2_cb.consolewrite_warnerror
+            _rpy2_cb.consolewrite_print        = lambda x: None
+            _rpy2_cb.consolewrite_warnerror    = lambda x: None
+        except Exception:
+            _orig_print = _orig_warn = None
+
+        try:
+            model.fit()
+        finally:
+            if _orig_print is not None:
+                _rpy2_cb.consolewrite_print     = _orig_print
+                _rpy2_cb.consolewrite_warnerror = _orig_warn
+
+        print("  -> Intercept-only random effects structure used.")
+        coefs = getattr(model, 'coefs', None)
+        if coefs is not None:
+            print(coefs.to_string())
+        else:
+            try:
+                summ = model.summary()
+                if summ is not None:
+                    print(str(summ).encode('utf-8', errors='replace').decode('utf-8'))
+            except Exception as pe:
+                print(f"  [WARNING] Could not print model coefficients: {pe}")
+        sys.stdout.flush()
+        return model, "intercept-only"
+    except Exception as e:
+        print(f"  [ERROR] Intercept-only LMM also failed: {e}")
+        sys.stdout.flush()
+        return None, None
+
+
+# ==============================================================================
+# RECOGNITION RT DATA PREPARATION
+# ==============================================================================
+
+def prepare_rt_model_data(recog_data, targets):
+    """
+    Prepare combined (targets + foils) recognition data for RT modelling.
+
+    Creates:
+      - is_old       : 1 for targets (mem_ground_truth == 'seen'), 0 for foils
+      - control_c    : High = +0.5, Low = −0.5 for targets; 0 for foils
+                       (zeroed out by the is_old:control_c interaction)
+      - agency_z     : within-participant z-scored agency_rating for targets;
+                       0 for foils (zeroed out by is_old interaction)
+      - said_old_int : binary recognition response
+      - log_mem_rt   : log(mem_rt) — used as DV for lognormal LMM
+                       (Ulrich & Miller, 1993; Van der Linden, 2006)
+
+    Returns
+    -------
+    rt_all     : pd.DataFrame  — all trials
+    rt_correct : pd.DataFrame  — correct trials only (hits + correct rejections)
+    """
+    if recog_data is None or targets is None:
+        print("[WARNING] Cannot prepare RT model data (missing recog_data or targets).")
+        return None, None
+
+    recog = recog_data.copy()
+    recog['mem_rt'] = pd.to_numeric(recog['mem_rt'], errors='coerce')
+
+    # Build is_old
+    recog['is_old'] = (recog['mem_ground_truth'] == 'seen').astype(int)
+    recog['said_old_int'] = (recog['mem_response'].str.lower() == 'yes').astype(int)
+
+    # Merge target-level info (control_condition, agency_rating) from targets
+    target_info = targets[['participant', 'mem_filename', 'control_condition']].copy()
+    if 'agency_rating' in targets.columns:
+        target_info['agency_rating'] = targets['agency_rating']
+    target_info = target_info.drop_duplicates(subset=['participant', 'mem_filename'])
+
+    recog = recog.merge(target_info, on=['participant', 'mem_filename'], how='left')
+
+    # control_c: High = +0.5, Low = −0.5 for targets; 0 for foils
+    recog['control_c'] = recog['control_condition'].map({'high': 0.5, 'low': -0.5})
+    recog['control_c'] = recog['control_c'].fillna(0)  # foils
+
+    # agency_rating_z: within-participant z-scored for targets; 0 for foils
+    if 'agency_rating' in recog.columns:
+        recog['agency_rating'] = pd.to_numeric(recog['agency_rating'], errors='coerce')
+        # Z-score only within old items per participant
+        old_mask = recog['is_old'] == 1
+        recog.loc[old_mask, 'agency_z'] = (
+            recog.loc[old_mask]
+            .groupby('participant')['agency_rating']
+            .transform(lambda x: (x - x.mean()) / (x.std() + 1e-9))
+        )
+        recog['agency_z'] = recog['agency_z'].fillna(0)  # foils + missing
+    else:
+        recog['agency_z'] = 0
+
+    # log(mem_rt) — lognormal DV
+    recog = recog.dropna(subset=['mem_rt'])
+    recog = recog[recog['mem_rt'] > 0].copy()  # guard against log(0)
+    recog['log_mem_rt'] = np.log(recog['mem_rt'])
+
+    # Select columns needed for modelling
+    keep_cols = [
+        'participant', 'mem_rt', 'log_mem_rt', 'is_old', 'said_old_int',
+        'control_c', 'agency_z'
+    ]
+    rt_all = recog[keep_cols].dropna().copy()
+
+    # Correct trials: hits (is_old=1 & said_old=1) + correct rejections (is_old=0 & said_old=0)
+    correct_mask = (
+        ((rt_all['is_old'] == 1) & (rt_all['said_old_int'] == 1)) |
+        ((rt_all['is_old'] == 0) & (rt_all['said_old_int'] == 0))
+    )
+    rt_correct = rt_all[correct_mask].copy()
+
+    print("=" * 60)
+    print("RECOGNITION RT DATA PREPARATION")
+    print("=" * 60)
+    print(f"  All trials          : {len(rt_all)} "
+          f"({rt_all['participant'].nunique()} participants)")
+    print(f"    Old items         : {(rt_all['is_old'] == 1).sum()}")
+    print(f"    Foils             : {(rt_all['is_old'] == 0).sum()}")
+    print(f"  Correct trials only : {len(rt_correct)} "
+          f"({rt_correct['participant'].nunique()} participants)")
+    print(f"    Hits              : {((rt_correct['is_old'] == 1) & (rt_correct['said_old_int'] == 1)).sum()}")
+    print(f"    Correct rejections: {((rt_correct['is_old'] == 0) & (rt_correct['said_old_int'] == 0)).sum()}")
+    print(f"  RT (raw) M (SD)     : {rt_all['mem_rt'].mean():.3f} ({rt_all['mem_rt'].std():.3f}) s")
+    print(f"  RT (log) M (SD)     : {rt_all['log_mem_rt'].mean():.3f} ({rt_all['log_mem_rt'].std():.3f})")
+    print("=" * 60 + "\n")
+
+    return rt_all, rt_correct
+
+
+# ==============================================================================
+# ANALYSIS 8: Recognition RT ~ Control Level (High vs. Low)
+# ==============================================================================
+
+def run_analysis_8_rt_control(rt_all, rt_correct):
+    """
+    Lognormal LMM testing whether control level at encoding predicts
+    recognition reaction time.
+
+    The DV is log(mem_rt). Fitting a Gaussian LMM on log-transformed RT is
+    equivalent to fitting a lognormal distribution on raw RT
+    (Ulrich & Miller, 1993; Van der Linden, 2006).
+
+    Model formula:
+      log(mem_rt) ~ is_old + is_old:control_c + (1 | participant)
+
+    Key coefficient: is_old:control_c — whether high vs. low control at
+    encoding affects recognition RT for old items.
+
+    Two versions:
+      - All trials: commented out. Use when recognition sensitivity (d')
+        is NOT significantly affected by the control manipulation
+        (Ren et al., 2026).
+      - Correct trials only: active (default). Isolates RT effects in
+        trials where memory judgment was accurate.
+    """
+    print("\n" + "=" * 60)
+    print("ANALYSIS 8: Recognition RT ~ Control Level")
+    print("  Lognormal LMM: log(mem_rt) ~ is_old + is_old:control_c")
+    print("  (Ulrich & Miller, 1993; Van der Linden, 2006)")
+    print("=" * 60)
+
+    # ------------------------------------------------------------------
+    # 8a. ALL TRIALS (commented out)
+    # ------------------------------------------------------------------
+    # Use this version if recognition sensitivity (d') is NOT significantly
+    # affected by the control manipulation. When sensitivity does not differ
+    # between conditions, analysing RT in all trials (including errors) can
+    # still reveal condition effects on processing speed
+    # (cf. Ren et al., 2026).
+    #
+    # if rt_all is not None and len(rt_all) > 0:
+    #     print("\n  [8a] All trials:")
+    #     print(f"    Trials: {len(rt_all)} | Participants: {rt_all['participant'].nunique()}")
+    #     df_pl = pl.from_pandas(rt_all[['participant', 'log_mem_rt', 'is_old', 'control_c']])
+    #     model_all, struct_all = fit_lmm_with_fallback(
+    #         formula_maximal="log_mem_rt ~ is_old + is_old:control_c + (1 + control_c | participant)",
+    #         formula_minimal="log_mem_rt ~ is_old + is_old:control_c + (1 | participant)",
+    #         data_pl=df_pl
+    #     )
+    #     if model_all is not None:
+    #         print(f"    [REPORT] Random effects: {struct_all}")
+    # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # 8b. CORRECT TRIALS ONLY (active)
+    # ------------------------------------------------------------------
+    if rt_correct is None or len(rt_correct) == 0:
+        print("  [WARNING] No correct-trial RT data. Skipping Analysis 8.")
+        return None
+
+    print(f"\n  [8b] Correct trials only (hits + correct rejections):")
+    print(f"    Trials: {len(rt_correct)} | Participants: {rt_correct['participant'].nunique()}")
+
+    df_pl = pl.from_pandas(rt_correct[['participant', 'log_mem_rt', 'is_old', 'control_c']])
+
+    model, structure = fit_lmm_with_fallback(
+        formula_maximal="log_mem_rt ~ is_old + is_old:control_c + (1 + control_c | participant)",
+        formula_minimal="log_mem_rt ~ is_old + is_old:control_c + (1 | participant)",
+        data_pl=df_pl
+    )
+    if model is not None:
+        print(f"    [REPORT] Random effects structure used: {structure}")
+
+    return model
+
+
+# ==============================================================================
+# ANALYSIS 9: Recognition RT ~ Agency Rating (within-participant z-scored)
+# ==============================================================================
+
+def run_analysis_9_rt_agency(rt_all, rt_correct):
+    """
+    Lognormal LMM testing whether within-participant variation in
+    agency_rating at encoding predicts recognition RT.
+
+    The DV is log(mem_rt). Fitting a Gaussian LMM on log-transformed RT is
+    equivalent to fitting a lognormal distribution on raw RT
+    (Ulrich & Miller, 1993; Van der Linden, 2006).
+
+    Model formula:
+      log(mem_rt) ~ is_old + is_old:agency_z + (1 | participant)
+
+    Key coefficient: is_old:agency_z — whether trial-level subjective agency
+    at encoding predicts recognition RT for old items.
+
+    Two versions:
+      - All trials: commented out. Use when recognition sensitivity (d')
+        is NOT significantly affected by agency ratings.
+      - Correct trials only: active (default).
+    """
+    print("\n" + "=" * 60)
+    print("ANALYSIS 9: Recognition RT ~ Agency Rating")
+    print("  Lognormal LMM: log(mem_rt) ~ is_old + is_old:agency_z")
+    print("  (Ulrich & Miller, 1993; Van der Linden, 2006)")
+    print("=" * 60)
+
+    # Check if agency data is available
+    if rt_correct is not None and 'agency_z' in rt_correct.columns:
+        agency_nonzero = rt_correct[rt_correct['is_old'] == 1]['agency_z']
+        if agency_nonzero.abs().sum() < 1e-6:
+            print("  [WARNING] No agency rating variance found. Skipping Analysis 9.")
+            return None
+
+    # ------------------------------------------------------------------
+    # 9a. ALL TRIALS (commented out)
+    # ------------------------------------------------------------------
+    # Use this version if recognition sensitivity (d') is NOT significantly
+    # affected by agency ratings. Same rationale as Analysis 8a.
+    #
+    # if rt_all is not None and len(rt_all) > 0:
+    #     print("\n  [9a] All trials:")
+    #     print(f"    Trials: {len(rt_all)} | Participants: {rt_all['participant'].nunique()}")
+    #     df_pl = pl.from_pandas(rt_all[['participant', 'log_mem_rt', 'is_old', 'agency_z']])
+    #     model_all, struct_all = fit_lmm_with_fallback(
+    #         formula_maximal="log_mem_rt ~ is_old + is_old:agency_z + (1 + agency_z | participant)",
+    #         formula_minimal="log_mem_rt ~ is_old + is_old:agency_z + (1 | participant)",
+    #         data_pl=df_pl
+    #     )
+    #     if model_all is not None:
+    #         print(f"    [REPORT] Random effects: {struct_all}")
+    # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # 9b. CORRECT TRIALS ONLY (active)
+    # ------------------------------------------------------------------
+    if rt_correct is None or len(rt_correct) == 0:
+        print("  [WARNING] No correct-trial RT data. Skipping Analysis 9.")
+        return None
+
+    print(f"\n  [9b] Correct trials only (hits + correct rejections):")
+    print(f"    Trials: {len(rt_correct)} | Participants: {rt_correct['participant'].nunique()}")
+
+    df_pl = pl.from_pandas(rt_correct[['participant', 'log_mem_rt', 'is_old', 'agency_z']])
+
+    model, structure = fit_lmm_with_fallback(
+        formula_maximal="log_mem_rt ~ is_old + is_old:agency_z + (1 + agency_z | participant)",
+        formula_minimal="log_mem_rt ~ is_old + is_old:agency_z + (1 | participant)",
+        data_pl=df_pl
+    )
+    if model is not None:
+        print(f"    [REPORT] Random effects structure used: {structure}")
+
+    return model
+
+
+# ==============================================================================
+# RECOGNITION RT: Paired t-test on participant-level means (descriptive)
+# ==============================================================================
+
+def run_rt_descriptive_ttest(rt_correct):
+    """
+    Descriptive paired t-test comparing participant-level mean recognition RT
+    between High and Low control conditions (correct old-item trials only).
+
+    This is a summary-statistic complement to the trial-level LMM in
+    Analysis 8. It uses raw RT (not log-transformed).
+
+    Parameters
+    ----------
+    rt_correct : pd.DataFrame
+        Correct-trial RT data from prepare_rt_model_data().
+    """
+    if rt_correct is None or len(rt_correct) == 0:
+        print("  [WARNING] No data for RT t-test. Skipping.")
+        return None
+
+    # Only old items (hits) with a real control condition
+    hits = rt_correct[(rt_correct['is_old'] == 1) & (rt_correct['said_old_int'] == 1)].copy()
+
+    if len(hits) == 0:
+        print("  [WARNING] No hit trials for RT t-test. Skipping.")
+        return None
+
+    # Map control_c back to labels for grouping
+    hits['condition'] = hits['control_c'].map({0.5: 'high', -0.5: 'low'})
+
+    px_means = (
+        hits.groupby(['participant', 'condition'])['mem_rt']
+        .mean().reset_index()
+        .pivot(index='participant', columns='condition', values='mem_rt')
+        .dropna(subset=['high', 'low'])
+    )
+
+    if len(px_means) < 2:
+        print("  [WARNING] Too few participants for RT t-test. Skipping.")
+        return None
+
+    print("\n" + "-" * 60)
+    print("Recognition RT: Paired t-test (High vs. Low, correct old items)")
+    print("-" * 60)
+    print(f"  N = {len(px_means)} participants")
+    print(f"  Mean (SD) High : {px_means['high'].mean():.3f} ({px_means['high'].std():.3f}) s")
+    print(f"  Mean (SD) Low  : {px_means['low'].mean():.3f} ({px_means['low'].std():.3f}) s")
+    result = pg.ttest(px_means['high'], px_means['low'], paired=True)
+    print(result.to_string(index=False))
+    return result
+
+
+def run_recognition_rt_analyses(recog_data, targets):
+    """
+    Run all recognition RT analyses (Analyses 8 & 9 + descriptive t-test).
+
+    Parameters
+    ----------
+    recog_data : pd.DataFrame  — cleaned recognition data (post RT trimming)
+    targets    : pd.DataFrame  — trial-level target data from analyze_recognition()
+    """
+    print("\n" + "=" * 60)
+    print("RECOGNITION REACTION TIME ANALYSES")
+    print("=" * 60)
+
+    rt_all, rt_correct = prepare_rt_model_data(recog_data, targets)
+    if rt_all is None:
+        print("[WARNING] Could not prepare RT model data. Skipping RT analyses.")
+        return
+
+    # Descriptive t-test
+    run_rt_descriptive_ttest(rt_correct)
+
+    # Analysis 8: RT ~ Control Level
+    run_analysis_8_rt_control(rt_all, rt_correct)
+
+    # Analysis 9: RT ~ Agency Rating
+    run_analysis_9_rt_agency(rt_all, rt_correct)
+
+    print("\n" + "=" * 60)
+
+
 # ============================================================================
 # DESCRIPTIVE STATISTICS
 # ============================================================================
@@ -2746,6 +3145,9 @@ if __name__ == "__main__":
             # Analysis 7: Agency -> Memory (continuous agency_rating_z)
             targets_agency = run_agency_recognition_stats(targets)
             plot_agency_recognition(targets, POOLED_DIR)
+
+            # Analyses 8 & 9: Recognition RT models
+            run_recognition_rt_analyses(recog_data, targets)
 
     # ------------------------------------------------------------------
     # Per-participant plots

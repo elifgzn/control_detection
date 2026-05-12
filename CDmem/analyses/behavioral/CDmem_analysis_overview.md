@@ -88,12 +88,14 @@ For each participant, mean and SD of `mem_rt` are computed across all their reco
 | Hit Rate (HR) | Mean of `said_old` (= 1) across target trials per participant × condition | Analyses 1, 2, 7a, 7b |
 | False Alarm Rate (FAR) | Mean of `said_old` across foil trials per participant | All d′ calculations |
 | d′ (d-prime) | Φ⁻¹(HR_clipped) − Φ⁻¹(FAR_clipped); Clipping: [0.01, 0.99] to avoid ±∞ | Analyses 1, 7a, Supp 1 |
-| `control_c` | Contrast code: High = +0.5, Low = −0.5 | Analyses 3, 4, CD accuracy GLMM |
-| `agency_rating_z` | `agency_rating` z-scored within each participant: `(x − participant_mean) / participant_SD`. Removes individual differences in scale use; slope captures trial-to-trial within-person variation only. | Analysis 7 |
+| `control_c` | Contrast code: High = +0.5, Low = −0.5 | Analyses 3, 4, 8, CD accuracy GLMM |
+| `agency_rating_z` / `agency_z` | `agency_rating` z-scored within each participant: `(x − participant_mean) / participant_SD`. Removes individual differences in scale use; slope captures trial-to-trial within-person variation only. | Analyses 7, 9 |
+| `is_old` | 1 for targets (`mem_ground_truth == 'seen'`), 0 for foils (`'unseen'`) | Analyses 8, 9 |
+| `log_mem_rt` | `log(mem_rt)` — fitting a Gaussian LMM on log(RT) is equivalent to fitting a lognormal distribution on raw RT (Ulrich & Miller, 1993; Van der Linden, 2006) | Analyses 8, 9 |
 | `trial_level_c` | Contrast code: High = +0.5, Low = −0.5 | Supp 3, Supp 4 |
 | `item_type_c` | Contrast code: Controlled = +0.5, Uncontrolled = −0.5 | Supp 3, Supp 4 |
 | `item_is_old_c` | Contrast code: Old (target) = +0.5, Foil = −0.5 | Analysis 4, Supp 4 |
-| Cohen's d | (mean_high − mean_low) / SD_diff, applied to paired differences | Analyses 1, 2, 7a, 7b, CD check |
+| Cohen's d | (mean_high − mean_low) / SD_diff, applied to paired differences | Analyses 1, 2, 7a, 7b, CD check, RT t-test |
 
 ---
 
@@ -268,6 +270,58 @@ Fallback: said_old_int ~ agency_rating_z + (1 | participant)
 
 ---
 
+### Recognition Reaction Time Analyses
+
+RT is modelled with a **lognormal LMM**: a Gaussian linear mixed model fitted on log(mem_rt), which is equivalent to fitting a lognormal distribution on raw RT (Ulrich & Miller, 1993; Van der Linden, 2006). Coefficients are on the log-RT scale.
+
+All predictors are nested within `is_old` (0 = foil, 1 = old item), meaning condition effects are estimated only for old items. For foils, `is_old = 0` zeroes out all interaction terms regardless of predictor values.
+
+Each analysis has two versions:
+- **All-trials** (commented out): for use when recognition sensitivity (d′) is not significantly affected by the manipulation. Includes both correct and incorrect responses.
+- **Correct-trials-only** (active by default): restricted to hits (is_old = 1, said_old = 1) and correct rejections (is_old = 0, said_old = 0).
+
+---
+
+#### Analysis 8 — Recognition RT ~ Control Level
+
+| Attribute | Detail |
+|---|---|
+| Analysis type | Linear Mixed Model (Gaussian on log-RT = lognormal on raw RT) |
+| Package | `pymer4` (lme4/R via rpy2) |
+| Independent variables | `is_old`: old = 1, foil = 0; `is_old:control_c`: High = +0.5, Low = −0.5 (nested within old items) |
+| Dependent variable | `log_mem_rt`: log-transformed recognition RT |
+| References | Ulrich & Miller, 1993; Van der Linden, 2006 |
+
+**Model formula:**
+```
+log_mem_rt ~ is_old + is_old:control_c + (1 | participant)
+```
+
+> Key coefficient: **`is_old:control_c`** — whether high vs. low control at encoding affects recognition RT for old items.
+
+A descriptive **paired t-test** on participant-level mean raw RT (High vs. Low, correct old items) is also reported as a summary-statistic complement.
+
+---
+
+#### Analysis 9 — Recognition RT ~ Agency Rating
+
+| Attribute | Detail |
+|---|---|
+| Analysis type | Linear Mixed Model (Gaussian on log-RT = lognormal on raw RT) |
+| Package | `pymer4` (lme4/R via rpy2) |
+| Independent variables | `is_old`: old = 1, foil = 0; `is_old:agency_z`: within-participant z-scored agency_rating (nested within old items) |
+| Dependent variable | `log_mem_rt`: log-transformed recognition RT |
+| References | Ulrich & Miller, 1993; Van der Linden, 2006 |
+
+**Model formula:**
+```
+log_mem_rt ~ is_old + is_old:agency_z + (1 | participant)
+```
+
+> Key coefficient: **`is_old:agency_z`** — whether trial-level subjective agency at encoding predicts recognition RT for old items.
+
+---
+
 ### Manipulation Check & Additional Analyses
 
 ---
@@ -317,22 +371,23 @@ agency_rating ~ detection_accuracy + prop_used + detection_accuracy:prop_used
 | Supplementary (Supp 1–4) | Supp 1 d′ ANOVA, Supp 2 HR ANOVA, Supp 3 GLMM, Supp 4 GLMM | Bonferroni (k = 4) | 0.05 / 4 = **0.0125** |
 | Primary (Analyses 1–4) | Analyses 1–4 | No correction (pre-registered primary family) | α = 0.05 |
 | Agency (7a–7c) | Analyses 7a–7c | No correction (exploratory) | α = 0.05 |
+| RT (Analyses 8–9) | Analysis 8 (RT ~ control), Analysis 9 (RT ~ agency) | No correction (exploratory) | α = 0.05 |
 
 The Bonferroni-corrected p-values for Supp 1 and Supp 2 interaction terms are computed automatically (`p_corrected = min(1.0, p_uncorr × 4)`). GLMM p-values (Supp 3 & 4) should also be compared against α = 0.0125.
 
 ---
 
-## 6. Model Fitting Strategy (GLMMs)
+## 6. Model Fitting Strategy (GLMMs & LMMs)
 
 | Step | Action |
 |---|---|
-| 1. Attempt maximal model | Fit GLMM with full random effects (random intercept + random slope per participant). |
-| 2. Singular fit check | If any random-effect variance component is ≈ 0 (< 1e-6), the model is flagged as singular. |
+| 1. Attempt maximal model | Fit GLMM/LMM with full random effects (random intercept + random slope per participant). |
+| 2. Singular fit check | If any random-effect variance component is ≈ 0 (<1e-6), the model is flagged as singular. |
 | 3. Fallback | If singular or if the maximal model fails entirely, refit with random-intercept only. |
 | 4. Reporting | Always report which random effects structure was used (`'maximal'` or `'intercept-only'`). |
 
 **Package:** `pymer4` ≥ 0.8 (Python wrapper for lme4/R); data passed as Polars DataFrames.
-**Family:** Binomial with logit link for all recognition GLMMs.
+**Family:** Binomial with logit link for recognition sensitivity GLMMs; Gaussian for RT LMMs (on log-RT, equivalent to lognormal on raw RT).
 
 ---
 
@@ -376,4 +431,4 @@ All predictors use **sum/deviation contrast coding (±0.5)** so that main effect
 ---
 
 *Generated from `CDmem_analyses.py`*
-*References: Ren et al. (2026); Haridi et al. (2025)*
+*References: Ren et al. (2026); Haridi et al. (2025); Ulrich & Miller (1993); Van der Linden (2006)*

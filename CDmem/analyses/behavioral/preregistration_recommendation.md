@@ -136,3 +136,41 @@ said_old ~ agency_rating_z + (1 | participant)
 - Multiple studies show that within-trial SoA ratings predict memory independently of accuracy (e.g., Damen et al., 2024; Humphreys et al., 2023 style analyses).
 - Within-participant z-scoring (already implemented) is best practice to remove scale-use bias.
 
+---
+
+### 7. Exploratory — Recognition RT ~ Control Level (`run_analysis_8_rt_control`)
+
+> **Pre-register as an exploratory analysis.** RT in the recognition phase provides a complementary measure to accuracy-based sensitivity.
+
+**Test:** Lognormal LMM on correct recognition trials (hits + correct rejections):
+```
+log(mem_rt) ~ is_old + is_old:control_c + (1 | participant)
+```
+`is_old` = 1 for targets, 0 for foils. `control_c`: High = +0.5, Low = −0.5 (set to 0 for foils, zeroed out by the interaction).
+
+A paired t-test on participant-level mean raw RT (High vs. Low, correct old items) is reported as a descriptive complement.
+
+**Why include:**
+- Recognition RT captures processing fluency — faster responses to old items from one condition may indicate stronger memory traces, even when accuracy-based sensitivity (d′) does not differ.
+- The lognormal model (Gaussian on log-RT) is appropriate for right-skewed RT distributions (Ulrich & Miller, 1993; Van der Linden, 2006).
+- The `is_old:control_c` interaction tests the theoretically relevant question: does the control manipulation at encoding affect recognition *speed* specifically for old items?
+- Ren et al. (2026) use the same nested-interaction structure.
+- An all-trials version (including errors) is retained in the code (commented out) for the case where d′ is not significantly affected by the manipulation.
+
+---
+
+### 8. Exploratory — Recognition RT ~ Agency Rating (`run_analysis_9_rt_agency`)
+
+> **Pre-register as an exploratory analysis.** Tests whether within-participant variation in subjective agency at encoding predicts recognition processing speed.
+
+**Test:** Lognormal LMM on correct recognition trials:
+```
+log(mem_rt) ~ is_old + is_old:agency_z + (1 | participant)
+```
+`agency_z` = agency_rating z-scored within each participant. Set to 0 for foils (zeroed out by `is_old` interaction).
+
+**Why include:**
+- Complements Analysis 9's test on accuracy (Analysis 7): even if SoA does not predict *whether* an item is recognised, it may predict *how quickly* old items are recognised.
+- Within-participant z-scoring removes scale-use bias, isolating trial-to-trial variation in felt agency.
+- Same lognormal model rationale as Analysis 8.
+
