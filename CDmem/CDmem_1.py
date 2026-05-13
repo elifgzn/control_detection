@@ -100,13 +100,15 @@ if check_and_run_with_correct_python():
     sys.exit(0)
 
 # ---------------------------------------------------------------------------
-# INITIALIZE TRIGGERBOX
+# INITIALIZE TRIGGERBOX (BrainProducts TriggerBox Plus)
 USE_TRIGGERS = False  # Set to False to disable EEG triggers manually
+TRIGGERBOX_BAUDRATE = 2_000_000  # Required by BrainProducts TriggerBox Plus
 
-# Replace 'COM3' with the actual port found in Device Manager
+# Replace 'COM6' with the actual port found in Device Manager
 try:
     if USE_TRIGGERS:
-        port = serial.Serial('COM3') 
+        port = serial.Serial('COM6', baudrate=TRIGGERBOX_BAUDRATE, timeout=1)
+        time.sleep(0.5)  # Give the device time to initialise
         port.write(b'\x00')  # Ensure it starts at zero
         TRIGGERBOX_READY = True
     else:
@@ -114,7 +116,7 @@ try:
         TRIGGERBOX_READY = False
         port = None
 except Exception as e:
-    print(f"WARNING: Could not connect to TriggerBox on COM3: {e}")
+    print(f"WARNING: Could not connect to TriggerBox Plus on COM6: {e}")
     print("Experiment will continue without EEG triggers.")
     TRIGGERBOX_READY = False
     port = None

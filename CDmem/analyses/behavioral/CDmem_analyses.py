@@ -52,7 +52,7 @@ from scipy import stats
 from scipy.stats import norm
 from scipy.optimize import curve_fit
 import statsmodels.formula.api as smf
-from pymer4.models import glmer, Lmer
+from pymer4.models import glmer, lmer
 
 # ============================================================================
 # CONFIGURATION
@@ -70,7 +70,7 @@ for _d in (OUTPUT_DIR, POOLED_DIR, PER_PARTICIPANT_DIR):
 # Participant filter: set to a non-empty list to restrict analyses to specific
 # participant IDs, e.g. PARTICIPANT_FILTER = [2, 3].
 # Leave as an empty list [] to include ALL participants found in data files.
-PARTICIPANT_FILTER = [2,3,4,5,6,8,9,11]  # e.g. [2, 3]
+PARTICIPANT_FILTER = [9, 10, 11, 12, 13, 14, 15, 16, 17]  # e.g. [2, 3]
 # ============================================================================
 # DATA LOADING
 # ============================================================================
@@ -1626,7 +1626,24 @@ def run_analysis_11_rt_itemtype(targets, recog_data):
 
     # Filter to targets only
     recog_targets = recog[recog['mem_ground_truth'] == 'seen'].copy()
-    recog_targets = recog_targets.merge(target_info, on=['participant', 'mem_filename'], how='inner')
+
+    # Only merge columns from target_info that are missing in recog_targets
+    # to avoid _x/_y suffix collisions when the recognition CSV already
+    # contains 'item_type' and 'trial_level'.
+    existing_cols = set(recog_targets.columns)
+    extra_cols = [c for c in target_info.columns
+                  if c not in existing_cols and c not in ('participant', 'mem_filename')]
+    if extra_cols:
+        merge_cols = ['participant', 'mem_filename'] + extra_cols
+        recog_targets = recog_targets.merge(
+            target_info[merge_cols], on=['participant', 'mem_filename'], how='inner'
+        )
+    else:
+        # Still filter to only rows present in target_info (inner-join logic)
+        recog_targets = recog_targets.merge(
+            target_info[['participant', 'mem_filename']].drop_duplicates(),
+            on=['participant', 'mem_filename'], how='inner'
+        )
 
     # Contrast codes
     recog_targets['trial_level_c'] = recog_targets['trial_level'].map({'high': 0.5, 'low': -0.5})
@@ -2052,7 +2069,7 @@ def fit_lmm_with_fallback(formula_maximal, formula_minimal, data_pl):
     print(f"  Fitting intercept-only model: {formula_minimal}")
     sys.stdout.flush()
     try:
-        model = Lmer(formula_minimal, data=data_pl)
+        model = lmer(formula_minimal, data=data_pl)
 
         # Suppress R's verbose console output during fitting.
         try:
