@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+#hi 
 
 import os
 import sys
@@ -537,5 +538,204 @@ for px in mem_results_2x2['participant'].unique():
     if len(px_bd) > 0:
         make_3row_plot(px_2x2, px_bd, 'd_prime', "d'", f"Sensitivity (d') - Participant {px}", PER_PARTICIPANT_DIR / f"dprime_p{px}.png")
         make_3row_plot(px_2x2, px_bd, 'Hit_rate', "Hit Rate", f"Hit Rate - Participant {px}", PER_PARTICIPANT_DIR / f"hitrate_p{px}.png")
+
+
+# ============================================================================
+# 5b. SANITY CHECK PLOTS
+# ============================================================================
+# These plots verify the experimental manipulation worked.
+# A 2x2 grid with:
+#   [0,0] Psychometric function (calibration data with sigmoid fit + test-phase overlay)
+#   [0,1] Detection accuracy by condition (bar chart)
+#   [1,0] Agency ratings by condition and detection accuracy
+#   [1,1] RT distribution (histograms by condition)
+#
+# Also: Calibration convergence plot (QUEST alpha_sd trajectory over trials)
+#
+# Both are generated pooled (all participants) and per-participant.
+
+from scipy.optimize import curve_fit
+
+def make_sanity_plot(plot_data, out_path, title_suffix=""):
+    """Generate a 2x2 sanity check figure from main experiment data."""
+    plt.style.use('seaborn-v0_8-whitegrid')
+    color_map = {'high': '#1f77b4', 'low': '#ff7f0e'}
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 12))
+    plot_data = plot_data.copy()
+
+    # Ensure numeric types
+    for col in ['detection_accuracy', 'prop_used', 'agency_rating', 'rt_choice', 'calib_target']:
+        if col in plot_data.columns:
+            plot_data[col] = pd.to_numeric(plot_data[col], errors='coerce')
+
+    # Split calibration vs test
+    calib_d = plot_data[plot_data['phase'] == 'calibration'].copy() if 'phase' in plot_data.columns else pd.DataFrame()
+    test_d  = plot_data[plot_data['phase'] == 'test'].copy()        if 'phase' in plot_data.columns else plot_data.copy()
+    n_px = plot_data['participant'].nunique() if 'participant' in plot_data.columns else 1
+
+    # --- Panel 1: Psychometric function ---
+    ax = axes[0, 0]
+    if not calib_d.empty:
+        def psychometric_func(x, alpha, beta):
+            return 0.5 + 0.48 / (1 + np.exp(-np.clip(beta, 0.1, 100) * (x - alpha)))
+
+        # Global sigmoid fit
+        try:
+            if calib_d['prop_used'].nunique() >= 2:
+                popt, _ = curve_fit(psychometric_func, calib_d['prop_used'], calib_d['detection_accuracy'],
+                                    p0=[calib_d['prop_used'].mean(), 10],
+                                    bounds=([0, 0], [1, 200]), maxfev=5000)
+                x_fit = np.linspace(0, 1, 100)
+                y_fit = psychometric_func(x_fit, *popt)
+                ax.plot(x_fit, y_fit, color='gray', linestyle='-', linewidth=2, alpha=0.6, label='Global Sigmoid Fit')
+        except Exception:
+            pass
+
+        # Staircase-specific data points
+        if 'calib_target' in calib_d.columns:
+            calib_d['calib_condition'] = np.where(calib_d['calib_target'] < 0.7, 'low', 'high')
+            for condition in ['high', 'low']:
+                subset = calib_d[calib_d['calib_condition'] == condition].copy()
+                if subset.empty:
+                    continue
+                if n_px == 1:
+                    psych = subset.groupby('prop_used', observed=False)['detection_accuracy'].agg(['mean', 'sem']).reset_index()
+                    psych.rename(columns={'prop_used': 'prop_bin'}, inplace=True)
+                else:
+                    bins = np.linspace(0, 1, 11)
+                    bin_centers = (bins[:-1] + bins[1:]) / 2
+                    subset['prop_bin'] = pd.cut(subset['prop_used'], bins=bins, labels=bin_centers)
+                    psych = subset.groupby('prop_bin', observed=False)['detection_accuracy'].agg(['mean', 'sem']).reset_index()
+                    psych['prop_bin'] = psych['prop_bin'].astype(float)
+                psych = psych.dropna(subset=['mean'])
+                ax.errorbar(psych['prop_bin'], psych['mean'], yerr=psych['sem'],
+                            marker='o', capsize=3, linestyle='None', color=color_map[condition], alpha=0.7,
+                            label=f'{condition.capitalize()} {"Samples" if n_px == 1 else "Bins"}')
+                target_acc = 0.55 if condition == 'low' else 0.85
+                ax.axhline(y=target_acc, color=color_map[condition], linestyle=':', alpha=0.3)
+
+        # Overlay test results
+        if not test_d.empty:
+            for condition in ['high', 'low']:
+                ts = test_d[test_d['control_condition'] == condition]
+                if not ts.empty:
+                    ax.plot(ts['prop_used'].mean(), ts['detection_accuracy'].mean(), marker='*', markersize=15,
+                            color=color_map[condition], markeredgecolor='black', linestyle='None',
+                            label=f'{condition.capitalize()} (Test)')
+        ax.legend(frameon=True, facecolor='white', framealpha=0.9, fontsize='small', loc='lower right')
+    else:
+        ax.text(0.5, 0.5, 'No calibration data available', transform=ax.transAxes, ha='center')
+
+    ax.set_xlabel('Control Level (prop self-motion)')
+    ax.set_ylabel('Accuracy')
+    ax.set_title(f'Psychometric Function ({"Raw" if n_px == 1 else "Binned"} & Global Fit)')
+    ax.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5)
+    ax.set_ylim([-0.05, 1.05])
+    ax.set_xlim([-0.05, 1.05])
+
+    # --- Panel 2: Accuracy by condition ---
+    ax = axes[0, 1]
+    has_cond = 'control_condition' in test_d.columns
+    if has_cond and not test_d.empty:
+        acc_data = test_d.groupby('control_condition')['detection_accuracy'].agg(['mean', 'sem']).reindex(['high', 'low']).dropna().reset_index()
+        bar_colors = [color_map.get(str(c), '#666') for c in acc_data['control_condition']]
+        ax.bar(acc_data['control_condition'].astype(str), acc_data['mean'], yerr=acc_data['sem'], capsize=5, color=bar_colors)
+        ax.set_xlabel('Control Condition')
+    ax.set_ylabel('Mean Accuracy')
+    ax.set_title('Accuracy (Test Phase)')
+    ax.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5)
+    ax.set_ylim([0, 1])
+
+    # --- Panel 3: Agency ratings by accuracy ---
+    ax = axes[1, 0]
+    if 'agency_rating' in test_d.columns and test_d['agency_rating'].notna().any():
+        if has_cond:
+            sns.barplot(data=test_d, x='control_condition', y='agency_rating',
+                        hue='detection_accuracy', ax=ax, errorbar='se',
+                        palette={0: '#cccccc', 1: '#999999'}, order=['high', 'low'])
+            ax.set_xlabel('Control Condition')
+        ax.set_ylabel('Agency Rating (1-7)')
+        ax.set_title('Agency Ratings by Accuracy (Test Phase)')
+        ax.legend(title='Correct (1) / Incorrect (0)')
+    else:
+        ax.text(0.5, 0.5, 'No agency rating data', transform=ax.transAxes, ha='center')
+
+    # --- Panel 4: RT distribution ---
+    ax = axes[1, 1]
+    if 'rt_choice' in test_d.columns and test_d['rt_choice'].notna().any():
+        df_rt = test_d[test_d['rt_choice'] > 0]
+        if has_cond and len(df_rt) > 0:
+            for condition in ['high', 'low']:
+                rt_sub = df_rt[df_rt['control_condition'] == condition]['rt_choice']
+                if len(rt_sub) > 0:
+                    ax.hist(rt_sub, bins=30, alpha=0.4, label=condition, density=True, color=color_map.get(condition))
+            ax.legend()
+        ax.set_xlabel('Reaction Time (s)')
+        ax.set_ylabel('Density')
+        ax.set_title('RT Distribution (Test Phase)')
+    else:
+        ax.text(0.5, 0.5, 'No RT data', transform=ax.transAxes, ha='center')
+
+    fig.suptitle(f'Sanity Check{title_suffix}', fontsize=14, fontweight='bold', y=1.01)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"Saved sanity check plot: {out_path}")
+
+
+def make_calibration_plot(plot_data, out_path, title_suffix=""):
+    """Generate a calibration convergence plot showing QUEST alpha_sd over trials."""
+    if 'phase' not in plot_data.columns or 'quest_alpha_sd' not in plot_data.columns:
+        return
+
+    calib_d = plot_data[plot_data['phase'] == 'calibration'].copy()
+    if len(calib_d) == 0:
+        return
+
+    calib_d['trial_in_block'] = pd.to_numeric(calib_d['trial_in_block'], errors='coerce')
+    calib_d['quest_alpha_sd'] = pd.to_numeric(calib_d['quest_alpha_sd'], errors='coerce')
+    calib_d['calib_target_label'] = np.where(calib_d['calib_target'] < 0.7, 'Low (~0.55)', 'High (~0.85)')
+
+    plt.style.use('seaborn-v0_8-whitegrid')
+    sns.set_palette("husl")
+    plt.figure(figsize=(8, 6))
+
+    # Average trajectory with error bands
+    sns.lineplot(data=calib_d, x='trial_in_block', y='quest_alpha_sd',
+                 hue='calib_target_label', marker='o', errorbar='se')
+
+    # Individual trajectories (lightly)
+    for px_id in calib_d['participant'].unique():
+        px_d = calib_d[calib_d['participant'] == px_id]
+        sns.lineplot(data=px_d, x='trial_in_block', y='quest_alpha_sd',
+                     hue='calib_target_label', alpha=0.15, legend=False)
+
+    plt.axhline(y=0.2, color='red', linestyle='--', alpha=0.5, label='Convergence Threshold (0.2)')
+    plt.title(f'Calibration: QUEST Alpha SD Trajectory{title_suffix}')
+    plt.xlabel('Trial in Block')
+    plt.ylabel('Alpha SD')
+
+    # Deduplicate legend
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys(), title='Target Condition')
+
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+    print(f"Saved calibration plot: {out_path}")
+
+
+# --- Generate Pooled Sanity Check & Calibration Plots ---
+make_sanity_plot(data, POOLED_DIR / "sanity_check_pooled.png", title_suffix="  (All Participants)")
+make_calibration_plot(data, POOLED_DIR / "calibration_convergence_pooled.png", title_suffix="  (All Participants)")
+
+# --- Generate Per-Participant Sanity Check & Calibration Plots ---
+for px in sorted(data['participant'].unique()):
+    px_data = data[data['participant'] == px]
+    make_sanity_plot(px_data, PER_PARTICIPANT_DIR / f"sanity_check_p{px}.png", title_suffix=f"  (p. {px})")
+    make_calibration_plot(px_data, PER_PARTICIPANT_DIR / f"calibration_convergence_p{px}.png", title_suffix=f"  (p. {px})")
+
 
 print("Analysis Complete! Report and plots generated in:", OUTPUT_DIR)
