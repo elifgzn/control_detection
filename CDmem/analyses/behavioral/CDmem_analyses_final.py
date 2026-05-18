@@ -727,15 +727,90 @@ def make_calibration_plot(plot_data, out_path, title_suffix=""):
     print(f"Saved calibration plot: {out_path}")
 
 
+def make_agency_recognition_plot(plot_data, out_path, title_suffix=""):
+    """Generate Sense of Agency vs Recognition Memory plot using z-transformed agency ratings."""
+    if plot_data.empty or 'agency_z' not in plot_data.columns or 'said_old_int' not in plot_data.columns:
+        return
+        
+    df = plot_data.dropna(subset=['agency_z', 'said_old_int']).copy()
+    if df.empty:
+        return
+
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # 1. Participant Means (scatter)
+    if df['participant'].nunique() > 1:
+        px_means = df.groupby(['participant', 'agency_z'])['said_old_int'].mean().reset_index()
+        sns.scatterplot(data=px_means, x='agency_z', y='said_old_int', color='#85bfe3', alpha=0.7, 
+                        label='Participant Mean', ax=ax, zorder=2)
+    else:
+        px_means = df.groupby('agency_z')['said_old_int'].mean().reset_index()
+        sns.scatterplot(data=px_means, x='agency_z', y='said_old_int', color='#85bfe3', alpha=0.7, 
+                        label='Mean per Agency Level', ax=ax, zorder=2)
+
+    # 2. Group Mean ± SE
+    if df['participant'].nunique() > 1:
+        # Define sensible bins for z-scores (-3 to 3)
+        bins = np.arange(-3.5, 4.0, 1.0)
+        df['z_bin'] = pd.cut(df['agency_z'], bins=bins)
+        df['z_bin_mid'] = df['z_bin'].apply(lambda x: x.mid if pd.notna(x) else np.nan).astype(float)
+        
+        bin_stats = df.groupby('z_bin_mid')['said_old_int'].agg(['mean', 'sem', 'count']).dropna()
+        bin_stats = bin_stats[bin_stats['count'] >= 5]
+        
+        if not bin_stats.empty:
+            ax.errorbar(bin_stats.index, bin_stats['mean'], yerr=bin_stats['sem'],
+                        fmt='o', color='#d62728', capsize=5, capthick=2, markersize=8,
+                        label='Group Mean ± SE', zorder=4)
+
+    # 3. Overall Logistic Trend
+    def logistic_func(x, b0, b1):
+        # use np.clip to prevent overflow in exp
+        return 1 / (1 + np.exp(-np.clip(b0 + b1 * x, -100, 100)))
+        
+    try:
+        from scipy.optimize import curve_fit
+        popt, _ = curve_fit(logistic_func, df['agency_z'], df['said_old_int'], p0=[0, 0], maxfev=5000)
+        x_min, x_max = df['agency_z'].min(), df['agency_z'].max()
+        x_fit = np.linspace(x_min - 0.2, x_max + 0.2, 100)
+        y_fit = logistic_func(x_fit, *popt)
+        ax.plot(x_fit, y_fit, color='#2ca02c', linewidth=3, label='Logistic Trend', zorder=3)
+    except Exception as e:
+        pass
+
+    # 4. Chance line
+    ax.axhline(y=0.5, color='gray', linestyle=':', alpha=0.6, label='Chance', zorder=1)
+
+    ax.set_ylim(-0.05, 1.05)
+    ax.set_xlabel('Agency Rating at Encoding (z-transformed)')
+    ax.set_ylabel('Hit Rate (Proportion Recognised)')
+    ax.set_title(f'Sense of Agency vs Recognition Memory{title_suffix}', fontsize=14, fontweight='bold')
+    
+    # Deduplicate legend just in case
+    handles, labels = ax.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    ax.legend(by_label.values(), by_label.keys(), loc='lower right', frameon=True, facecolor='white', framealpha=0.9)
+    
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+    print(f"Saved agency vs memory plot: {out_path}")
+
 # --- Generate Pooled Sanity Check & Calibration Plots ---
 make_sanity_plot(data, POOLED_DIR / "sanity_check_pooled.png", title_suffix="  (All Participants)")
 make_calibration_plot(data, POOLED_DIR / "calibration_convergence_pooled.png", title_suffix="  (All Participants)")
+if 'df_controlled' in locals():
+    make_agency_recognition_plot(df_controlled, POOLED_DIR / "agency_recognition_pooled.png", title_suffix="  (All Participants)")
 
 # --- Generate Per-Participant Sanity Check & Calibration Plots ---
 for px in sorted(data['participant'].unique()):
     px_data = data[data['participant'] == px]
     make_sanity_plot(px_data, PER_PARTICIPANT_DIR / f"sanity_check_p{px}.png", title_suffix=f"  (p. {px})")
     make_calibration_plot(px_data, PER_PARTICIPANT_DIR / f"calibration_convergence_p{px}.png", title_suffix=f"  (p. {px})")
-
+    
+    if 'df_controlled' in locals():
+        px_controlled = df_controlled[df_controlled['participant'] == px]
+        make_agency_recognition_plot(px_controlled, PER_PARTICIPANT_DIR / f"agency_recognition_p{px}.png", title_suffix=f"  (p. {px})")
 
 print("Analysis Complete! Report and plots generated in:", OUTPUT_DIR)

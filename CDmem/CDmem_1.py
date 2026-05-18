@@ -1645,7 +1645,7 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
             core.wait(0.5)
         else:
             event.clearEvents(eventType='keyboard')
-            msg.text = "How much control did you feel over the shape's movement?"
+            msg.text = "How much control did you feel over the image's movement?"
             msg.pos = (0, int(win.size[1] * 0.2))
 
             scale_text_height = 20
