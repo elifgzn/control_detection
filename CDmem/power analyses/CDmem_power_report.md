@@ -35,3 +35,25 @@ Columns: `Effect_Size_d_H1_H2` = Cohen's d for analyses 1A–2E and 3G. `Effect_
 |  50 |                   0.5 |                      0.5 |                      0.28 |             1     |             0.999 |       1     |               0.999 |          1     |                   1 |              1 |
 |  60 |                   0.2 |                      0.2 |                      0.11 |             0.593 |             0.662 |       1     |               0.708 |          1     |                   1 |              1 |
 |  60 |                   0.5 |                      0.5 |                      0.28 |             1     |             1     |       1     |               1     |          1     |                   1 |              1 |
+
+---
+
+## Preregistration Write-Up (Extensive Version)
+
+### Sample Size Justification
+
+Sample size was determined via Monte Carlo simulation-based power analysis. We simulated each of the seven planned analyses (1A–3G) using parameters derived from pilot data (*N* = 10). Baseline parameters included: *d*′ = 0.74 (*SD* = 0.75), hit rate = .62 (*SD* = .20), false alarm rate = .20, and log-transformed reaction time *M* = −0.192, with between-person *SD* = 0.149 and within-person *SD* = 0.241 (extracted from pilot LMM random effects). The random intercept *SD* for binomial GLMMs was set to 0.656 (extracted from pilot GLMM model 1B). Detection accuracy probabilities for the high- and low-control conditions were .892 and .577, respectively. Each participant contributed 60 trials per condition. Effect sizes for H1 and H2 analyses (1A–2E) and for the H3 RT model (3G) were specified as Cohen's *d* = 0.20 (small) and *d* = 0.50 (medium). For the H3 agency–memory binomial model (3F), effect sizes were specified as log-odds slopes of 0.20 and 0.50 (approximately *d* = 0.11 and *d* = 0.28, respectively; Borenstein et al., 2009), because the predictor (z-scored sense of agency) is a continuous within-trial variable rather than a condition-level contrast.
+
+Power was estimated over 1,000 simulation iterations per cell using Generalized Estimating Equations (GEE) with an exchangeable correlation structure as a computationally efficient approximation to the planned `lme4`-based mixed models. GEE is expected to yield slightly conservative power estimates for binary outcomes at small *N*, making these results a defensible lower bound.
+
+Results indicated that at a medium effect size (*d* = 0.50), all seven analyses achieved power ≥ .97 even at *N* = 30. At a small effect size (*d* = 0.20), the Gaussian LMM models (1C, 2E, 3G) and the agency binomial model (3F) achieved power ≥ .99 at all sample sizes, reflecting the high statistical leverage of trial-level continuous outcomes. The bottleneck analyses were the *d*′ ANOVA (1A) and the binomial GLMMs for hit rate (1B, 2D), which at *N* = 50 achieved power of .47, .59, and .65, respectively, for a small effect — below the conventional .80 threshold. For medium effects at *N* = 50, these same analyses reached power ≥ .99.
+
+We therefore plan to collect data from *N* = 50 participants (with an initial recruitment target of approximately 55–60 to allow for exclusions). This sample provides ≥ .99 power for all analyses at a medium effect size and adequate (though below .80) sensitivity to small effects in the most demanding binomial and ANOVA-based analyses, which we consider acceptable given that effects of *d* = 0.20 are unlikely to be theoretically meaningful in this paradigm. Also considering logistic and financial dependencies imposed upon many EEG studies, we determine a lower cutoff on our sample size of 30 participants, in case reaching 50 is impossible.
+
+---
+
+## Preregistration Write-Up (AsPredicted — Concise Version)
+
+Sample size was determined by Monte Carlo simulation (1,000 iterations per cell) using pilot-derived parameters (*N* = 10). We simulated each of the seven planned analyses (1A–3G) at small (*d* = 0.20) and medium (*d* = 0.50) effect sizes for sample sizes of 30, 40, 50, and 60. Baseline hit rate (.62), *d*′ (0.74), log-RT variance components (between-person *SD* = 0.149, within-person *SD* = 0.241), and random intercept *SD* (0.656) were extracted from pilot mixed models. Power was approximated using GEE, providing conservative estimates relative to the planned `lme4`-based models.
+
+At a medium effect size, all seven analyses achieved power ≥ .97 at *N* = 30. At a small effect size, reaction time and agency models reached ceiling power (≥ .99) at all sample sizes, while the *d*′ ANOVA and binomial hit-rate models remained below .80 even at *N* = 60. We target *N* = 50 (recruiting ~55–60 for exclusion buffer), which provides ≥ .99 power for all analyses at medium effect sizes. Also considering logistic and financial dependencies imposed upon many EEG studies, we determine a lower cutoff on our sample size of 30 participants, in case reaching 50 is impossible.
