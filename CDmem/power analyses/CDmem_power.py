@@ -518,7 +518,7 @@ if __name__ == '__main__':
 
     df_results = pd.DataFrame(results)
 
-    with open('CDmem_power_report.md', 'w') as f:
+    with open('CDmem_power_report.md', 'w', encoding='utf-8') as f:
         f.write("# CDmem Power Analysis Report (Matched to Final Analyses)\n\n")
         f.write(f"**Iterations per simulation:** {N_SIMULATIONS}\n")
         f.write(f"**Alpha level:** {ALPHA}\n\n")
