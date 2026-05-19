@@ -345,11 +345,42 @@ def fit_print_lmm(formula, df, family="binomial", is_glmer=True):
         # Access the coefficients via model.result_fit (Polars DataFrame)
         result_fit = model.result_fit
         if result_fit is not None and len(result_fit) > 0:
+            write_report("**Fixed Effects:**")
             write_report(str(result_fit) + "\n")
-            return result_fit
         else:
             write_report("Model fitted but no coefficients returned.\n")
             return None
+
+        # --- Random Effects ---
+        # ranef_var: variance-covariance components for each random-effects grouping factor
+        # ranef: cluster-level deviations (BLUPs minus fixed effects) per participant
+        ranef_var = getattr(model, 'ranef_var', None)
+        ranef = getattr(model, 'ranef', None)
+
+        write_report("**Random Effects Variance Components (ranef_var):**")
+        if ranef_var is not None:
+            # ranef_var can be a dict of DataFrames (one per grouping factor) or a single DataFrame
+            if isinstance(ranef_var, dict):
+                for grp_name, grp_df in ranef_var.items():
+                    write_report(f"  Group: {grp_name}")
+                    write_report(str(grp_df) + "\n")
+            else:
+                write_report(str(ranef_var) + "\n")
+        else:
+            write_report("  (not available)\n")
+
+        write_report("**Random Effects by Participant (ranef):**")
+        if ranef is not None:
+            if isinstance(ranef, dict):
+                for grp_name, grp_df in ranef.items():
+                    write_report(f"  Group: {grp_name}")
+                    write_report(str(grp_df) + "\n")
+            else:
+                write_report(str(ranef) + "\n")
+        else:
+            write_report("  (not available)\n")
+
+        return result_fit
     except Exception as e:
         write_report(f"Model failed: {e}\n")
         return None

@@ -29,27 +29,31 @@ BASELINE_HIT_RATE = 0.62
 HIT_RATE_SD = 0.20
 BASELINE_FA_RATE = 0.20
 
-# Log-RT Parameters (from pilot data)
-# Intercept matches pilot LMM fixed effect: -0.192
-BASELINE_LOG_RT = -0.20
-LOG_RT_SD = 0.20
+# Log-RT parameters extracted directly from pilot Gaussian LMM (model 1C).
+# participant sd__(Intercept) = 0.149 (between-person SD)
+# Residual sd__Observation    = 0.241 (within-person SD)
+# These replace the previous LOG_RT_SD + WITHIN_PERSON_CORR decomposition,
+# which was an assumption. These are now empirically grounded.
+BASELINE_LOG_RT      = -0.192   # from pilot LMM intercept (model 1C)
+BETWEEN_PERSON_SD_RT =  0.149
+WITHIN_PERSON_SD_RT  =  0.241
+
+# Total RT SD (combining between and within person variance)
+# Used for Cohen's d effect-size scaling in RT models (1C, 2E, 3G)
+TOTAL_SD_RT = np.sqrt(BETWEEN_PERSON_SD_RT**2 + WITHIN_PERSON_SD_RT**2)  # ≈ 0.284
 
 # Detection Accuracy parameters (from pilot data)
 DETECT_HIGH = 0.892
 DETECT_LOW = 0.577
 
-# Random intercept SD.
-# NOTE: The value below was used in initial simulations but its exact pilot
-# source is unconfirmed. It is on the log-odds scale and is most relevant
-# for the binomial GLMM models (1B, 2D, 3F).
-# ACTION REQUIRED: Re-extract this value from the pilot binomial GLMM via:
-#   model = glmer("said_old_int ~ control_level_c * item_type_c + (1|participant)", ...)
-#   model.fit(); print(model.ranef_var)
-# The Std column for 'participant' is RI_SD. Update this value accordingly.
-# For the Gaussian LMM models (1C, 2E, 3G), RI_SD should be extracted
-# separately from the LMM random effects and will be on the log-RT scale
-# (expected ~0.05-0.15 based on pilot intercept of -0.192).
-RI_SD = 1.36
+# Random intercept SD for binomial GLMM models (1B, 2D, 3F).
+# Extracted from pilot binomial GLMM random effects (model 1B).
+# Model 1B: sd__(Intercept) = 0.656
+# Model 2D: sd__(Intercept) = 0.726
+# Model 3F: sd__(Intercept) = 0.703
+# Using 1B as the primary estimate (broadest model, most representative).
+RI_SD = 0.656
+
 
 # Within-person correlation across conditions (standard assumption)
 WITHIN_PERSON_CORR = 0.50
@@ -200,7 +204,7 @@ def run_1b_binomial_glmm_all_old(n, effect_d, n_sim=N_SIMULATIONS):
 # ==============================================================================
 # NOTE: GEE approximation used — see note on 1B above.
 def run_1c_gaussian_lmm_all_old(n, effect_d, n_sim=N_SIMULATIONS):
-    rt_diff = effect_d * LOG_RT_SD
+    rt_diff = effect_d * TOTAL_SD_RT
     rt_high = BASELINE_LOG_RT - rt_diff / 2   # High control → faster RT
     rt_low  = BASELINE_LOG_RT + rt_diff / 2
     rt_uncontrolled = BASELINE_LOG_RT
@@ -226,8 +230,8 @@ def run_1c_gaussian_lmm_all_old(n, effect_d, n_sim=N_SIMULATIONS):
         np.repeat(rt_uncontrolled, N_TRIALS_PER_CONDITION * 2)
     ]), n)
 
-    between_sd = LOG_RT_SD * np.sqrt(WITHIN_PERSON_CORR)
-    within_sd  = LOG_RT_SD * np.sqrt(1 - WITHIN_PERSON_CORR)
+    between_sd = BETWEEN_PERSON_SD_RT
+    within_sd  = WITHIN_PERSON_SD_RT
 
     significant = 0
     for _ in range(n_sim):
@@ -316,7 +320,7 @@ def run_2d_binomial_glmm_detection(n, effect_d, n_sim=N_SIMULATIONS):
 # NOTE: GEE approximation used — see note on 1B above.
 def run_2e_gaussian_lmm_detection(n, effect_d, n_sim=N_SIMULATIONS):
     # Negative slope: correctly detected items → faster (lower) RT
-    rt_slope = -(effect_d * LOG_RT_SD)
+    rt_slope = -(effect_d * TOTAL_SD_RT)
 
     n_total = N_TRIALS_PER_CONDITION * 2
     participants = np.repeat(np.arange(n), n_total)
@@ -331,8 +335,8 @@ def run_2e_gaussian_lmm_detection(n, effect_d, n_sim=N_SIMULATIONS):
         np.repeat(DETECT_LOW, N_TRIALS_PER_CONDITION)
     ]), n)
 
-    between_sd = LOG_RT_SD * np.sqrt(WITHIN_PERSON_CORR)
-    within_sd  = LOG_RT_SD * np.sqrt(1 - WITHIN_PERSON_CORR)
+    between_sd = BETWEEN_PERSON_SD_RT
+    within_sd  = WITHIN_PERSON_SD_RT
 
     significant = 0
     for _ in range(n_sim):
@@ -417,8 +421,8 @@ def run_3f_binomial_glmm_agency(n, effect_slope, n_sim=N_SIMULATIONS):
 # ==============================================================================
 # NOTE: GEE approximation used — see note on 1B above.
 def run_3g_gaussian_lmm_agency(n, effect_d, n_sim=N_SIMULATIONS):
-    # 1 SD increase in agency → faster (lower) RT by effect_d * LOG_RT_SD
-    rt_slope = -(effect_d * LOG_RT_SD)
+    # 1 SD increase in agency → faster (lower) RT by effect_d * TOTAL_SD_RT
+    rt_slope = -(effect_d * TOTAL_SD_RT)
 
     n_total = N_TRIALS_PER_CONDITION * 2
     participants = np.repeat(np.arange(n), n_total)
@@ -428,8 +432,8 @@ def run_3g_gaussian_lmm_agency(n, effect_d, n_sim=N_SIMULATIONS):
         np.repeat(-0.5, N_TRIALS_PER_CONDITION)
     ]), n)
 
-    between_sd = LOG_RT_SD * np.sqrt(WITHIN_PERSON_CORR)
-    within_sd  = LOG_RT_SD * np.sqrt(1 - WITHIN_PERSON_CORR)
+    between_sd = BETWEEN_PERSON_SD_RT
+    within_sd  = WITHIN_PERSON_SD_RT
 
     significant = 0
     for _ in range(n_sim):
@@ -525,10 +529,11 @@ if __name__ == '__main__':
             "Each of the seven planned analyses (1A–3G) was simulated separately. "
             "Baseline parameters (hit rates, FA rates, log-RT distributions, "
             "detection accuracy by condition) were derived from pilot data. "
-            "The random intercept SD (RI_SD) used in binomial models is on the "
-            "log-odds scale; **this value should be re-extracted from the pilot "
-            "binomial GLMM random effects before finalising the pre-registration** "
-            "(see inline code comment).\n\n"
+            "The random intercept SD for binomial models (RI_SD = 0.656) was extracted "
+            "from the pilot binomial GLMM (model 1B). For Gaussian LMM models, "
+            "between-person SD (0.149) and within-person SD (0.241) were extracted "
+            "directly from the pilot LMM random effects (model 1C). Effect sizes for "
+            "RT models are scaled by TOTAL_SD_RT = sqrt(between² + within²) ≈ 0.284.\n\n"
         )
 
         f.write("## Effect Size Notes\n\n")
