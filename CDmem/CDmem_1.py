@@ -1092,7 +1092,7 @@ class QuestPlusStaircase:
         self.target_type = target_type
 
         if target_type == "high":
-            # Prior centred at prop=0.80 — easy region for ~85% correct
+            # Prior centred at prop=0.70 — easy region for ~75% correct
             # changed to 0.70 to make it harder since a participant got 100% in the pilot
             alpha_mu = logit(0.70)
         elif target_type == "low":
@@ -1213,7 +1213,7 @@ class QuestPlusStaircase:
         """Find the prop value that yields p_target% correct under the current posterior."""
         lam_hat = np.sum(self.lambda_grid * self.post_lambda)
         if p_target > 1.0 - lam_hat:
-            p_target = min(0.85, 1.0 - lam_hat - 0.02)
+            p_target = min(0.75, 1.0 - lam_hat - 0.02)
         best_diff, best_s = float('inf'), 0.5
         for s_logit in self.s_grid:
             p_pred = 0.0
@@ -1757,7 +1757,7 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
 # ─────────────────────────────────────────────────────────────────────────────
 #  CALIBRATION PHASE RUNNER (QUEST+)
 #  Runs a QUEST+ Bayesian adaptive staircase to find the prop (cursor-mix
-#  proportion) that yields a specific accuracy target (55% or 85% correct).
+#  proportion) that yields a specific accuracy target (55% or 75% correct).
 #
 #  Adaptive stopping:
 #    • Run at least min_trials (default 40)
@@ -1773,7 +1773,7 @@ def run_calibration_quest(target_accuracy, num_trials, block_num=0):
 
     Parameters
     ----------
-    target_accuracy : float — the proportion correct to calibrate to (0.55 or 0.85)
+    target_accuracy : float — the proportion correct to calibrate to (0.55 or 0.75)
     num_trials      : int   — minimum number of calibration trials
     block_num       : int   — block number for logging (use 0 for first, -1 for second)
 
@@ -2259,10 +2259,10 @@ show_initial_instructions()
 
 # ── Step 2: Two-stage calibration ──────────────────────────────────────────────
 # Run two QUEST+ staircases: one targeting 55% correct (low control condition)
-# and one targeting 85% correct (high control condition).
+# and one targeting 75% correct (high control condition).
 # Order is counterbalanced by participant parity (same logic as test miniblocks):
-#   Odd  participant → Practice block 1 = 55%, Practice block 2 = 85%
-#   Even participant → Practice block 1 = 85%, Practice block 2 = 55%
+#   Odd  participant → Practice block 1 = 55%, Practice block 2 = 75%
+#   Even participant → Practice block 1 = 75%, Practice block 2 = 55%
 try:
     participant_num = int(expInfo["participant"])
 except ValueError:
@@ -2273,16 +2273,16 @@ starts_low_first = (participant_num % 2 == 1)   # odd → 55% block first
 if starts_low_first:
     calib_sequence = [
         (0.55, 0,  "Practice Block 1 of 2"),
-        (0.85, -1, "Practice Block 2 of 2"),
+        (0.75, -1, "Practice Block 2 of 2"),
     ]
 else:
     calib_sequence = [
-        (0.85, -1, "Practice Block 1 of 2"),
+        (0.75, -1, "Practice Block 1 of 2"),
         (0.55, 0,  "Practice Block 2 of 2"),
     ]
 
 prop_55 = None
-prop_85 = None
+prop_75 = None
 
 for calib_idx, (calib_target, calib_block_num, calib_label) in enumerate(calib_sequence):
     # Show opening screen for the first calibration block only
@@ -2306,8 +2306,8 @@ for calib_idx, (calib_target, calib_block_num, calib_label) in enumerate(calib_s
         expInfo['quest_prop_low']  = prop_55
         expInfo['quest_low_converged'] = converged_calib
     else:
-        prop_85 = prop_calib
-        expInfo['quest_prop_high'] = prop_85
+        prop_75 = prop_calib
+        expInfo['quest_prop_high'] = prop_75
         expInfo['quest_high_converged'] = converged_calib
 
     # Between-block message (shown only after the FIRST calibration block)
@@ -2318,11 +2318,11 @@ for calib_idx, (calib_target, calib_block_num, calib_label) in enumerate(calib_s
         msg.draw(); win.flip(); wait_keys()
 
 # Assemble difficulty levels from the two directly calibrated props
-levels = {'low': prop_55, 'high': prop_85}
+levels = {'low': prop_55, 'high': prop_75}
 
 print(f"\nControl conditions (directly calibrated):")
 print(f"  low  (55% target): prop={levels['low']:.3f}")
-print(f"  high (85% target): prop={levels['high']:.3f}")
+print(f"  high (75% target): prop={levels['high']:.3f}")
 
 # ── Step 3: Determine miniblock order by participant parity ───────────────────
 # Odd participant number  → starts with low: [low, high, low, high, low, high]
@@ -2407,7 +2407,7 @@ print(f"Total Duration: {tot_mins} minutes {tot_secs} seconds")
 print(f"============================================================")
 print(f"  Total trajectories used: {final_used}")
 print(f"  Low  prop (55% target): {levels['low']:.3f}")
-print(f"  High prop (85% target): {levels['high']:.3f}")
+print(f"  High prop (75% target): {levels['high']:.3f}")
 print(f"  Miniblock order: {miniblock_sequence}")
 
 msg.text = f"""Thank you for participating!

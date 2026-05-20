@@ -581,11 +581,7 @@ for px in mem_results_2x2['participant'].unique():
 #   [1,0] Agency ratings by condition and detection accuracy
 #   [1,1] RT distribution (histograms by condition)
 #
-# Also: Calibration convergence plot (QUEST alpha_sd trajectory over trials)
-#
 # Both are generated pooled (all participants) and per-participant.
-
-from scipy.optimize import curve_fit
 
 def make_sanity_plot(plot_data, out_path, title_suffix=""):
     """Generate a 2x2 sanity check figure from main experiment data."""
@@ -605,121 +601,51 @@ def make_sanity_plot(plot_data, out_path, title_suffix=""):
     test_d  = plot_data[plot_data['phase'] == 'test'].copy()        if 'phase' in plot_data.columns else plot_data.copy()
     n_px = plot_data['participant'].nunique() if 'participant' in plot_data.columns else 1
 
-    # --- Panel 1: Psychometric function ---
-    # Both QUEST+ staircases (high-target & low-target) sample the SAME
-    # underlying psychometric function at different operating points, so we
-    # pool all calibration trials into one curve and mark the converged
-    # thresholds as distinct markers.
+    # --- Panel 1: QUEST+ Calibration Convergence ---
     ax = axes[0, 0]
-    if not calib_d.empty and 'prop_used' in calib_d.columns and 'detection_accuracy' in calib_d.columns:
-        calib_clean = calib_d.dropna(subset=['prop_used', 'detection_accuracy']).copy()
+    if not calib_d.empty and 'quest_alpha_sd' in calib_d.columns and 'trial_in_block' in calib_d.columns:
+        calib_conv = calib_d.copy()
+        calib_conv['trial_in_block'] = pd.to_numeric(calib_conv['trial_in_block'], errors='coerce')
+        calib_conv['quest_alpha_sd'] = pd.to_numeric(calib_conv['quest_alpha_sd'], errors='coerce')
+        calib_conv['calib_target_label'] = np.where(
+            calib_conv['calib_target'] < 0.7, 'Low (~0.55)', 'High (~0.75)')
 
-        # Bin prop_used and compute mean accuracy per bin
+        target_colors = {'High (~0.75)': color_map['high'], 'Low (~0.55)': color_map['low']}
+
         if n_px == 1:
-            # Per-participant: group by raw prop_used values
-            psych = calib_clean.groupby('prop_used')['detection_accuracy'].agg(
-                ['mean', 'sem', 'count']).reset_index()
-            psych.rename(columns={'prop_used': 'prop_bin'}, inplace=True)
+            # Per-participant: plot raw trajectories per staircase
+            for label, grp in calib_conv.groupby('calib_target_label'):
+                grp_sorted = grp.sort_values('trial_in_block')
+                ax.plot(grp_sorted['trial_in_block'], grp_sorted['quest_alpha_sd'],
+                        marker='o', markersize=3, color=target_colors.get(label, '#666'),
+                        label=label, alpha=0.8)
         else:
-            # Pooled: bin into 10 equal-width bins across [0, 1]
-            bins = np.linspace(0, 1, 11)
-            bin_centers = (bins[:-1] + bins[1:]) / 2
-            calib_clean['prop_bin'] = pd.cut(
-                calib_clean['prop_used'], bins=bins, labels=bin_centers)
-            psych = calib_clean.groupby('prop_bin', observed=False)[
-                'detection_accuracy'].agg(['mean', 'sem', 'count']).reset_index()
-            psych['prop_bin'] = psych['prop_bin'].astype(float)
+            # Pooled: average trajectory with error bands
+            sns.lineplot(data=calib_conv, x='trial_in_block', y='quest_alpha_sd',
+                         hue='calib_target_label', marker='o', errorbar='se',
+                         palette=target_colors, ax=ax)
+            # Individual trajectories (lightly)
+            for px_id in calib_conv['participant'].unique():
+                px_d = calib_conv[calib_conv['participant'] == px_id]
+                for label, grp in px_d.groupby('calib_target_label'):
+                    grp_sorted = grp.sort_values('trial_in_block')
+                    ax.plot(grp_sorted['trial_in_block'], grp_sorted['quest_alpha_sd'],
+                            color=target_colors.get(label, '#666'), alpha=0.1, linewidth=0.8)
 
-        psych = psych.dropna(subset=['mean'])
-        psych = psych[psych['count'] >= 2]
+        ax.axhline(y=0.2, color='red', linestyle='--', alpha=0.5, label='Convergence (0.2)')
 
-        # Plot binned/raw data points (single pooled series)
-        ax.errorbar(psych['prop_bin'], psych['mean'], yerr=psych['sem'],
-                    marker='o', capsize=3, linestyle='None', color='#333333',
-                    alpha=0.8, zorder=3,
-                    label=f'Calibration {"Data" if n_px == 1 else "Bins"}')
-
-        # Sigmoid fit to all calibration trials
-        def psychometric_func(x, alpha, beta):
-            return 0.5 + 0.48 / (1 + np.exp(-np.clip(beta, 0.1, 100) * (x - alpha)))
-
-        popt_ok = False
-        try:
-            if calib_clean['prop_used'].nunique() >= 2:
-                popt, _ = curve_fit(
-                    psychometric_func, calib_clean['prop_used'],
-                    calib_clean['detection_accuracy'],
-                    p0=[calib_clean['prop_used'].mean(), 10],
-                    bounds=([0, 0], [1, 200]), maxfev=5000)
-                x_fit = np.linspace(0, 1, 200)
-                y_fit = psychometric_func(x_fit, *popt)
-                ax.plot(x_fit, y_fit, color='#555555', linestyle='-',
-                        linewidth=2, alpha=0.7, zorder=2,
-                        label=f'Sigmoid Fit (\u03b1={popt[0]:.2f}, \u03b2={popt[1]:.1f})')
-                popt_ok = True
-        except Exception:
-            pass
-
-        # Mark QUEST+ converged thresholds on the fitted curve
-        if 'calib_target' in calib_clean.columns:
-            for target_acc, cond_label, color in [
-                    (0.85, 'High', color_map['high']),
-                    (0.55, 'Low', color_map['low'])]:
-                sc = calib_clean[
-                    np.isclose(calib_clean['calib_target'], target_acc, atol=0.05)]
-                if sc.empty:
-                    continue
-                # Use QUEST+ posterior mean if available
-                if 'quest_alpha_mean' in sc.columns:
-                    qa = pd.to_numeric(sc['quest_alpha_mean'], errors='coerce')
-                    if n_px == 1:
-                        threshold = qa.iloc[-1]
-                    else:
-                        # Pooled: average each participant's final estimate
-                        threshold = sc.groupby('participant').apply(
-                            lambda g: pd.to_numeric(
-                                g['quest_alpha_mean'], errors='coerce'
-                            ).iloc[-1]).mean()
-                else:
-                    threshold = sc.tail(5)['prop_used'].mean()
-
-                if pd.isna(threshold):
-                    continue
-
-                pred_acc = (psychometric_func(threshold, *popt)
-                            if popt_ok else target_acc)
-                ax.plot(threshold, pred_acc, marker='D', markersize=10,
-                        color=color, markeredgecolor='black',
-                        markeredgewidth=1.5, zorder=5,
-                        label=f'{cond_label} Threshold ({threshold:.2f})')
-                ax.axhline(y=target_acc, color=color, linestyle=':',
-                           alpha=0.3)
-
-        # Overlay test-phase operating points
-        if not test_d.empty and 'control_condition' in test_d.columns:
-            for condition in ['high', 'low']:
-                ts = test_d[test_d['control_condition'] == condition]
-                if not ts.empty:
-                    ax.plot(ts['prop_used'].mean(),
-                            ts['detection_accuracy'].mean(),
-                            marker='*', markersize=15,
-                            color=color_map[condition],
-                            markeredgecolor='black', linestyle='None',
-                            zorder=6,
-                            label=f'{condition.capitalize()} (Test)')
-
-        ax.legend(frameon=True, facecolor='white', framealpha=0.9,
-                  fontsize='small', loc='lower right')
+        # Deduplicate legend
+        handles, labels = ax.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        ax.legend(by_label.values(), by_label.keys(), title='Staircase',
+                  frameon=True, facecolor='white', framealpha=0.9, fontsize='small')
     else:
         ax.text(0.5, 0.5, 'No calibration data available',
                 transform=ax.transAxes, ha='center')
 
-    ax.set_xlabel('Control Level (prop self-motion)')
-    ax.set_ylabel('Detection Accuracy')
-    ax.set_title('Psychometric Function (QUEST+ Calibration)')
-    ax.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5)
-    ax.set_ylim([-0.05, 1.05])
-    ax.set_xlim([-0.05, 1.05])
+    ax.set_xlabel('Trial in Block')
+    ax.set_ylabel('Alpha SD')
+    ax.set_title('QUEST+ Calibration Convergence')
 
     # --- Panel 2: Accuracy by condition ---
     ax = axes[0, 1]
@@ -782,7 +708,7 @@ def make_calibration_plot(plot_data, out_path, title_suffix=""):
 
     calib_d['trial_in_block'] = pd.to_numeric(calib_d['trial_in_block'], errors='coerce')
     calib_d['quest_alpha_sd'] = pd.to_numeric(calib_d['quest_alpha_sd'], errors='coerce')
-    calib_d['calib_target_label'] = np.where(calib_d['calib_target'] < 0.7, 'Low (~0.55)', 'High (~0.85)')
+    calib_d['calib_target_label'] = np.where(calib_d['calib_target'] < 0.7, 'Low (~0.55)', 'High (~0.75)')
 
     plt.style.use('seaborn-v0_8-whitegrid')
     sns.set_palette("husl")
@@ -886,7 +812,7 @@ def make_agency_recognition_plot(plot_data, out_path, title_suffix=""):
 
 # --- Generate Pooled Sanity Check & Calibration Plots ---
 make_sanity_plot(data, POOLED_DIR / "sanity_check_pooled.png", title_suffix="  (All Participants)")
-make_calibration_plot(data, POOLED_DIR / "calibration_convergence_pooled.png", title_suffix="  (All Participants)")
+
 if 'df_controlled' in locals():
     make_agency_recognition_plot(df_controlled, POOLED_DIR / "agency_recognition_pooled.png", title_suffix="  (All Participants)")
 
@@ -894,7 +820,7 @@ if 'df_controlled' in locals():
 for px in sorted(data['participant'].unique()):
     px_data = data[data['participant'] == px]
     make_sanity_plot(px_data, PER_PARTICIPANT_DIR / f"sanity_check_p{px}.png", title_suffix=f"  (p. {px})")
-    make_calibration_plot(px_data, PER_PARTICIPANT_DIR / f"calibration_convergence_p{px}.png", title_suffix=f"  (p. {px})")
+
     
     if 'df_controlled' in locals():
         px_controlled = df_controlled[df_controlled['participant'] == px]
