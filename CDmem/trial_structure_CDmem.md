@@ -9,9 +9,9 @@ The experiment is divided into 3 phases: **Calibration**, **Test**, and **Memory
 
 | Phase | Condition | Trials | Notes |
 |-------|----------|--------|-------|
-| **Calibration** | - | 60–80 | Adaptive stop when alpha SD < 0.20; hard cap at 80 |
-| **Test — low** | 55% accuracy | 60 | 3 miniblocks × 20 trials. Show cases 120 images. |
-| **Test — high** | 75% accuracy | 60 | 3 miniblocks × 20 trials. Show cases 120 images. |
+| **Calibration** | - | 60–80 | Two staircases (55% & 75%); adaptive stop when alpha SD < 0.20; hard cap = min+20 |
+| **Test — low** | 55% accuracy | 60 | 3 miniblocks × 20 trials. Showcases 120 images. |
+| **Test — high** | 75% accuracy | 60 | 3 miniblocks × 20 trials. Showcases 120 images. |
 | **Test (total)** | - | **120** | **6 miniblocks × 20 trials. 240 total images shown.** |
 | **Memory test — seen** | Old | 240 | 2 images per trial × 120 test trials |
 | **Memory test — foils** | New | 240 | Paired counterparts never shown |
@@ -49,15 +49,15 @@ The other stimulus (the **distractor**) follows its pre-recorded trajectory full
 - **No keypress is required during this phase** — it proceeds automatically for exactly 3 seconds.
 - EEG triggers are sent at stimulus onset and motion start (test phase only).
 
-### 3. Response — **Self-paced (5 s window)**
+### 3. Response — **Timed (3.5 s window)**
 After the motion phase ends, a response screen appears.
 
-- **Calibration**: text prompt — *"Which shape did you control? A = Square   S = Circle"*
-- **Test**: images are reset to their starting positions; the question *"Which image did you control?"* appears above them. Key labels **A** and **S** appear below the left and right images respectively.
+- **Calibration**: text prompt — *"Which shape did you control?"* with key labels **A** and **S** below left and right stimuli. Response ends immediately after keypress.
+- **Test**: images are reset to their starting positions (moved closer to centre at ±120 px); the question *"Which image did you control?"* appears above them. Key labels **A** and **S** appear below the left and right images respectively. After the participant responds, the remaining time in the 3.5 s window elapses before advancing.
 
-The participant presses **A** or **S** to indicate which stimulus they controlled. A 5-second response window is enforced; if no response is given, a "Please answer faster!" message is shown and the trial is logged as a timeout.
+The participant presses **A** or **S** to indicate which stimulus they controlled. A 3.5-second response window is enforced; if no response is given, a "Please answer faster!" message is shown for 2 s and the trial is logged as a timeout.
 
-> **Note**: the response is time-limited to 5 s (unlike the photo task, which is fully self-paced). RT and accuracy are logged.
+> **Note**: the response is time-limited to 3.5 s. In calibration, the phase ends as soon as a key is pressed; in test, the full 3.5 s always elapses. RT and accuracy are logged.
 
 ### 4. Feedback — **Timed (0.8 s) — Calibration only**
 Immediately after the response, *"Right"* or *"Wrong"* is displayed for 0.8 s.
@@ -86,15 +86,22 @@ Participant presses a **number key 1–7**. After keypress, the next trial's fix
 
 ## Phase 1 — Calibration (Practice)
 
-**Purpose:** Estimate each participant's psychometric function via a QUEST+ Bayesian adaptive staircase, and find the `prop` value at which they can identify the controlled stimulus ~75% of the time and 55% of the time. We now run two separate staircases for each participant, with different starting points for the psychometric function for the two target accuracies (i.e., 55% and 75%).
+**Purpose:** Estimate each participant's psychometric function via two separate QUEST+ Bayesian adaptive staircases, and find the `prop` values at which they can identify the controlled stimulus ~55% and ~75% of the time. The two staircases use different priors: the low staircase centres its alpha prior at `logit(0.40)`, while the high staircase centres at `logit(0.70)`.
 
-**Stimuli:** Plain Square and Circle (no images).
+**Stimuli:** Plain Square and Circle (no images), sized via visual angle (3° → ~171 px at 90 cm viewing distance).
 
-**Feedback:** Given after every trial ("Right" / "Wrong").
+**Feedback:** Given after every trial ("Right" / "Wrong", displayed for 0.8 s).
 
 **No agency rating** is collected.
 
-### Trial count
+### Calibration order (counterbalanced)
+The two practice blocks are counterbalanced by participant number parity:
+- **Odd** participant number → Practice Block 1 = 55% staircase, Practice Block 2 = 75% staircase
+- **Even** participant number → Practice Block 1 = 75% staircase, Practice Block 2 = 55% staircase
+
+A self-paced break screen is shown between the two practice blocks.
+
+### Trial count (per staircase)
 
 | Mode | Minimum | Hard cap |
 |------|---------|----------|
@@ -104,7 +111,7 @@ Participant presses a **number key 1–7**. After keypress, the next trial's fix
 QUEST+ stops early once the posterior SD of the threshold (`alpha_sd`) drops below **0.20**, provided the minimum number of trials has been reached.
 
 ### Mid-block break
-After half the minimum trials, a self-paced break screen is shown. Participant presses **SPACE** to continue.
+A between-block break screen is shown after the first practice block ("Well done — practice block 1 is now complete!"). Participant presses **SPACE** to continue.
 
 ### How QUEST+ Works in Calibration
 
@@ -144,13 +151,13 @@ The calibration phase uses the QUEST+ Bayesian adaptive staircase to efficiently
     *   If convergence isn't reached, it hits a hard cap of 80 trials.
 
 6.  **Control Condition Derivation:**
-    After calibration ends, the final 3D posterior is used to calculate the specific stimulus intensities (`prop` values) required for the test phase:
-    *   `low` (Hard, ~55% accuracy target).
-    *   `high` (Medium-hard, ~85% accuracy target).
-    These values are derived by finding the `prop` that yields the target probability across the entire weighted parameter space.
+    After each staircase ends, its final 3D posterior is used to calculate the specific stimulus intensity (`prop` value) for that condition:
+    *   `low` (Hard, ~55% accuracy target) — derived from the low staircase.
+    *   `high` (Medium-hard, ~75% accuracy target) — derived from the high staircase.
+    The `threshold_for_target()` method finds the `prop` that yields the target probability across the entire weighted parameter space.
 
 ### After calibration
-The QUEST+ posterior is used to derive two control conditions for the test phase. A completion screen is shown; participant presses **SPACE** to continue to the test phase.
+Each staircase directly yields the calibrated prop for its condition. A completion screen is shown; participant presses **SPACE** to continue to the test phase.
 
 ---
 
@@ -166,18 +173,18 @@ The QUEST+ posterior is used to derive two control conditions for the test phase
 
 ### Control conditions
 
-Derived from the QUEST+ calibration posterior via `threshold_for_target()`:
+Each condition is directly calibrated by its own QUEST+ staircase:
 
 | Condition | Target accuracy | Description |
 |-------|----------------|-------------|
 | `low` | ~55 % correct | Hardest |
-| `high` | ~85 % correct | Medium-hard |
+| `high` | ~75 % correct | Medium-hard |
 
 ### Image stimuli
 
-- 120 unique object-concept pairs are sampled from the `chosen_stimuli` folder at startup (fixed seed = 42 for reproducibility).
-- From each pair, one image is assigned to the **test group** (shown during test trials) and the other to the **recognition group** (used as foils in the memory test).
-- Images within the test group are randomly paired (two different object concepts per trial) to create 60 simultaneous-display pairs.
+- 240 unique images are sampled from the `chosen_stimuli_nolures` folder at startup (fixed seed = 42 for reproducibility).
+- The first 240 images are assigned to the **test group** (shown during test trials); the next 240 are assigned to the **foil group** (used as foils in the memory test).
+- Images within the test group are randomly paired (two different images per trial, using a participant-specific seed) to create 120 simultaneous-display pairs.
 - Each image pair is used exactly once — no repeats across the 6 miniblocks.
 
 ### Block structure
@@ -193,13 +200,17 @@ After each miniblock (except the last), a self-paced break screen is shown. Part
 
 ### EEG triggers (test phase only)
 
-| Event | Trigger value |
-|-------|--------------|
-| Stimulus onset | 10 + level index (11 or 13) |
-| Motion start | 20 + level index (21 or 23) |
-| Response screen onset | 30 + level index (31 or 33) |
-| Correct response | 41 |
-| Incorrect response | 42 |
+| Event | Trigger value | Details |
+|-------|--------------|----------|
+| Fixation onset | 71 (low), 72 (high) | Sent at fixation cross appearance |
+| Stimulus onset | 11 (low), 13 (high) | Sent when images first appear |
+| Motion start — target left | 21 (low), 23 (high) | Sent when motion phase begins |
+| Motion start — target right | 22 (low), 24 (high) | Encodes target side |
+| Response screen onset — target left | 31 (low), 33 (high) | |
+| Response screen onset — target right | 32 (low), 34 (high) | |
+| Correct response | 41 | |
+| Incorrect response | 42 | |
+| Agency rating onset | 45 | Sent before rating scale appears |
 
 ---
 
@@ -222,25 +233,33 @@ Participant reads instructions and presses **SPACE** to begin.
 Same as in the navigation phases.
 
 #### 2. Recognition judgement — **Self-paced (no time limit)**
-A single object image (300 × 300 px) is shown slightly above screen centre. Below it:
-> *"Have you seen this object during the experiment before?"*
+A single object image (same size as test phase, ~171 px at 3° visual angle) is shown slightly above screen centre (y = +80 px). Below it:
+> *"Have you seen this image during the experiment before?"*
 
-Key labels: **A = Old**, **S = New**
+Key labels: **Y = Yes**, **N = No**
 
-- Participant presses **A** (seen before) or **S** (not seen before).
-- After keypress, the screen clears and the next trial's fixation cross appears immediately.
+- Participant presses **Y** (seen before) or **N** (not seen before).
+- After keypress, a 0.3 s delay follows, then the screen clears and the next trial's fixation cross appears.
 
 ### EEG triggers (memory test phase)
 
-| Event | Trigger value |
-|-------|--------------|
-| Seen image onset | 51 |
-| Foil image onset | 52 |
-| Correct response (Hit or Correct Rejection) | 61 |
-| Incorrect response (Miss or False Alarm) | 62 |
+| Event | Trigger value | Details |
+|-------|--------------|----------|
+| Fixation onset — seen, controlled, low | 81 | |
+| Fixation onset — seen, controlled, high | 82 | |
+| Fixation onset — seen, uncontrolled, low | 83 | |
+| Fixation onset — seen, uncontrolled, high | 84 | |
+| Fixation onset — foil (unseen) | 85 | |
+| Image onset — seen, controlled, low | 51 | |
+| Image onset — seen, controlled, high | 52 | |
+| Image onset — seen, uncontrolled, low | 53 | |
+| Image onset — seen, uncontrolled, high | 54 | |
+| Image onset — foil (unseen) | 55 | |
+| Correct response (Hit or Correct Rejection) | 61 | |
+| Incorrect response (Miss or False Alarm) | 62 | |
 
 ### Optional mid-test break
-Every **100 items**, a self-paced break screen is shown. Participant presses **SPACE** to continue.
+Every **100 items**, a timed 30-second break screen is shown. The break ends automatically after 30 s, or the participant can press **SPACE** to continue earlier. Escape quits the experiment.
 
 ---
 
@@ -257,10 +276,10 @@ Participant presses **SPACE** to exit. All data (main CSV + kinematics CSV) is s
 
 | File | Contents |
 |------|----------|
-| `data/subjects/CDmem_1_<ID>.csv` | Trial-by-trial responses (Calibration & Test phases): accuracy, RT, agency ratings, QUEST+ parameters, image filenames, EEG triggers, true_controlled, response_controlled, overall_trial_num (session-wide), trial_in_block (resets per block), and full participant metadata |
-| `data/subjects/CDmem_1_<ID>_kinematics.csv` | Frame-by-frame mouse position, shape positions, per-frame evidence, overall_trial_num, trial_in_block, and full participant metadata |
-| `data/subjects/CDmem_1_<ID>_recognition.csv` | Recognition memory test results: filename, ground truth, controlled (yes/no), participant response, RT, EEG triggers, overall_trial_num, trial_in_block, and full participant metadata |
-| `image_stimuli_log.json` | Record of which images were sampled and assigned to test vs. recognition groups |
+| `data/subjects/CDmem_1_<ID>.csv` | Trial-by-trial responses (Calibration & Test phases): accuracy, RT, agency ratings, QUEST+ parameters, image filenames, EEG triggers (`trigger_fix`, `trigger_stim_onset`, `trigger_motion_start`, `trigger_resp_onset`, `trigger_resp_val`, `trigger_agency`), `true_controlled`, `response_controlled`, `target_is_left`, `overall_trial_num` (session-wide), `trial_in_block` (resets per block), `calib_target` (calibration staircase target), and full participant metadata |
+| `data/subjects/CDmem_1_<ID>_kinematics.csv` | Frame-by-frame mouse position, shape positions, per-frame evidence, `mouse_is_moving`, `active_motion_time`, `overall_trial_num`, `trial_in_block`, `control_condition`, and full participant metadata |
+| `data/subjects/CDmem_1_<ID>_recognition.csv` | Recognition memory test results: filename, ground truth, `controlled` (yes/no), `trial_level` (high/low), `item_type` (controlled/uncontrolled), participant response, RT, EEG triggers (`mem_trigger_fix`, `mem_trigger_onset`, `mem_trigger_resp`), `overall_trial_num`, `trial_in_block`, and full participant metadata |
+| `image_stimuli_log.json` | Record of which images were sampled and assigned to test vs. foil groups |
 
 ---
 

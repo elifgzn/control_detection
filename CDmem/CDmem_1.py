@@ -1541,7 +1541,7 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
     # Key mapping: always based on which image/shape is on which side
     key_to_label = {'a': left_label, 's': right_label}
 
-    CHOICE_DURATION = 5.0
+    CHOICE_DURATION = 3.5
 
     if start_pos_A[0] < 0:
         stim_A.pos = (-CHOICE_OFFSET_X, 0)
