@@ -1596,9 +1596,11 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
         # the same coordinate system as target
         response_controlled = rng.choice([left_label, right_label])
         rt_choice  = response_clock.getTime()
-        remaining  = CHOICE_DURATION - rt_choice
-        if remaining > 0:
-            core.wait(remaining)
+        # In calibration, proceed immediately; in test, wait out the full duration
+        if phase != "calibration":
+            remaining  = CHOICE_DURATION - rt_choice
+            if remaining > 0:
+                core.wait(remaining)
     else:
         while response_clock.getTime() < CHOICE_DURATION:
             elapsed = response_clock.getTime()
@@ -1611,6 +1613,9 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
                 elif key in key_to_label and response_controlled is None:
                     response_controlled = key_to_label[key]
                     rt_choice  = elapsed
+                    # In calibration, end response phase immediately after answer
+                    if phase == "calibration":
+                        break
             core.wait(0.01)
 
         if response_controlled is None:
