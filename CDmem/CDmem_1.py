@@ -1319,6 +1319,13 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
         dot.fillColor    = dot.lineColor    = "black"
 
     fix.draw(); win.flip()
+
+    # ── EEG Trigger: Fixation Onset ─────────────────────────────────────────
+    trigger_fix = np.nan
+    if phase == "test" and control_condition:
+        trigger_fix = 71 if control_condition == 'low' else 72
+        send_trigger(trigger_fix)
+
     if cue_dur_range is not None:
         core.wait(float(rng.uniform(cue_dur_range[0], cue_dur_range[1])))
     else:
@@ -1369,6 +1376,7 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
     # in the same coordinate system as response_controlled (physical side),
     # rather than from [stim_left_label, stim_right_label] (image identity).
     target = random.choice([left_label, right_label])
+    target_is_left = (target == left_label)
 
     # If using images, record which image was controlled for later memory analysis.
     # We derive this from whether target matches the label on each side.
@@ -1410,12 +1418,11 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
     # ── EEG Triggers: Motion Start ───────────────────────────────────────────
     trigger_motion_start = np.nan
     if phase == "test" and control_condition:
-        try:
-            level_idx = 1 if control_condition == 'low' else 3
-            trigger_motion_start = 20 + level_idx
-            send_trigger(trigger_motion_start)
-        except (ValueError, IndexError):
-            pass
+        if control_condition == 'low':
+            trigger_motion_start = 21 if target_is_left else 22
+        else:
+            trigger_motion_start = 23 if target_is_left else 24
+        send_trigger(trigger_motion_start)
 
     _SCREENSHOT_FRAMES = {1: 'frame001', 30: 'frame030'}
 
@@ -1575,12 +1582,11 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
     # ── EEG Triggers: Response Screen Onset ─────────────────────────────────
     trigger_resp_onset = np.nan
     if phase == "test" and control_condition:
-        try:
-            level_idx = 1 if control_condition == 'low' else 3
-            trigger_resp_onset = 30 + level_idx
-            send_trigger(trigger_resp_onset)
-        except (ValueError, IndexError):
-            pass
+        if control_condition == 'low':
+            trigger_resp_onset = 31 if target_is_left else 32
+        else:
+            trigger_resp_onset = 33 if target_is_left else 34
+        send_trigger(trigger_resp_onset)
 
     response_controlled = None
     rt_choice  = np.nan
@@ -1644,7 +1650,11 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
 
     # ── AGENCY RATING (test trials only) ─────────────────────────────────────
     agency_rating = np.nan
+    trigger_agency = np.nan
     if phase == "test":
+        # ── EEG Trigger: Agency Rating Onset ────────────────────────────────
+        trigger_agency = 45
+        send_trigger(trigger_agency)
         if SIMULATE:
             agency_rating = float(rng.integers(1, 8))
             core.wait(0.5)
@@ -1752,10 +1762,13 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
         control_condition=control_condition,
         img_A_name=img_A_info['filename'] if use_images else np.nan,
         img_B_name=img_B_info['filename'] if use_images else np.nan,
+        trigger_fix=trigger_fix,
         trigger_stim_onset=trigger_stim_onset,
         trigger_motion_start=trigger_motion_start,
         trigger_resp_onset=trigger_resp_onset,
-        trigger_resp_val=trigger_resp_val
+        trigger_resp_val=trigger_resp_val,
+        trigger_agency=trigger_agency,
+        target_is_left=target_is_left
     )
 
 
@@ -1965,10 +1978,13 @@ def run_test_block_for_level(threshold_75, level_name, prop_value,
         thisExp.addData('img_A_name',              res.get('img_A_name', np.nan))
         thisExp.addData('img_B_name',              res.get('img_B_name', np.nan))
         # Log EEG triggers
+        thisExp.addData('trigger_fix',             res.get('trigger_fix', np.nan))
         thisExp.addData('trigger_stim_onset',      res.get('trigger_stim_onset', np.nan))
         thisExp.addData('trigger_motion_start',    res.get('trigger_motion_start', np.nan))
         thisExp.addData('trigger_resp_onset',      res.get('trigger_resp_onset', np.nan))
         thisExp.addData('trigger_resp_val',        res.get('trigger_resp_val', np.nan))
+        thisExp.addData('trigger_agency',          res.get('trigger_agency', np.nan))
+        thisExp.addData('target_is_left',          res.get('target_is_left', np.nan))
         thisExp.nextEntry()
 
         # Offer a break every 50 trials within a block
@@ -2061,6 +2077,19 @@ def run_memory_test(seen_images, foil_images_list):
         # Fixation cross — random duration 0.5–0.8 s
         fix_dur = random.uniform(0.5, 0.8)
         mem_fix.draw(); win.flip()
+
+        # ── EEG Trigger: Recognition Fixation Onset ─────────────────────────
+        if item['ground_truth'] == 'seen':
+            ctrl_status = image_control_map.get(item['filename'])
+            cond = image_condition_map.get(item['filename'])
+            if ctrl_status == 'yes':
+                mem_trigger_fix = 81 if cond == 'low' else 82
+            else:
+                mem_trigger_fix = 83 if cond == 'low' else 84
+        else:
+            mem_trigger_fix = 85
+        send_trigger(mem_trigger_fix)
+
         core.wait(fix_dur)
 
         # Reset key label colours to white for every new trial
@@ -2076,8 +2105,16 @@ def run_memory_test(seen_images, foil_images_list):
         win.flip()
         item_onset = core.getTime()
 
-        # EEG Triggers: Recognition Stimulus Onset
-        mem_trigger_onset = 51 if item['ground_truth'] == 'seen' else 52
+        # ── EEG Trigger: Recognition Stimulus Onset ─────────────────────────
+        if item['ground_truth'] == 'seen':
+            ctrl_status = image_control_map.get(item['filename'])
+            cond = image_condition_map.get(item['filename'])
+            if ctrl_status == 'yes':
+                mem_trigger_onset = 51 if cond == 'low' else 52
+            else:
+                mem_trigger_onset = 53 if cond == 'low' else 54
+        else:
+            mem_trigger_onset = 55
         send_trigger(mem_trigger_onset)
 
         # Screenshot: capture the very first memory test item
@@ -2157,6 +2194,7 @@ def run_memory_test(seen_images, foil_images_list):
             'item_type':        'controlled' if image_control_map.get(item['filename']) == 'yes' else 'uncontrolled' if image_control_map.get(item['filename']) == 'no' else float('nan'),
             'mem_response':     mem_response,
             'mem_rt':           mem_rt,
+            'mem_trigger_fix':   mem_trigger_fix,
             'mem_trigger_onset': mem_trigger_onset,
             'mem_trigger_resp':  mem_trigger_resp
         })
