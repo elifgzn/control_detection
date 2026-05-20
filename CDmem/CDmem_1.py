@@ -2244,11 +2244,11 @@ def show_test_phase_instructions():
 You will now see pairs of images on screen.
 Use the touchpad to move the images and decide which image was the one you controlled.
 
-Indicate your decision by pressing [A] or [S].
-After each trial, rate your feeling of control on a scale of 1 to 7
+Indicate your decision by pressing [A] or [S]. After pressing the button, you will need to wait a few seconds before the screen changes. This is intended.
+When the screen changes, you will be asked to rate your feeling of control on a scale of 1 to 7
 (1 = no control, 7 = full control) by pressing the corresponding number.
 
-No feedback will be shown during the main experiment.
+No feedback will be shown during the main experiment.  
 
 Please press SPACE to start."""
     msg.draw(); win.flip()
