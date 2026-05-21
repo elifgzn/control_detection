@@ -1542,6 +1542,7 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
     key_to_label = {'a': left_label, 's': right_label}
 
     CHOICE_DURATION = 3.5
+    trigger_resp_val = np.nan
 
     if start_pos_A[0] < 0:
         stim_A.pos = (-CHOICE_OFFSET_X, 0)
