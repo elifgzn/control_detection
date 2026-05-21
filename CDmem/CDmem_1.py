@@ -1602,6 +1602,11 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
         # the same coordinate system as target
         response_controlled = rng.choice([left_label, right_label])
         rt_choice  = response_clock.getTime()
+        # ── EEG Trigger: Response (simulated) ──────────────────────────
+        if phase == "test":
+            sim_correct = int(response_controlled == target)
+            trigger_resp_val = 41 if sim_correct else 42
+            send_trigger(trigger_resp_val)
         # In calibration, proceed immediately; in test, wait out the full duration
         if phase != "calibration":
             remaining  = CHOICE_DURATION - rt_choice
@@ -1619,6 +1624,11 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
                 elif key in key_to_label and response_controlled is None:
                     response_controlled = key_to_label[key]
                     rt_choice  = elapsed
+                    # ── EEG Trigger: Response (immediate on keypress) ───────
+                    if phase == "test":
+                        key_correct = int(response_controlled == target)
+                        trigger_resp_val = 41 if key_correct else 42
+                        send_trigger(trigger_resp_val)
                     # In calibration, end response phase immediately after answer
                     if phase == "calibration":
                         break
@@ -1637,10 +1647,10 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
     correct = int(response_controlled == target)
 
     # ── EEG Triggers: Response Value ─────────────────────────────────────────
-    trigger_resp_val = np.nan
-    if phase == "test":
+    # NOTE: trigger_resp_val is now sent immediately at keypress time (above).
+    # We only set the variable here for logging if it wasn't already set.
+    if phase == "test" and np.isnan(trigger_resp_val):
         trigger_resp_val = 41 if correct else 42
-        send_trigger(trigger_resp_val)
 
     # ── FEEDBACK (calibration trials only) ───────────────────────────────────
     if phase == "calibration":
@@ -1650,11 +1660,7 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
 
     # ── AGENCY RATING (test trials only) ─────────────────────────────────────
     agency_rating = np.nan
-    trigger_agency = np.nan
     if phase == "test":
-        # ── EEG Trigger: Agency Rating Onset ────────────────────────────────
-        trigger_agency = 45
-        send_trigger(trigger_agency)
         if SIMULATE:
             agency_rating = float(rng.integers(1, 8))
             core.wait(0.5)
@@ -1767,7 +1773,7 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
         trigger_motion_start=trigger_motion_start,
         trigger_resp_onset=trigger_resp_onset,
         trigger_resp_val=trigger_resp_val,
-        trigger_agency=trigger_agency,
+
         target_is_left=target_is_left
     )
 
@@ -1983,7 +1989,7 @@ def run_test_block_for_level(threshold_75, level_name, prop_value,
         thisExp.addData('trigger_motion_start',    res.get('trigger_motion_start', np.nan))
         thisExp.addData('trigger_resp_onset',      res.get('trigger_resp_onset', np.nan))
         thisExp.addData('trigger_resp_val',        res.get('trigger_resp_val', np.nan))
-        thisExp.addData('trigger_agency',          res.get('trigger_agency', np.nan))
+
         thisExp.addData('target_is_left',          res.get('target_is_left', np.nan))
         thisExp.nextEntry()
 
