@@ -27,7 +27,7 @@ if hasattr(sys.stdout, 'buffer'):
 # ============================================================================
 # CONFIGURATION & OUTPUT DIRECTORIES
 # ============================================================================
-DATA_DIR = Path(r"H:\PHD\control_detection\pilot_data")
+DATA_DIR = Path(r"H:\PHD\control_detection\main_data")
 SCRIPT_DIR = Path(__file__).parent
 OUTPUT_DIR = SCRIPT_DIR / "CDmem_final_output"
 POOLED_DIR = OUTPUT_DIR / "pooled"
@@ -46,7 +46,7 @@ def write_report(text):
     with open(REPORT_FILE, "a", encoding="utf-8") as f:
         f.write(text + "\n")
 
-PARTICIPANT_FILTER = [9, 10, 11, 12, 13, 14, 15, 16, 17]
+PARTICIPANT_FILTER = [1]
 TIMEOUT_THRESHOLD = 0.50
 ACCURACY_SD_THRESHOLD = 2.5
 RT_SD_MULTIPLIER = 3.0
