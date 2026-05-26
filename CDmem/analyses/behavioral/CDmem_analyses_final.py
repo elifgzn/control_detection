@@ -393,15 +393,23 @@ write_report("## ANALYSES\n")
 # --- 1) DOES HIGHER MOTOR CONTROL LEAD TO BETTER MEMORY? ---
 write_report("### 1) Does higher motor control lead to better memory?\n")
 
-# 1A) 2x2 ANOVA on d'
-write_report("**1A) 2 (Control Level) x 2 (Item Type) ANOVA on d'**")
-if len(mem_results_2x2['participant'].unique()) >= 2:
-    res_1a = pg.rm_anova(data=mem_results_2x2, dv='d_prime', within=['control_level', 'item_type'], subject='participant', detailed=True)
-    write_report(res_1a.to_markdown(index=False) + "\n")
-    main_ctrl = res_1a[res_1a['Source'] == 'control_level'].iloc[0]
-    main_item = res_1a[res_1a['Source'] == 'item_type'].iloc[0]
-    interact = res_1a[res_1a['Source'] == 'control_level * item_type'].iloc[0]
-    write_report(f"> **APA 7 Reporting Example:**\n> A 2 (Control Level: High vs. Low) x 2 (Item Type: Controlled vs. Uncontrolled) repeated-measures ANOVA on *d'* revealed a main effect of Control Level, *F*({int(main_ctrl['ddof1'])}, {int(main_ctrl['ddof2'])}) = {main_ctrl['F']:.2f}, *p* = {main_ctrl['p-unc']:.3f}, $\eta_p^2$ = {main_ctrl['ng2']:.3f}. The main effect of Item Type was *F*({int(main_item['ddof1'])}, {int(main_item['ddof2'])}) = {main_item['F']:.2f}, *p* = {main_item['p-unc']:.3f}, $\eta_p^2$ = {main_item['ng2']:.3f}. The interaction effect was *F*({int(interact['ddof1'])}, {int(interact['ddof2'])}) = {interact['F']:.2f}, *p* = {interact['p-unc']:.3f}, $\eta_p^2$ = {interact['ng2']:.3f}.\n")
+## 1A) Descriptive d' summary: confirm all participants perform above chance
+# (The 2x2 RM-ANOVA on d' was removed; d' is used descriptively only.)
+write_report("**1A) Descriptive d' Summary (above-chance check)**")
+overall_dprime = targets.groupby('participant')['said_old'].mean().reset_index().rename(columns={'said_old': 'Hit_rate'})
+overall_dprime = overall_dprime.merge(fa_rates, on='participant')
+overall_dprime['d_prime'] = overall_dprime.apply(lambda r: calc_dprime(r['Hit_rate'], r['FA_rate']), axis=1)
+
+write_report("**Participant-level d' values:**")
+for _, row in overall_dprime.iterrows():
+    write_report(f"  - P{int(row['participant'])}: d' = {row['d_prime']:.3f}")
+write_report(f"\n- Mean d' = {overall_dprime['d_prime'].mean():.3f} (SD = {overall_dprime['d_prime'].std():.3f})")
+write_report(f"- All above chance (d' > 0): {(overall_dprime['d_prime'] > 0).all()}\n")
+
+# One-sample t-test: d' > 0?
+if len(overall_dprime) >= 2:
+    res_dprime = pg.ttest(overall_dprime['d_prime'], 0)
+    write_report(f"- One-sample t-test against chance: t({res_dprime['dof'].iloc[0]}) = {res_dprime['T'].iloc[0]:.3f}, p = {res_dprime['p-val'].iloc[0]:.4f}\n")
 
 # 1B) Binomial GLMM
 write_report("**1B) Binomial GLMM on OLD ITEMS ONLY: said_old ~ C(control_level) * C(item_type) + (1 | participant)**")

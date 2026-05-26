@@ -112,7 +112,7 @@ for sub in plist:
 
     # ── 4. Sanity Check: Match Triggers ────────────────────
     # Compare logdat.trigger_motion_start with epochs.events[:, 2]
-    # Note: Trigger values in logdat (21, 23) might be different from 
+    # Note: Trigger values in logdat (21, 22, 23, 24) might be different from 
     # the event IDs MNE assigned if not explicitly handled.
     # In 20_reading_eeg_data.py, event_id was used, mapping 'Stimulus/S 77' to some integer.
     
@@ -178,25 +178,25 @@ for sub in plist:
         # Boolean mask over the current (filtered, preprocessed) trials
         mask = (logdat_reset['control_condition'] == control)
 
-            n_trials = mask.sum()
+        n_trials = mask.sum()
 
-            # Store trial count in summary
-            # FieldTrip: summary.(['num_' cond_name{cnum}]) = sum(cfgerp.trials);
-            summary[f"num_{label}"] = int(n_trials)
+        # Store trial count in summary
+        # FieldTrip: summary.(['num_' cond_name{cnum}]) = sum(cfgerp.trials);
+        summary[f"num_{label}"] = int(n_trials)
 
-            if n_trials == 0:
-                print(f"  WARNING: no trials for condition {label} — skipping.")
-                eeg_dat[label] = None
-                continue
+        if n_trials == 0:
+            print(f"  WARNING: no trials for condition {label} — skipping.")
+            eeg_dat[label] = None
+            continue
 
-            # Select the matching epochs and average across trials → Evoked object
-            # FieldTrip: erp_dat{cnum} = ft_timelockanalysis(cfgerp, dataClean);
-            epochs_cond = epochs[mask.values]
-            evoked = epochs_cond.average()
-            evoked.comment = label   # label the Evoked so it's identifiable when saved
-            eeg_dat[label] = evoked
+        # Select the matching epochs and average across trials → Evoked object
+        # FieldTrip: erp_dat{cnum} = ft_timelockanalysis(cfgerp, dataClean);
+        epochs_cond = epochs[mask.values]
+        evoked = epochs_cond.average()
+        evoked.comment = label   # label the Evoked so it's identifiable when saved
+        eeg_dat[label] = evoked
 
-            print(f"  [{label}]  {n_trials} trials  →  ERP computed")
+        print(f"  [{label}]  {n_trials} trials  →  ERP computed")
 
     # ── 7. Save ERP results ───────────────────────────────
     # FieldTrip: save(['D:/MCRL DATA/eeg4_ERPSummaries/MCRL_' addStr num2str(pnum)], ...

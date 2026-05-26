@@ -10,7 +10,7 @@ This document explains what `CDmem_analyses_final.py` does, from start to finish
 flowchart TD
     subgraph LOAD ["📂 1. DATA LOADING"]
         A1["Load main experiment CSVs<br/>(CDmem_1_*.csv)"] --> A2["Load recognition test CSVs<br/>(CDmem_1_*_recognition.csv)"]
-        A2 --> A3["Apply participant filter<br/>(keep only px 9–17)"]
+        A2 --> A3["Apply participant filter"]
     end
 
     subgraph EXCLUDE ["🚫 2. EXCLUSION CRITERIA"]
@@ -42,7 +42,7 @@ flowchart TD
 
     subgraph RQ1 ["🧠 5A. RQ1: Motor Control → Memory"]
         direction TB
-        E1["1A — 2×2 rmANOVA on d'<br/>(Control Level × Item Type)"]
+        E1["1A — Descriptive d' summary<br/>(above-chance check + t-test)"]
         E2["1B — Binomial GLMM<br/>said_old ~ control × item_type"]
         E3["1C — Gaussian LMM<br/>log_RT ~ control × item_type"]
         E1 --> E2 --> E3
@@ -65,7 +65,9 @@ flowchart TD
     subgraph PLOT ["📊 6. PLOTTING"]
         H1["d' plots: 3-panel figure<br/>(pooled + per participant)"]
         H2["Hit Rate plots: 3-panel figure<br/>(pooled + per participant)"]
-        H1 --> H2
+        H3["Sanity Check plots: 2×2 grid<br/>(pooled + per participant)"]
+        H4["Agency vs Recognition plot<br/>(pooled + per participant)"]
+        H1 --> H2 --> H3 --> H4
     end
 
     subgraph REPORT ["📝 7. REPORT"]
@@ -93,20 +95,20 @@ Later, there is a **surprise recognition memory test**: participants see old ima
 
 ## Section-by-Section Explanation
 
-### 1. Data Loading (lines 53–103)
+### 1. Data Loading (lines 54–104)
 
-The script loads two types of CSV files from the `pilot_data` folder:
+The script loads two types of CSV files from the data directory:
 
 | File type | Example filename | What it contains |
 |---|---|---|
-| **Main data** | `CDmem_1_11.csv` | Everything from the encoding phase: trials, mouse trajectories, agency ratings, detection accuracy, etc. |
-| **Recognition data** | `CDmem_1_11_recognition.csv` | The memory test: for each image, did the participant say "yes" or "no"? |
+| **Main data** | `CDmem_1_*.csv` | Everything from the encoding phase: trials, mouse trajectories, agency ratings, detection accuracy, etc. |
+| **Recognition data** | `CDmem_1_*_recognition.csv` | The memory test: for each image, did the participant say "yes" or "no"? |
 
-Only files whose participant number is in the filter list (`[9, 10, 11, 12, 13, 14, 15, 16, 17]`) are loaded. This avoids crashing on older or malformed files.
+A configurable participant filter controls which files are loaded. Only files whose participant number matches the filter are processed.
 
 ---
 
-### 2. Exclusion Criteria (lines 105–178)
+### 2. Exclusion Criteria (lines 106–179)
 
 Not all participants' data is usable. The script applies **four** exclusion criteria sequentially:
 
@@ -132,7 +134,7 @@ Individual recognition trials where the reaction time exceeds that participant's
 
 ---
 
-### 3. Sanity Checks (lines 181–210)
+### 3. Sanity Checks (lines 182–211)
 
 Before running the main analyses, the script verifies that the **experimental manipulation worked** using paired t-tests:
 
@@ -145,7 +147,7 @@ If these checks fail, the main results about memory cannot be meaningfully inter
 
 ---
 
-### 4. Variable Derivation (lines 212–320)
+### 4. Variable Derivation (lines 214–321)
 
 This section prepares all the variables needed for statistical modeling.
 
@@ -182,7 +184,7 @@ The recognition CSV knows which image the participant saw, but it doesn't know t
 
 ---
 
-### 5. Statistical Analyses (lines 356–443)
+### 5. Statistical Analyses (lines 388–483)
 
 The analyses are organized around **three research questions**. Each question is tested with specific statistical models.
 
@@ -192,12 +194,12 @@ The analyses are organized around **three research questions**. Each question is
 
 | Label | Model | Data used | DV | What it tests |
 |---|---|---|---|---|
-| **1A** | 2×2 repeated-measures ANOVA | Participant-level *d'* summaries | d' | Main effects of Control Level and Item Type, and their interaction |
+| **1A** | Descriptive d' summary + one-sample t-test | Participant-level *d'* values | d' | Confirms all participants perform above chance (d' > 0) |
 | **1B** | Binomial GLMM (logit link) | All OLD items, trial-level | said_old (0/1) | Does control level × item type predict whether the participant says "yes"? |
 | **1C** | Gaussian LMM | OLD items where participant said "yes" | log(RT) | Does control level × item type predict how fast they respond? |
 
 > [!NOTE]
-> **ANOVA vs GLMM:** The ANOVA (1A) uses participant-level averages (*d'*) — one number per person per condition. The GLMM (1B) uses individual trial-level data and is more powerful because it uses all the raw data and accounts for the nested structure (trials within participants).
+> **Descriptive d' vs GLMM:** Step 1A uses participant-level averages (*d'*) — one number per person — to verify above-chance performance with a one-sample t-test. The GLMM (1B) uses individual trial-level data and is more powerful because it uses all the raw data and accounts for the nested structure (trials within participants).
 
 ---
 
@@ -249,9 +251,13 @@ Here's what each part means:
 
 ---
 
-### 6. Plotting (lines 446–541)
+### 6. Plotting (lines 486–835)
 
-The script generates **two figure types** — one for *d'* and one for *Hit Rate* — each containing **three panels** stacked vertically:
+The script generates **four types of figures**:
+
+#### 6a. Memory Figures (d' and Hit Rate)
+
+For each metric (*d'* and *Hit Rate*), a **three-panel figure** is generated:
 
 | Row | Panel | What it shows |
 |---|---|---|
@@ -259,9 +265,24 @@ The script generates **two figure types** — one for *d'* and one for *Hit Rate
 | **Row 2** | Detection breakdown | Controlled items split into "detected" (dark green) and "not detected" (light green), plus uncontrolled (orange) |
 | **Row 3** | Overall main effect | Simple High vs Low comparison (collapsing across item type) |
 
-These are saved in two folders:
+#### 6b. Sanity Check Plots
+
+A **2×2 grid** of panels verifying the experimental manipulation:
+
+| Panel | What it shows |
+|---|---|
+| **[0,0]** | QUEST+ calibration convergence (alpha SD over trials) |
+| **[0,1]** | Detection accuracy by condition (bar chart) |
+| **[1,0]** | Agency ratings by condition and detection accuracy |
+| **[1,1]** | RT distribution (histograms by condition) |
+
+#### 6c. Agency vs Recognition Memory Plots
+
+A scatter/logistic plot showing the relationship between z-transformed agency ratings at encoding and subsequent recognition hit rate. Includes participant means, group means ± SE (binned), and a logistic trend line.
+
+All plots are saved in two folders:
 - **`CDmem_final_output/pooled/`** — group-level averages across all participants
-- **`CDmem_final_output/per_participant/`** — one figure per participant (e.g., `dprime_p11.png`)
+- **`CDmem_final_output/per_participant/`** — one figure per participant
 
 ---
 
@@ -285,7 +306,7 @@ This Markdown file contains:
 
 | Label | Research Question | Model Type | DV | Data Subset |
 |---|---|---|---|---|
-| **1A** | Control → Memory | 2×2 rmANOVA | d' | All participants |
+| **1A** | Control → Memory | Descriptive d' + one-sample t-test | d' | All participants |
 | **1B** | Control → Memory | Binomial GLMM | said_old | All old items |
 | **1C** | Control → Memory | Gaussian LMM | log(RT) | Old items, said "yes" |
 | **2D** | Detection → Memory | Binomial GLMM | said_old | Old **controlled** items |
@@ -299,14 +320,16 @@ This Markdown file contains:
 
 ```
 CDmem_final_output/
-├── Comprehensive_Report.md      ← Full statistical report
+├── Comprehensive_Report.md              ← Full statistical report
 ├── pooled/
-│   ├── dprime_pooled.png        ← Group-level d' figure
-│   └── hitrate_pooled.png       ← Group-level hit rate figure
+│   ├── dprime_pooled.png               ← Group-level d' figure
+│   ├── hitrate_pooled.png              ← Group-level hit rate figure
+│   ├── sanity_check_pooled.png         ← Pooled sanity check (2×2 grid)
+│   └── agency_recognition_pooled.png   ← Agency vs recognition (pooled)
 └── per_participant/
-    ├── dprime_p9.png            ← Individual d' figures
-    ├── hitrate_p9.png
-    ├── dprime_p10.png
-    ├── hitrate_p10.png
+    ├── dprime_p1.png                   ← Individual d' figures
+    ├── hitrate_p1.png
+    ├── sanity_check_p1.png             ← Individual sanity check
+    ├── agency_recognition_p1.png       ← Individual agency vs recognition
     └── ...
 ```

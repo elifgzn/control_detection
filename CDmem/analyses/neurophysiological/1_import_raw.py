@@ -130,9 +130,12 @@ for sub in plist:
         events, event_id = mne.events_from_annotations(raw, verbose=False)
         
         # Step 2: Select only our triggers of interest (movement onset)
-        #   S 21 = low control, S 23 = high control (based on Wen et al., 2017)
+        #   S 21 = low control / left,  S 22 = low control / right
+        #   S 23 = high control / left, S 24 = high control / right
+        # We include both left- and right-side targets because the ERP
+        # analysis only contrasts low vs high control (target side is irrelevant).
         # Note: BrainVision annotations in MNE use the full 'Stimulus/S XX' format.
-        wanted_triggers = ['Stimulus/S 21', 'Stimulus/S 23']
+        wanted_triggers = ['Stimulus/S 21', 'Stimulus/S 22', 'Stimulus/S 23', 'Stimulus/S 24']
         triggers = {}
         for t in wanted_triggers:
             if t in event_id:
