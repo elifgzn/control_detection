@@ -1,4 +1,4 @@
-# This script adapts the A4_2_removeNoise script to MNE.
+
 # Workflow:
 #   1. Run the script → inspection plots appear for any participant whose
 #      component_exclusions list is still empty (i.e. not yet decided).
@@ -15,31 +15,31 @@ from mne.preprocessing import read_ica
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) do you want to process?
 # ──────────────────────────────────────────────────────────────
-plist = [31]
+plist = [3]
 
 # ──────────────────────────────────────────────────────────────
-# Component exclusions — fill these in after inspecting the plots.
+# Component exclusions — fill these in AFTER inspecting the plots; during the second run of the script .
 # Keys are participant numbers (integers).
 # Values are lists of component indices to remove (0-based).
 # Leave the list EMPTY ([]) if you haven't decided yet for that
 # participant; the script will then show the inspection plots.
 # ──────────────────────────────────────────────────────────────
 component_exclusions = {
-    31: [0, 1, 2],   # e.g. change to [0, 2] once you've inspected
+    2: [0, 1],
+    3: [0, 1],   # e.g. change to [0, 2] once you've inspected
 }
 
 # ──────────────────────────────────────────────────────────────
-# Bad channels per participant (Step 6 from FieldTrip workflow)
-# MUST MATCH 20_reading_eeg_data.py
+# Bad channels per participant 
 # ──────────────────────────────────────────────────────────────
 bad_channels = {
-    31: ['P2'],
+    #31: ['P2'],
 }
 
 
 # Paths
-input_path  = r"C:\Users\elifg\Desktop\PHD\MNE_learn\MNE_preprocessed"
-output_path = r"C:\Users\elifg\Desktop\PHD\MNE_learn\eeg3_clean"   # separate folder for clean data
+input_path  = r"H:\PHD\control_detection\main_data\eeg\eeg2_ica"
+output_path = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean"   # separate folder for clean data
 os.makedirs(output_path, exist_ok=True)   # create folder if it doesn't exist
 
 # ──────────────────────────────────────────────────────────────
@@ -48,8 +48,8 @@ os.makedirs(output_path, exist_ok=True)   # create folder if it doesn't exist
 for sub in plist:
 
     sub_id   = f"{sub:04d}"
-    epo_file = os.path.join(input_path, f"MCRL_{sub_id}-epo.fif")
-    ica_file = os.path.join(input_path, f"MCRL_{sub_id}-ica.fif")
+    epo_file = os.path.join(input_path, f"CDmem_{sub_id}-epo.fif")
+    ica_file = os.path.join(input_path, f"CDmem_{sub_id}-ica.fif")
 
     # Check that both files exist
     if not os.path.exists(epo_file):
@@ -127,32 +127,17 @@ for sub in plist:
         epochs_clean = ica.apply(epochs.copy())
 
         # ── Baseline correction ────────────────────────────────
-        # Equivalent to FieldTrip:
-        #   cfg.baselinewindow = [-0.20 0.00];
-        #   cfg.demean = 'yes';
-        #   dataNoBlinks = ft_preprocessing(cfg, dataNoBlinks);
-        #
         # Subtracts the mean of the −200 ms to 0 ms window from every
         # epoch. Applied after ICA (before artifact rejection).
         epochs_clean.apply_baseline(baseline=(-0.20, 0.0))
         print(f"  ✓ Baseline correction applied (−200 ms to 0 ms)")
 
         # ── Artifact rejection (general noise) ────────────────
-        # Match FieldTrip's absolute threshold method:
-        #   cfg.artfctdef.threshold.min = -100; % µV
-        #   cfg.artfctdef.threshold.max = 100;
-        #
-        # FieldTrip rejects trials if the signal crosses ±100 µV.
-        # MNE's default epochs_clean.drop_bad(reject=dict(eeg=100e-1)) uses 
-        # PEAK-TO-PEAK (max-min), which is much stricter. We use manual
-        # absolute thresholding here to match FieldTrip exactly.
         n_before = len(epochs_clean)
         
-        # Vectorized check for speed:
         data = epochs_clean.get_data(copy=False)  # Shape: (epochs, channels, times)
         # Find indices of epochs where ANY channel at ANY time is > 100µV or < -100µV
         # MNE by deafault deals with volts, not microvolts. that's why we multiply by 1e-6
-        # most likely could be set up to deal with microvolts, if easier manipulation of criteria is desired
         is_bad = np.any((data > 100e-6) | (data < -100e-6), axis=(1, 2))
         bad_indices = np.where(is_bad)[0]
         
@@ -164,15 +149,15 @@ for sub in plist:
         pct_dropped = round((n_dropped / n_before) * 100, 2)
 
 
-        # Quality guide (mirrors FieldTrip comments):
+        # Quality guide:
         #   0–5 %  → very good
-        #   5–10 % → ok
+        #   5–10 % → good
         #   10–15% → acceptable
         #   > 15 % → consider removing more ICA components or a channel
         if pct_dropped <= 5:
             quality = "very good"
         elif pct_dropped <= 10:
-            quality = "ok"
+            quality = "good"
         elif pct_dropped <= 15:
             quality = "acceptable"
         else:
@@ -182,7 +167,6 @@ for sub in plist:
               f"({pct_dropped} %)  [{quality}]")
 
         # ── Optional: browse post-ICA data (artifacts highlighted) ─
-        # Equivalent to FieldTrip's ft_databrowser after ft_rejectartifact.
         # Set show_browser = True to open the interactive viewer.
         show_browser = False
         if show_browser:
@@ -194,11 +178,6 @@ for sub in plist:
             plt.show()
 
         # ── Spherical spline interpolation ────────────────────
-        # Equivalent to FieldTrip:
-        #   cfg.method = 'spline';
-        #   cfg.missingchannel = addc;
-        #   dataAddChan = ft_channelrepair(cfg, dataClean);
-        #
         # Replaces channels that were dropped during preprocessing (first script).
         # We add them back as flat channels, mark them as 'bad', and interpolate.
         bads = bad_channels.get(sub, [])
@@ -210,11 +189,11 @@ for sub in plist:
             # ──────────────────────────────────────────────────────────
             # CRITICAL: Re-apply montage so the added channels get positions.
             # Without positions, interpolate_bads() fails with NaNs.
-            # Uses the actual actiCAP .bvef file (must match 20_reading_eeg_data.py).
+            # Uses the actual actiCAP .bvef file.
             # ──────────────────────────────────────────────────────────
-            bvef_path = r"C:\Users\elifg\Desktop\PHD\MNE_learn\actiCap_snap_CACS_CAS\actiCap_slim_for BrainAmpDC\CACS-64\CACS-64_REF.bvef"
+            bvef_path = r"H:\PHD\control_detection\CDmem\analyses\neurophysiological\CACS-64_REF_new.bvef"
             montage = mne.channels.read_custom_montage(bvef_path)
-            # Rename 'REF' → 'FCz' to match our channel naming (see 20_reading_eeg_data.py)
+            # Rename 'REF' → 'FCz' to match our channel naming (see 1_import_raw.py)
             montage.rename_channels({'REF': 'FCz'})
             epochs_clean.set_montage(montage, on_missing='ignore')
             
@@ -222,30 +201,17 @@ for sub in plist:
             epochs_clean.info['bads'] = bads
             # Interpolate bads using the surrounding sensors
             epochs_clean.interpolate_bads(reset_bads=True)  # method='spline' by default
-            
-            # FieldTrip ensures channel order matches the original layout.
-            # MNE.interpolate_bads does NOT automatically reorder channels.
-            # We pick the standard 1020 channels back in order if needed.
-            # For now, we assume the original loading order is desired.
-            # In your A4_1/A4_2 scripts, you refer to 'layout65'.
-            # MNE usually handles this fine as long as the names match.
             print(f"  ✓ Spherical spline interpolation done")
         else:
             print(f"  No bad channels to interpolate")
 
 
         # ── Save cleaned epochs ───────────────────────────────
-        # Equivalent to FieldTrip:
-        #   save(['D:/MCRL DATA/eeg3_clean/MCRL_' num2str(pnum)], 'dataClean', 'pExcludeNoise');
-        out_file = os.path.join(output_path, f"MCRL_{sub_id}-epo.fif") # Renamed to -epo.fif
+        out_file = os.path.join(output_path, f"CDmem_{sub_id}-epo.fif") # Renamed to -epo.fif
         epochs_clean.save(out_file, overwrite=True)
         print(f"  ✓ Cleaned epochs saved → {out_file}")
 
         # ── Exclusion-rate log ────────────────────────────────
-        # Equivalent to FieldTrip:
-        #   noiserate(pnum) = pExcludeNoise;
-        #   save('exclusionrate', 'noiserate');
-        #
         # Keeps a running JSON file (exclusionrate.json) in eeg3_clean.
         # Each run updates the entry for the current participant;
         # entries for other participants are preserved.
@@ -257,7 +223,11 @@ for sub in plist:
         else:
             import json
             noiserate = {}
-        noiserate[str(sub)] = pct_dropped          # key = participant number as string
+        noiserate[str(sub)] = {
+            "exclusion_rate": pct_dropped,
+            "excluded_components": excl,
+            "bad_channels": bad_channels.get(sub, [])
+        }
         with open(log_file, 'w') as f:
             json.dump(noiserate, f, indent=2)
         print(f"  ✓ Exclusion rate logged → {log_file}")

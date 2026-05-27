@@ -27,3 +27,7 @@ MTI/
 
 # Experiment documents — keep locally but exclude from git
 experiment_documents/
+
+# Data folders — large EEG/behavioral files, keep local only
+main_data/
+pilot_data/
