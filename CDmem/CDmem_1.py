@@ -1661,11 +1661,17 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
 
     # ── AGENCY RATING (test trials only) ─────────────────────────────────────
     agency_rating = np.nan
+    trigger_agency_onset = np.nan
     if phase == "test":
         if SIMULATE:
             agency_rating = float(rng.integers(1, 8))
             core.wait(0.5)
         else:
+            # ── EEG Triggers: Sense of Control Rating Onset ───────────────────
+            if control_condition:
+                trigger_agency_onset = 91 if control_condition == 'low' else 92
+                send_trigger(trigger_agency_onset)
+
             event.clearEvents(eventType='keyboard')
             msg.text = "How much control did you feel over the image's movement?"
             msg.pos = (0, int(win.size[1] * 0.2))
@@ -1774,6 +1780,7 @@ def run_trial_2shapes(trial_in_block, phase, mode, block_num=1,
         trigger_motion_start=trigger_motion_start,
         trigger_resp_onset=trigger_resp_onset,
         trigger_resp_val=trigger_resp_val,
+        trigger_agency_onset=trigger_agency_onset,
 
         target_is_left=target_is_left
     )

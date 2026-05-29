@@ -60,6 +60,15 @@ Sent immediately after the participant presses A or S.
 | **41** | Response was **correct** (detected the controlled image) |
 | **42** | Response was **incorrect** (chose the wrong image) |
 
+### Agency Rating Onset
+
+Sent when the sense of control rating scale appears ("How much control did you feel...").
+
+| Trigger | Meaning |
+|---------|---------|
+| **91** | Agency rating screen onset — **low** control condition |
+| **92** | Agency rating screen onset — **high** control condition |
+
 
 ---
 
@@ -143,6 +152,8 @@ TEST PHASE                          RECOGNITION PHASE
 
 41 = DetResp, Correct
 42 = DetResp, Incorrect
+91 = AgencyRating, Low
+92 = AgencyRating, High
 ```
 
 ---
