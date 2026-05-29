@@ -1997,6 +1997,7 @@ def run_test_block_for_level(threshold_75, level_name, prop_value,
         thisExp.addData('trigger_motion_start',    res.get('trigger_motion_start', np.nan))
         thisExp.addData('trigger_resp_onset',      res.get('trigger_resp_onset', np.nan))
         thisExp.addData('trigger_resp_val',        res.get('trigger_resp_val', np.nan))
+        thisExp.addData('trigger_agency_onset',    res.get('trigger_agency_onset', np.nan))
 
         thisExp.addData('target_is_left',          res.get('target_is_left', np.nan))
         thisExp.nextEntry()
