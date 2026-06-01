@@ -25,8 +25,8 @@ plist = [3]
 # participant; the script will then show the inspection plots.
 # ──────────────────────────────────────────────────────────────
 component_exclusions = {
-    2: [0, 1],
-    3: [0, 1],   # e.g. change to [0, 2] once you've inspected
+    #2: [0, 1],
+    #3: [0, 1],   # e.g. change to [0, 2] once you've inspected
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -224,7 +224,10 @@ for sub in plist:
             import json
             noiserate = {}
         noiserate[str(sub)] = {
-            "exclusion_rate": pct_dropped,
+            "n_trials_before": n_before,
+            "n_trials_dropped": n_dropped,
+            "pct_trials_dropped": pct_dropped,
+            "quality": quality,
             "excluded_components": excl,
             "bad_channels": bad_channels.get(sub, [])
         }
