@@ -46,7 +46,8 @@ def write_report(text):
     with open(REPORT_FILE, "a", encoding="utf-8") as f:
         f.write(text + "\n")
 
-PARTICIPANT_FILTER = [1,2,3,4]
+PARTICIPANT_FILTER = [4,5,6,7]
+# [7]
 TIMEOUT_THRESHOLD = 0.50
 ACCURACY_SD_THRESHOLD = 2.5
 RT_SD_MULTIPLIER = 3.0

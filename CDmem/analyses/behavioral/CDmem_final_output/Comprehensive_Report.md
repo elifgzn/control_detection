@@ -2,27 +2,25 @@
 
 ## Data Loading & Preprocessing
 
-[WARNING] Could not load CDmem_1_1.csv: Error tokenizing data. C error: Expected 1 fields in line 129, saw 6
-
 - Excluded for timeout: []
 - Excluded for accuracy outliers: []
 - Excluded for calibration failure: []
-- Total recognition trials excluded for RT outliers: 34
-- Final N participants: 3
+- Total recognition trials excluded for RT outliers: 41
+- Final N participants: 4
 
 ## Sanity Checks
 
 **Sanity Check: Agency Ratings (High vs Low)**
 We expect agency ratings to be significantly higher in the 'high' control condition.
-- High Mean (SD): 4.872 (0.187)
-- Low Mean (SD): 4.011 (1.435)
-- Result: *t*(2) = 0.997, *p* = 0.4238, Cohen's *d* = 0.842
+- High Mean (SD): 5.129 (0.611)
+- Low Mean (SD): 2.783 (0.627)
+- Result: *t*(3) = 3.980, *p* = 0.0284, Cohen's *d* = 3.790
 
 **Sanity Check: Detection Accuracy (High vs Low)**
 We expect detection accuracy to be significantly higher in the 'high' control condition.
-- High Mean (SD): 0.867 (0.120)
-- Low Mean (SD): 0.761 (0.228)
-- Result: *t*(2) = 0.984, *p* = 0.4289, Cohen's *d* = 0.580
+- High Mean (SD): 0.867 (0.131)
+- Low Mean (SD): 0.592 (0.091)
+- Result: *t*(3) = 7.318, *p* = 0.0053, Cohen's *d* = 2.446
 
 ## ANALYSES
 
@@ -30,28 +28,29 @@ We expect detection accuracy to be significantly higher in the 'high' control co
 
 **1A) Descriptive d' Summary (above-chance check)**
 **Participant-level d' values:**
-  - P2: d' = 0.882
-  - P3: d' = 1.027
   - P4: d' = 0.752
+  - P5: d' = 1.884
+  - P6: d' = 0.591
+  - P7: d' = 0.476
 
-- Mean d' = 0.887 (SD = 0.137)
+- Mean d' = 0.926 (SD = 0.649)
 - All above chance (d' > 0): True
 
-- One-sample t-test against chance: t(2) = 11.185, p = 0.0079
+- One-sample t-test against chance: t(3) = 2.853, p = 0.0649
 
 **1B) Binomial GLMM on OLD ITEMS ONLY: said_old ~ C(control_level) * C(item_type) + (1 | participant)**
 **Fixed Effects:**
 shape: (4, 8)
-┌─────────────────────────────┬───────────┬───────────┬───────────┬───────────┬────────────┬─────┬────────────┐
-│ term                        ┆ estimate  ┆ std_error ┆ conf_low  ┆ conf_high ┆ z_stat     ┆ df  ┆ p_value    │
-│ ---                         ┆ ---       ┆ ---       ┆ ---       ┆ ---       ┆ ---        ┆ --- ┆ ---        │
-│ str                         ┆ f64       ┆ f64       ┆ f64       ┆ f64       ┆ f64        ┆ f64 ┆ f64        │
-╞═════════════════════════════╪═══════════╪═══════════╪═══════════╪═══════════╪════════════╪═════╪════════════╡
-│ (Intercept)                 ┆ -0.871821 ┆ 0.084438  ┆ -1.037316 ┆ -0.706326 ┆ -10.325016 ┆ inf ┆ 5.4310e-25 │
-│ control_level_c             ┆ 0.208312  ┆ 0.168876  ┆ -0.122678 ┆ 0.539302  ┆ 1.233526   ┆ inf ┆ 0.217379   │
-│ item_type_c                 ┆ 0.627936  ┆ 0.168876  ┆ 0.296946  ┆ 0.958926  ┆ 3.718335   ┆ inf ┆ 0.000201   │
-│ control_level_c:item_type_c ┆ 0.192928  ┆ 0.337751  ┆ -0.469052 ┆ 0.854908  ┆ 0.571214   ┆ inf ┆ 0.567854   │
-└─────────────────────────────┴───────────┴───────────┴───────────┴───────────┴────────────┴─────┴────────────┘
+┌─────────────────────────────┬───────────┬───────────┬───────────┬───────────┬───────────┬─────┬──────────┐
+│ term                        ┆ estimate  ┆ std_error ┆ conf_low  ┆ conf_high ┆ z_stat    ┆ df  ┆ p_value  │
+│ ---                         ┆ ---       ┆ ---       ┆ ---       ┆ ---       ┆ ---       ┆ --- ┆ ---      │
+│ str                         ┆ f64       ┆ f64       ┆ f64       ┆ f64       ┆ f64       ┆ f64 ┆ f64      │
+╞═════════════════════════════╪═══════════╪═══════════╪═══════════╪═══════════╪═══════════╪═════╪══════════╡
+│ (Intercept)                 ┆ -0.538192 ┆ 0.483899  ┆ -1.486616 ┆ 0.410232  ┆ -1.112199 ┆ inf ┆ 0.266053 │
+│ control_level_c             ┆ -0.009408 ┆ 0.14886   ┆ -0.301168 ┆ 0.282351  ┆ -0.063202 ┆ inf ┆ 0.949605 │
+│ item_type_c                 ┆ 0.378286  ┆ 0.149221  ┆ 0.085817  ┆ 0.670754  ┆ 2.535062  ┆ inf ┆ 0.011243 │
+│ control_level_c:item_type_c ┆ 0.9472    ┆ 0.298873  ┆ 0.36142   ┆ 1.53298   ┆ 3.169239  ┆ inf ┆ 0.001528 │
+└─────────────────────────────┴───────────┴───────────┴───────────┴───────────┴───────────┴─────┴──────────┘
 
 **Random Effects Variance Components (ranef_var):**
 shape: (1, 5)
@@ -60,23 +59,24 @@ shape: (1, 5)
 │ ---         ┆ ---             ┆ ---      ┆ ---      ┆ ---       │
 │ str         ┆ str             ┆ f64      ┆ f64      ┆ f64       │
 ╞═════════════╪═════════════════╪══════════╪══════════╪═══════════╡
-│ participant ┆ sd__(Intercept) ┆ 0.0      ┆ null     ┆ null      │
+│ participant ┆ sd__(Intercept) ┆ 0.955854 ┆ null     ┆ null      │
 └─────────────┴─────────────────┴──────────┴──────────┴───────────┘
 
 **Random Effects by Participant (ranef):**
-shape: (3, 2)
+shape: (4, 2)
 ┌───────┬─────────────┐
 │ level ┆ (Intercept) │
 │ ---   ┆ ---         │
 │ str   ┆ f64         │
 ╞═══════╪═════════════╡
-│ 2     ┆ 0.0         │
-│ 3     ┆ 0.0         │
-│ 4     ┆ 0.0         │
+│ 4     ┆ -0.300555   │
+│ 5     ┆ 1.483119    │
+│ 6     ┆ -1.111681   │
+│ 7     ┆ -0.059488   │
 └───────┴─────────────┘
 
 > **APA 7 Reporting Example:**
-> A binomial generalized linear mixed model on target trials revealed that Control Level predicted memory hits, $\beta$ = 0.21, *SE* = 0.17, *z* = 1.23, *p* = 0.217.
+> A binomial generalized linear mixed model on target trials revealed that Control Level predicted memory hits, $\beta$ = -0.01, *SE* = 0.15, *z* = -0.06, *p* = 0.950.
 
 **1C) Gaussian LMM on OLD ITEMS ONLY: log_mem_rt ~ C(control_level) * C(item_type) + (1 | participant)**
 **Fixed Effects:**
@@ -86,10 +86,10 @@ shape: (4, 8)
 │ ---                         ┆ ---       ┆ ---       ┆ ---       ┆ ---       ┆ ---       ┆ ---        ┆ ---      │
 │ str                         ┆ f64       ┆ f64       ┆ f64       ┆ f64       ┆ f64       ┆ f64        ┆ f64      │
 ╞═════════════════════════════╪═══════════╪═══════════╪═══════════╪═══════════╪═══════════╪════════════╪══════════╡
-│ (Intercept)                 ┆ 0.166814  ┆ 0.033304  ┆ 0.027597  ┆ 0.30603   ┆ 5.00882   ┆ 2.06246    ┆ 0.035323 │
-│ control_level_c             ┆ -0.034804 ┆ 0.057815  ┆ -0.148792 ┆ 0.079184  ┆ -0.601991 ┆ 204.997054 ┆ 0.547845 │
-│ item_type_c                 ┆ -0.068005 ┆ 0.057948  ┆ -0.182267 ┆ 0.046258  ┆ -1.173547 ┆ 201.356053 ┆ 0.241963 │
-│ control_level_c:item_type_c ┆ 0.139039  ┆ 0.11565   ┆ -0.088978 ┆ 0.367056  ┆ 1.202234  ┆ 204.990255 ┆ 0.23066  │
+│ (Intercept)                 ┆ 0.094627  ┆ 0.16882   ┆ -0.445586 ┆ 0.634839  ┆ 0.560519  ┆ 2.97125    ┆ 0.614611 │
+│ control_level_c             ┆ -0.048337 ┆ 0.041254  ┆ -0.129468 ┆ 0.032794  ┆ -1.171698 ┆ 356.980703 ┆ 0.2421   │
+│ item_type_c                 ┆ -0.026122 ┆ 0.041241  ┆ -0.107228 ┆ 0.054985  ┆ -0.633383 ┆ 356.972041 ┆ 0.526889 │
+│ control_level_c:item_type_c ┆ -0.02503  ┆ 0.082579  ┆ -0.187433 ┆ 0.137373  ┆ -0.303097 ┆ 356.999931 ┆ 0.761992 │
 └─────────────────────────────┴───────────┴───────────┴───────────┴───────────┴───────────┴────────────┴──────────┘
 
 **Random Effects Variance Components (ranef_var):**
@@ -99,24 +99,25 @@ shape: (2, 5)
 │ ---         ┆ ---             ┆ ---      ┆ ---      ┆ ---       │
 │ str         ┆ str             ┆ f64      ┆ f64      ┆ f64       │
 ╞═════════════╪═════════════════╪══════════╪══════════╪═══════════╡
-│ participant ┆ sd__(Intercept) ┆ 0.028764 ┆ null     ┆ null      │
-│ Residual    ┆ sd__Observation ┆ 0.405687 ┆ null     ┆ null      │
+│ participant ┆ sd__(Intercept) ┆ 0.334315 ┆ null     ┆ null      │
+│ Residual    ┆ sd__Observation ┆ 0.388923 ┆ null     ┆ null      │
 └─────────────┴─────────────────┴──────────┴──────────┴───────────┘
 
 **Random Effects by Participant (ranef):**
-shape: (3, 2)
+shape: (4, 2)
 ┌───────┬─────────────┐
 │ level ┆ (Intercept) │
 │ ---   ┆ ---         │
 │ str   ┆ f64         │
 ╞═══════╪═════════════╡
-│ 2     ┆ -0.00016    │
-│ 3     ┆ -0.014421   │
-│ 4     ┆ 0.014581    │
+│ 4     ┆ 0.131435    │
+│ 5     ┆ -0.205247   │
+│ 6     ┆ 0.402098    │
+│ 7     ┆ -0.328286   │
 └───────┴─────────────┘
 
 > **APA 7 Reporting Example:**
-> A linear mixed model on log-transformed reaction times for correct old items showed an effect of Control Level, $\beta$ = -0.03, *SE* = 0.06, *t* = -0.60, *p* = 0.548.
+> A linear mixed model on log-transformed reaction times for correct old items showed an effect of Control Level, $\beta$ = -0.05, *SE* = 0.04, *t* = -1.17, *p* = 0.242.
 
 ### 2) Does this memory effect depend on the conscious detection of control?
 
@@ -130,50 +131,51 @@ shape: (4, 8)
 │ ---                             ┆ ---       ┆ ---       ┆ ---       ┆ ---       ┆ ---       ┆ --- ┆ ---      │
 │ str                             ┆ f64       ┆ f64       ┆ f64       ┆ f64       ┆ f64       ┆ f64 ┆ f64      │
 ╞═════════════════════════════════╪═══════════╪═══════════╪═══════════╪═══════════╪═══════════╪═════╪══════════╡
-│ (Intercept)                     ┆ -0.554613 ┆ 0.14966   ┆ -0.847942 ┆ -0.261284 ┆ -3.705812 ┆ inf ┆ 0.000211 │
-│ detection_accuracy_c            ┆ 0.053924  ┆ 0.299321  ┆ -0.532734 ┆ 0.640582  ┆ 0.180155  ┆ inf ┆ 0.857031 │
-│ control_level_c                 ┆ 0.63707   ┆ 0.299321  ┆ 0.050412  ┆ 1.223728  ┆ 2.128386  ┆ inf ┆ 0.033305 │
-│ detection_accuracy_c:control_l… ┆ -1.052161 ┆ 0.598642  ┆ -2.225477 ┆ 0.121155  ┆ -1.75758  ┆ inf ┆ 0.078819 │
+│ (Intercept)                     ┆ -0.489872 ┆ 0.52459   ┆ -1.51805  ┆ 0.538306  ┆ -0.933818 ┆ inf ┆ 0.350398 │
+│ detection_accuracy_c            ┆ 0.515036  ┆ 0.290274  ┆ -0.053891 ┆ 1.083964  ┆ 1.774309  ┆ inf ┆ 0.076012 │
+│ control_level_c                 ┆ 0.24906   ┆ 0.287043  ┆ -0.313534 ┆ 0.811654  ┆ 0.867675  ┆ inf ┆ 0.385572 │
+│ detection_accuracy_c:control_l… ┆ 0.344392  ┆ 0.57181   ┆ -0.776335 ┆ 1.465119  ┆ 0.602284  ┆ inf ┆ 0.546985 │
 └─────────────────────────────────┴───────────┴───────────┴───────────┴───────────┴───────────┴─────┴──────────┘
 
 **Random Effects Variance Components (ranef_var):**
 shape: (1, 5)
-┌─────────────┬─────────────────┬───────────┬──────────┬───────────┐
-│ group       ┆ term            ┆ estimate  ┆ conf_low ┆ conf_high │
-│ ---         ┆ ---             ┆ ---       ┆ ---      ┆ ---       │
-│ str         ┆ str             ┆ f64       ┆ f64      ┆ f64       │
-╞═════════════╪═════════════════╪═══════════╪══════════╪═══════════╡
-│ participant ┆ sd__(Intercept) ┆ 1.0326e-7 ┆ null     ┆ null      │
-└─────────────┴─────────────────┴───────────┴──────────┴───────────┘
+┌─────────────┬─────────────────┬──────────┬──────────┬───────────┐
+│ group       ┆ term            ┆ estimate ┆ conf_low ┆ conf_high │
+│ ---         ┆ ---             ┆ ---      ┆ ---      ┆ ---       │
+│ str         ┆ str             ┆ f64      ┆ f64      ┆ f64       │
+╞═════════════╪═════════════════╪══════════╪══════════╪═══════════╡
+│ participant ┆ sd__(Intercept) ┆ 1.009734 ┆ null     ┆ null      │
+└─────────────┴─────────────────┴──────────┴──────────┴───────────┘
 
 **Random Effects by Participant (ranef):**
-shape: (3, 2)
+shape: (4, 2)
 ┌───────┬─────────────┐
 │ level ┆ (Intercept) │
 │ ---   ┆ ---         │
 │ str   ┆ f64         │
 ╞═══════╪═════════════╡
-│ 2     ┆ -4.2414e-14 │
-│ 3     ┆ 7.2803e-14  │
-│ 4     ┆ -3.0389e-14 │
+│ 4     ┆ -0.349006   │
+│ 5     ┆ 1.587791    │
+│ 6     ┆ -1.078737   │
+│ 7     ┆ -0.147293   │
 └───────┴─────────────┘
 
 > **APA 7 Reporting Example:**
-> Detection accuracy significantly predicted subsequent recognition of controlled items, $\beta$ = 0.05, *SE* = 0.30, *z* = 0.18, *p* = 0.857.
+> Detection accuracy significantly predicted subsequent recognition of controlled items, $\beta$ = 0.52, *SE* = 0.29, *z* = 1.77, *p* = 0.076.
 
 **2E) Gaussian LMM on OLD CONTROLLED ITEMS ONLY: log_mem_rt ~ C(detection_accuracy) * C(control_level) + (1 | participant)**
 **Fixed Effects:**
 shape: (4, 8)
-┌─────────────────────────────────┬───────────┬───────────┬───────────┬───────────┬───────────┬───────┬──────────┐
-│ term                            ┆ estimate  ┆ std_error ┆ conf_low  ┆ conf_high ┆ t_stat    ┆ df    ┆ p_value  │
-│ ---                             ┆ ---       ┆ ---       ┆ ---       ┆ ---       ┆ ---       ┆ ---   ┆ ---      │
-│ str                             ┆ f64       ┆ f64       ┆ f64       ┆ f64       ┆ f64       ┆ f64   ┆ f64      │
-╞═════════════════════════════════╪═══════════╪═══════════╪═══════════╪═══════════╪═══════════╪═══════╪══════════╡
-│ (Intercept)                     ┆ 0.154931  ┆ 0.043572  ┆ 0.068689  ┆ 0.241173  ┆ 3.555717  ┆ 124.0 ┆ 0.000535 │
-│ detection_accuracy_c            ┆ -0.071962 ┆ 0.087145  ┆ -0.244445 ┆ 0.100522  ┆ -0.825773 ┆ 124.0 ┆ 0.410519 │
-│ control_level_c                 ┆ 0.044182  ┆ 0.087145  ┆ -0.128302 ┆ 0.216665  ┆ 0.506991  ┆ 124.0 ┆ 0.613061 │
-│ detection_accuracy_c:control_l… ┆ -0.019541 ┆ 0.174289  ┆ -0.364509 ┆ 0.325426  ┆ -0.112121 ┆ 124.0 ┆ 0.910909 │
-└─────────────────────────────────┴───────────┴───────────┴───────────┴───────────┴───────────┴───────┴──────────┘
+┌─────────────────────────────────┬───────────┬───────────┬───────────┬───────────┬───────────┬────────────┬──────────┐
+│ term                            ┆ estimate  ┆ std_error ┆ conf_low  ┆ conf_high ┆ t_stat    ┆ df         ┆ p_value  │
+│ ---                             ┆ ---       ┆ ---       ┆ ---       ┆ ---       ┆ ---       ┆ ---        ┆ ---      │
+│ str                             ┆ f64       ┆ f64       ┆ f64       ┆ f64       ┆ f64       ┆ f64        ┆ f64      │
+╞═════════════════════════════════╪═══════════╪═══════════╪═══════════╪═══════════╪═══════════╪════════════╪══════════╡
+│ (Intercept)                     ┆ 0.114227  ┆ 0.146766  ┆ -0.339436 ┆ 0.567891  ┆ 0.778297  ┆ 3.164115   ┆ 0.490436 │
+│ detection_accuracy_c            ┆ -0.073487 ┆ 0.081002  ┆ -0.233249 ┆ 0.086275  ┆ -0.907228 ┆ 192.992755 ┆ 0.365417 │
+│ control_level_c                 ┆ 0.063275  ┆ 0.079652  ┆ -0.093829 ┆ 0.220378  ┆ 0.794386  ┆ 192.486801 ┆ 0.427949 │
+│ detection_accuracy_c:control_l… ┆ -0.343829 ┆ 0.157903  ┆ -0.655275 ┆ -0.032384 ┆ -2.177467 ┆ 192.216268 ┆ 0.030664 │
+└─────────────────────────────────┴───────────┴───────────┴───────────┴───────────┴───────────┴────────────┴──────────┘
 
 **Random Effects Variance Components (ranef_var):**
 shape: (2, 5)
@@ -182,24 +184,25 @@ shape: (2, 5)
 │ ---         ┆ ---             ┆ ---      ┆ ---      ┆ ---       │
 │ str         ┆ str             ┆ f64      ┆ f64      ┆ f64       │
 ╞═════════════╪═════════════════╪══════════╪══════════╪═══════════╡
-│ participant ┆ sd__(Intercept) ┆ 0.0      ┆ null     ┆ null      │
-│ Residual    ┆ sd__Observation ┆ 0.370402 ┆ null     ┆ null      │
+│ participant ┆ sd__(Intercept) ┆ 0.281563 ┆ null     ┆ null      │
+│ Residual    ┆ sd__Observation ┆ 0.364925 ┆ null     ┆ null      │
 └─────────────┴─────────────────┴──────────┴──────────┴───────────┘
 
 **Random Effects by Participant (ranef):**
-shape: (3, 2)
+shape: (4, 2)
 ┌───────┬─────────────┐
 │ level ┆ (Intercept) │
 │ ---   ┆ ---         │
 │ str   ┆ f64         │
 ╞═══════╪═════════════╡
-│ 2     ┆ 0.0         │
-│ 3     ┆ 0.0         │
-│ 4     ┆ 0.0         │
+│ 4     ┆ 0.092789    │
+│ 5     ┆ -0.189612   │
+│ 6     ┆ 0.346962    │
+│ 7     ┆ -0.250139   │
 └───────┴─────────────┘
 
 > **APA 7 Reporting Example:**
-> Detection accuracy was associated with reaction times for correctly remembered controlled items, $\beta$ = -0.07, *SE* = 0.09, *t* = -0.83, *p* = 0.411.
+> Detection accuracy was associated with reaction times for correctly remembered controlled items, $\beta$ = -0.07, *SE* = 0.08, *t* = -0.91, *p* = 0.365.
 
 ### 3) Can we predict this effect from participants' subjective agency ratings?
 
@@ -208,16 +211,16 @@ shape: (3, 2)
 **3F) Binomial GLMM on OLD CONTROLLED ITEMS ONLY: said_old ~ C(agency_rating_ztransformed) * C(control_level) + (1 | participant)**
 **Fixed Effects:**
 shape: (4, 8)
-┌──────────────────────────┬───────────┬───────────┬───────────┬───────────┬───────────┬─────┬───────────┐
-│ term                     ┆ estimate  ┆ std_error ┆ conf_low  ┆ conf_high ┆ z_stat    ┆ df  ┆ p_value   │
-│ ---                      ┆ ---       ┆ ---       ┆ ---       ┆ ---       ┆ ---       ┆ --- ┆ ---       │
-│ str                      ┆ f64       ┆ f64       ┆ f64       ┆ f64       ┆ f64       ┆ f64 ┆ f64       │
-╞══════════════════════════╪═══════════╪═══════════╪═══════════╪═══════════╪═══════════╪═════╪═══════════╡
-│ (Intercept)              ┆ -0.581639 ┆ 0.116926  ┆ -0.81081  ┆ -0.352467 ┆ -4.974403 ┆ inf ┆ 6.5449e-7 │
-│ agency_z                 ┆ -0.155754 ┆ 0.116677  ┆ -0.384438 ┆ 0.072929  ┆ -1.334914 ┆ inf ┆ 0.181904  │
-│ control_level_c          ┆ 0.39084   ┆ 0.23304   ┆ -0.065911 ┆ 0.84759   ┆ 1.677134  ┆ inf ┆ 0.093516  │
-│ agency_z:control_level_c ┆ 0.147425  ┆ 0.233435  ┆ -0.3101   ┆ 0.604949  ┆ 0.631544  ┆ inf ┆ 0.527685  │
-└──────────────────────────┴───────────┴───────────┴───────────┴───────────┴───────────┴─────┴───────────┘
+┌──────────────────────────┬───────────┬───────────┬───────────┬───────────┬──────────┬─────┬──────────┐
+│ term                     ┆ estimate  ┆ std_error ┆ conf_low  ┆ conf_high ┆ z_stat   ┆ df  ┆ p_value  │
+│ ---                      ┆ ---       ┆ ---       ┆ ---       ┆ ---       ┆ ---      ┆ --- ┆ ---      │
+│ str                      ┆ f64       ┆ f64       ┆ f64       ┆ f64       ┆ f64      ┆ f64 ┆ f64      │
+╞══════════════════════════╪═══════════╪═══════════╪═══════════╪═══════════╪══════════╪═════╪══════════╡
+│ (Intercept)              ┆ -0.427443 ┆ 0.534906  ┆ -1.475839 ┆ 0.620953  ┆ -0.7991  ┆ inf ┆ 0.424232 │
+│ agency_z                 ┆ 0.035197  ┆ 0.137602  ┆ -0.234498 ┆ 0.304893  ┆ 0.25579  ┆ inf ┆ 0.798113 │
+│ control_level_c          ┆ 0.435348  ┆ 0.271959  ┆ -0.097682 ┆ 0.968379  ┆ 1.600784 ┆ inf ┆ 0.109425 │
+│ agency_z:control_level_c ┆ 0.27737   ┆ 0.286101  ┆ -0.283378 ┆ 0.838119  ┆ 0.969483 ┆ inf ┆ 0.332304 │
+└──────────────────────────┴───────────┴───────────┴───────────┴───────────┴──────────┴─────┴──────────┘
 
 **Random Effects Variance Components (ranef_var):**
 shape: (1, 5)
@@ -226,37 +229,38 @@ shape: (1, 5)
 │ ---         ┆ ---             ┆ ---      ┆ ---      ┆ ---       │
 │ str         ┆ str             ┆ f64      ┆ f64      ┆ f64       │
 ╞═════════════╪═════════════════╪══════════╪══════════╪═══════════╡
-│ participant ┆ sd__(Intercept) ┆ 0.015661 ┆ null     ┆ null      │
+│ participant ┆ sd__(Intercept) ┆ 1.034465 ┆ null     ┆ null      │
 └─────────────┴─────────────────┴──────────┴──────────┴───────────┘
 
 **Random Effects by Participant (ranef):**
-shape: (3, 2)
+shape: (4, 2)
 ┌───────┬─────────────┐
 │ level ┆ (Intercept) │
 │ ---   ┆ ---         │
 │ str   ┆ f64         │
 ╞═══════╪═════════════╡
-│ 2     ┆ -0.00055    │
-│ 3     ┆ 0.001751    │
-│ 4     ┆ -0.001201   │
+│ 4     ┆ -0.369267   │
+│ 5     ┆ 1.623177    │
+│ 6     ┆ -1.113813   │
+│ 7     ┆ -0.127168   │
 └───────┴─────────────┘
 
 > **APA 7 Reporting Example:**
-> Within-participant variation in subjective agency ratings significantly predicted recognition hits for controlled items, $\beta$ = -0.16, *SE* = 0.12, *z* = -1.33, *p* = 0.182.
+> Within-participant variation in subjective agency ratings significantly predicted recognition hits for controlled items, $\beta$ = 0.04, *SE* = 0.14, *z* = 0.26, *p* = 0.798.
 
 **3G) Gaussian LMM on OLD CONTROLLED ITEMS ONLY: log_mem_rt ~ C(agency_rating_ztransformed) * C(control_level) + (1 | participant)**
 **Fixed Effects:**
 shape: (4, 8)
-┌──────────────────────────┬───────────┬───────────┬───────────┬───────────┬───────────┬───────┬──────────┐
-│ term                     ┆ estimate  ┆ std_error ┆ conf_low  ┆ conf_high ┆ t_stat    ┆ df    ┆ p_value  │
-│ ---                      ┆ ---       ┆ ---       ┆ ---       ┆ ---       ┆ ---       ┆ ---   ┆ ---      │
-│ str                      ┆ f64       ┆ f64       ┆ f64       ┆ f64       ┆ f64       ┆ f64   ┆ f64      │
-╞══════════════════════════╪═══════════╪═══════════╪═══════════╪═══════════╪═══════════╪═══════╪══════════╡
-│ (Intercept)              ┆ 0.122866  ┆ 0.034434  ┆ 0.054711  ┆ 0.191021  ┆ 3.568126  ┆ 124.0 ┆ 0.000512 │
-│ agency_z                 ┆ -0.039579 ┆ 0.032271  ┆ -0.103452 ┆ 0.024294  ┆ -1.226472 ┆ 124.0 ┆ 0.222345 │
-│ control_level_c          ┆ 0.063576  ┆ 0.068869  ┆ -0.072734 ┆ 0.199887  ┆ 0.923155  ┆ 124.0 ┆ 0.357719 │
-│ agency_z:control_level_c ┆ 0.032129  ┆ 0.064542  ┆ -0.095617 ┆ 0.159875  ┆ 0.497803  ┆ 124.0 ┆ 0.619505 │
-└──────────────────────────┴───────────┴───────────┴───────────┴───────────┴───────────┴───────┴──────────┘
+┌──────────────────────────┬───────────┬───────────┬───────────┬───────────┬───────────┬────────────┬──────────┐
+│ term                     ┆ estimate  ┆ std_error ┆ conf_low  ┆ conf_high ┆ t_stat    ┆ df         ┆ p_value  │
+│ ---                      ┆ ---       ┆ ---       ┆ ---       ┆ ---       ┆ ---       ┆ ---        ┆ ---      │
+│ str                      ┆ f64       ┆ f64       ┆ f64       ┆ f64       ┆ f64       ┆ f64        ┆ f64      │
+╞══════════════════════════╪═══════════╪═══════════╪═══════════╪═══════════╪═══════════╪════════════╪══════════╡
+│ (Intercept)              ┆ 0.086922  ┆ 0.145314  ┆ -0.368994 ┆ 0.542838  ┆ 0.598168  ┆ 3.077729   ┆ 0.590892 │
+│ agency_z                 ┆ -0.01002  ┆ 0.036682  ┆ -0.082372 ┆ 0.062331  ┆ -0.273169 ┆ 192.315431 ┆ 0.785016 │
+│ control_level_c          ┆ -0.042893 ┆ 0.069099  ┆ -0.179183 ┆ 0.093398  ┆ -0.620738 ┆ 192.13009  ┆ 0.535508 │
+│ agency_z:control_level_c ┆ -0.053039 ┆ 0.075025  ┆ -0.201013 ┆ 0.094935  ┆ -0.70695  ┆ 192.942861 ┆ 0.48045  │
+└──────────────────────────┴───────────┴───────────┴───────────┴───────────┴───────────┴────────────┴──────────┘
 
 **Random Effects Variance Components (ranef_var):**
 shape: (2, 5)
@@ -265,22 +269,23 @@ shape: (2, 5)
 │ ---         ┆ ---             ┆ ---      ┆ ---      ┆ ---       │
 │ str         ┆ str             ┆ f64      ┆ f64      ┆ f64       │
 ╞═════════════╪═════════════════╪══════════╪══════════╪═══════════╡
-│ participant ┆ sd__(Intercept) ┆ 0.0      ┆ null     ┆ null      │
-│ Residual    ┆ sd__Observation ┆ 0.369194 ┆ null     ┆ null      │
+│ participant ┆ sd__(Intercept) ┆ 0.280615 ┆ null     ┆ null      │
+│ Residual    ┆ sd__Observation ┆ 0.36856  ┆ null     ┆ null      │
 └─────────────┴─────────────────┴──────────┴──────────┴───────────┘
 
 **Random Effects by Participant (ranef):**
-shape: (3, 2)
+shape: (4, 2)
 ┌───────┬─────────────┐
 │ level ┆ (Intercept) │
 │ ---   ┆ ---         │
 │ str   ┆ f64         │
 ╞═══════╪═════════════╡
-│ 2     ┆ 0.0         │
-│ 3     ┆ 0.0         │
-│ 4     ┆ 0.0         │
+│ 4     ┆ 0.103679    │
+│ 5     ┆ -0.199036   │
+│ 6     ┆ 0.339926    │
+│ 7     ┆ -0.244568   │
 └───────┴─────────────┘
 
 > **APA 7 Reporting Example:**
-> Subjective agency ratings predicted recognition reaction times for controlled items, $\beta$ = -0.04, *SE* = 0.03, *t* = -1.23, *p* = 0.222.
+> Subjective agency ratings predicted recognition reaction times for controlled items, $\beta$ = -0.01, *SE* = 0.04, *t* = -0.27, *p* = 0.785.
 
