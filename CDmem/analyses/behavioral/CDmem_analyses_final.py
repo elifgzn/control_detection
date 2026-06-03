@@ -16,7 +16,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
-from scipy.stats import norm
+from scipy.stats import norm, ttest_ind
 from pymer4.models import glmer, lmer
 
 # Setup for rpy2/pymer4 on Windows
@@ -140,6 +140,78 @@ for px, px_df in calib_data.groupby("participant"):
         excluded_calib.append(px)
 data = data[~data["participant"].isin(excluded_calib)].copy()
 
+# Criterion 5: Manipulation failure (NOT preregistered — post-hoc data-driven)
+# Ensures the control manipulation worked at the individual participant level.
+#
+# Logic:
+#   (A) Always exclude if both accuracy diff (high-low) <= 0 AND agency diff <= 0.
+#       This is a clear manipulation failure regardless of calibration quality.
+#   (B) If both QUEST+ staircases converged (final alpha_sd < 0.20) and diffs are in the
+#       expected direction -> pass without further tests.
+#   (C) If only one staircase converged -> run per-participant independent t-tests on
+#       trial-level accuracy and agency (high vs low). Exclude if EITHER test is
+#       non-significant (p >= .05) or in the wrong direction (OR logic).
+test_data_manip = data[data["phase"] == "test"].copy()
+test_data_manip["detection_accuracy"] = pd.to_numeric(test_data_manip["detection_accuracy"], errors="coerce")
+test_data_manip["agency_rating"] = pd.to_numeric(test_data_manip["agency_rating"], errors="coerce")
+
+# Determine per-participant convergence count (how many staircases converged)
+calib_for_manip = data[data["phase"] == "calibration"].copy()
+calib_for_manip['quest_alpha_sd'] = pd.to_numeric(calib_for_manip['quest_alpha_sd'], errors='coerce')
+px_convergence = {}
+for px, px_df in calib_for_manip.groupby("participant"):
+    n_converged = 0
+    for _, target_df in px_df.groupby("calib_target"):
+        if not target_df.empty:
+            final_sd = target_df["quest_alpha_sd"].iloc[-1]
+            if not pd.isna(final_sd) and final_sd < 0.20:
+                n_converged += 1
+    px_convergence[px] = n_converged
+
+excluded_manip = []
+manip_details = []
+for px in sorted(data["participant"].unique()):
+    px_test = test_data_manip[test_data_manip["participant"] == px]
+    high = px_test[px_test["control_condition"] == "high"]
+    low = px_test[px_test["control_condition"] == "low"]
+
+    if len(high) == 0 or len(low) == 0:
+        continue
+
+    acc_diff = high["detection_accuracy"].mean() - low["detection_accuracy"].mean()
+    ag_diff = high["agency_rating"].mean() - low["agency_rating"].mean()
+    both_converged = px_convergence.get(px, 0) == 2
+
+    # (A) Both diffs in wrong direction -> always exclude
+    if acc_diff <= 0 and ag_diff <= 0:
+        excluded_manip.append(px)
+        manip_details.append(f"  P{int(px)}: EXCLUDED -- both diffs wrong direction "
+                             f"(acc={acc_diff:+.3f}, agency={ag_diff:+.3f})")
+        continue
+
+    # (B) Both staircases converged and diffs OK -> pass
+    if both_converged:
+        manip_details.append(f"  P{int(px)}: PASS -- both staircases converged "
+                             f"(acc={acc_diff:+.3f}, agency={ag_diff:+.3f})")
+        continue
+
+    # (C) Partial convergence -> OR t-tests
+    t_acc, p_acc = ttest_ind(high["detection_accuracy"].dropna(), low["detection_accuracy"].dropna())
+    t_ag, p_ag = ttest_ind(high["agency_rating"].dropna(), low["agency_rating"].dropna())
+
+    acc_ok = acc_diff > 0 and p_acc < 0.05
+    ag_ok = ag_diff > 0 and p_ag < 0.05
+
+    if not acc_ok or not ag_ok:
+        excluded_manip.append(px)
+        manip_details.append(f"  P{int(px)}: EXCLUDED -- partial convergence, OR t-test failed "
+                             f"(acc={acc_diff:+.3f} p={p_acc:.4f}, agency={ag_diff:+.3f} p={p_ag:.4f})")
+    else:
+        manip_details.append(f"  P{int(px)}: PASS -- partial convergence, both t-tests sig "
+                             f"(acc={acc_diff:+.3f} p={p_acc:.4f}, agency={ag_diff:+.3f} p={p_ag:.4f})")
+
+data = data[~data["participant"].isin(excluded_manip)].copy()
+
 # Synchronize participants between both datasets
 valid_px = set(data["participant"].unique()) & set(recog_data["participant"].unique())
 data = data[data["participant"].isin(valid_px)].copy()
@@ -156,6 +228,9 @@ recog_data = recog_data[~rt_mask].drop(columns=["mean_rt", "std_rt", "rt_thresh"
 write_report(f"- Excluded for timeout: {excluded_timeout}")
 write_report(f"- Excluded for accuracy outliers: {excluded_acc}")
 write_report(f"- Excluded for calibration failure: {excluded_calib}")
+write_report(f"- Excluded for manipulation failure (not preregistered): {excluded_manip}")
+for detail in manip_details:
+    write_report(detail)
 write_report(f"- Total recognition trials excluded for RT outliers: {rt_mask.sum()}")
 write_report(f"- Final N participants: {len(valid_px)}\n")
 

@@ -17,10 +17,11 @@ flowchart TD
         B1["❶ Timeout ≥ 50%<br/>in either control condition"]
         B2["❷ Detection accuracy<br/>> 2.5 SD from group mean"]
         B3["❸ Calibration failure<br/>(neither staircase converged)"]
-        B4["❹ Memory floor/ceiling<br/>(commented out)"]
+        B3b["❹ Manipulation failure<br/>(not preregistered)"]
+        B4["❺ Memory floor/ceiling<br/>(commented out)"]
         B5["Sync participants<br/>across both datasets"]
         B6["RT outlier trimming<br/>(trial-level, mean + 3 SD)"]
-        B1 --> B2 --> B3 --> B4 --> B5 --> B6
+        B1 --> B2 --> B3 --> B3b --> B4 --> B5 --> B6
     end
 
     subgraph SANITY ["✅ 3. SANITY CHECKS"]
@@ -121,7 +122,27 @@ For each participant, the script computes their mean detection accuracy per cond
 #### ❸ Calibration Failure
 Before the main experiment, there is a calibration phase where the system uses a QUEST+ staircase to find the right difficulty level. Each participant has two staircases (one for the "high" target accuracy, one for "low"). If *neither* staircase converged (final posterior SD ≥ 0.20) → **excluded**.
 
-#### ❹ Memory Floor/Ceiling (commented out)
+#### ❹ Manipulation Failure
+
+> [!WARNING]
+> This criterion was **not explicitly preregistered**. It was added post-hoc after inspecting per-participant sanity check plots and discovering that some participants showed no behavioral separation between high and low control conditions despite passing all other exclusion criteria.
+
+This criterion checks whether the experimental manipulation actually worked at the individual participant level, using a **convergence-gated** approach:
+
+1. **Direction check (always applied):** If a participant's mean detection accuracy *and* mean agency rating are both equal to or lower in the "high" condition than the "low" condition (i.e., both diffs ≤ 0), they are **excluded**. This represents a clear manipulation failure regardless of calibration quality.
+
+2. **Both staircases converged (final α-SD < 0.20):** If both QUEST+ staircases converged and the diffs are in the expected direction (high > low), the participant **passes** without further testing. The rationale is that successful calibration means the difficulty levels were set correctly, and any remaining variability in accuracy/agency is within normal range.
+
+3. **Partial convergence (only one staircase converged):** Per-participant independent-samples *t*-tests are run on trial-level detection accuracy and agency ratings (high vs low). Using **OR logic**, the participant is **excluded** if *either* test is non-significant (*p* ≥ .05) or in the wrong direction. The rationale is that when calibration partially failed, we need stronger behavioral evidence that the manipulation still produced the intended separation.
+
+| Scenario | Action | Example |
+|---|---|---|
+| Both diffs ≤ 0 | Always exclude | P2: acc = −0.033, agency = −0.567 |
+| Both staircases converged, diffs > 0 | Pass (no t-tests) | P6: acc = +0.167, agency = +1.600 |
+| Partial convergence, both t-tests sig | Pass | P4: acc *p* = .0002, agency *p* < .0001 |
+| Partial convergence, either t-test n.s. | Exclude | P3: acc *p* = .156 (ceiling), agency *p* = .0001 |
+
+#### ❺ Memory Floor/Ceiling (commented out)
 This criterion is written in the code but **disabled** (commented out). It would exclude participants who:
 - Show no discrimination at all (*d'* < 0.10), or
 - Say "yes" to almost everything (> 95%) or almost nothing (< 5%)
