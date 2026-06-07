@@ -46,7 +46,7 @@ def write_report(text):
     with open(REPORT_FILE, "a", encoding="utf-8") as f:
         f.write(text + "\n")
 
-PARTICIPANT_FILTER = [4,5,6,7]
+PARTICIPANT_FILTER = [3,4,5,6,7,8,9,10,11]
 # [7]
 TIMEOUT_THRESHOLD = 0.50
 ACCURACY_SD_THRESHOLD = 2.5
@@ -107,6 +107,9 @@ if PARTICIPANT_FILTER and not recog_data.empty:
 # ============================================================================
 # 2. EXCLUSION CRITERIA
 # ============================================================================
+# Keep a copy of the full dataset BEFORE exclusions for sanity-check plots
+data_all = data.copy()
+
 # Criterion 1: Timeout Rate (>= 50% in any condition)
 test_data = data[data["phase"] == "test"].copy()
 test_data["is_timeout"] = test_data["is_timeout"].astype(str).str.strip().str.lower() == "true"
@@ -212,18 +215,27 @@ for px in sorted(data["participant"].unique()):
 
 data = data[~data["participant"].isin(excluded_manip)].copy()
 
+# Save pre-exclusion recog data for per-participant plots
+recog_data_all = recog_data.copy()
+
 # Synchronize participants between both datasets
 valid_px = set(data["participant"].unique()) & set(recog_data["participant"].unique())
 data = data[data["participant"].isin(valid_px)].copy()
 recog_data = recog_data[recog_data["participant"].isin(valid_px)].copy()
 
 # Recognition RT Outliers (Criterion 4)
-recog_data["mem_rt"] = pd.to_numeric(recog_data["mem_rt"], errors="coerce")
-px_rt = recog_data.groupby("participant")["mem_rt"].agg(mean_rt="mean", std_rt="std").reset_index()
-recog_data = recog_data.merge(px_rt, on="participant")
-recog_data["rt_thresh"] = recog_data["mean_rt"] + RT_SD_MULTIPLIER * recog_data["std_rt"]
-rt_mask = (recog_data["mem_rt"] > recog_data["rt_thresh"]) | recog_data["mem_rt"].isna()
-recog_data = recog_data[~rt_mask].drop(columns=["mean_rt", "std_rt", "rt_thresh"]).copy()
+def _apply_rt_outlier_removal(rdf, multiplier):
+    """Apply per-participant RT outlier removal and return cleaned DataFrame + count removed."""
+    rdf = rdf.copy()
+    rdf["mem_rt"] = pd.to_numeric(rdf["mem_rt"], errors="coerce")
+    px_rt = rdf.groupby("participant")["mem_rt"].agg(mean_rt="mean", std_rt="std").reset_index()
+    rdf = rdf.merge(px_rt, on="participant")
+    rdf["rt_thresh"] = rdf["mean_rt"] + multiplier * rdf["std_rt"]
+    mask = (rdf["mem_rt"] > rdf["rt_thresh"]) | rdf["mem_rt"].isna()
+    return rdf[~mask].drop(columns=["mean_rt", "std_rt", "rt_thresh"]).copy(), mask.sum()
+
+recog_data, rt_removed = _apply_rt_outlier_removal(recog_data, RT_SD_MULTIPLIER)
+recog_data_all, _ = _apply_rt_outlier_removal(recog_data_all, RT_SD_MULTIPLIER)
 
 write_report(f"- Excluded for timeout: {excluded_timeout}")
 write_report(f"- Excluded for accuracy outliers: {excluded_acc}")
@@ -231,7 +243,7 @@ write_report(f"- Excluded for calibration failure: {excluded_calib}")
 write_report(f"- Excluded for manipulation failure (not preregistered): {excluded_manip}")
 for detail in manip_details:
     write_report(detail)
-write_report(f"- Total recognition trials excluded for RT outliers: {rt_mask.sum()}")
+write_report(f"- Total recognition trials excluded for RT outliers: {rt_removed}")
 write_report(f"- Final N participants: {len(valid_px)}\n")
 
 
@@ -287,114 +299,89 @@ if len(det_pivot) >= 2:
     write_report(f"- Result: *t*({res_det['dof'].iloc[0]}) = {res_det['T'].iloc[0]:.3f}, *p* = {res_det['p-val'].iloc[0]:.4f}, Cohen's *d* = {res_det['cohen-d'].iloc[0]:.3f}\n")
 
 
-# Derive recognition variables
-recog_data['said_old'] = recog_data['mem_response'].str.lower() == 'yes'
-recog_data['said_old_int'] = recog_data['said_old'].astype(int)
-
-targets = recog_data[recog_data['mem_ground_truth'] == 'seen'].copy()
-foils = recog_data[recog_data['mem_ground_truth'] == 'unseen'].copy()
-
-# Add encoding-phase variables (agency_rating, detection_accuracy) to targets
-# by linking recognition items back to encoding trials via image filenames.
-#
-# The recognition CSV already contains 'item_type' (controlled/uncontrolled)
-# and 'trial_level' (high/low), so we only need to merge agency_rating and
-# detection_accuracy from the encoding (test) phase.
-#
-# Columns in main test data:
-#   true_controlled  = 'img_A' or 'img_B'  (which image the participant controlled)
-#   img_A_name       = filename of image A
-#   img_B_name       = filename of image B
-#   control_condition = 'high' or 'low'
-#   agency_rating    = subjective agency (1-7)
-#   detection_accuracy = 1 (correct) or 0 (incorrect) control detection
-#
-# We build a lookup table that maps each (participant, mem_filename) pair
-# to its agency_rating and detection_accuracy from the encoding phase.
-
-img_lookups = []
-for _, row in test_data.iterrows():
-    px = row['participant']
-    target_img = row['true_controlled']
-    _agency = row.get('agency_rating', np.nan)
-    _det_acc = row.get('detection_accuracy', np.nan)
-
-    # The controlled image filename
-    ctrl_filename = row['img_A_name'] if target_img == 'img_A' else row['img_B_name']
-    # The uncontrolled image filename
-    unctrl_filename = row['img_B_name'] if target_img == 'img_A' else row['img_A_name']
-
-    img_lookups.append({
-        'participant': px,
-        'mem_filename': ctrl_filename,
-        'agency_rating': _agency,
-        'detection_accuracy': _det_acc
-    })
-    img_lookups.append({
-        'participant': px,
-        'mem_filename': unctrl_filename,
-        'agency_rating': _agency,
-        'detection_accuracy': _det_acc
-    })
-img_lookup = pd.DataFrame(img_lookups).dropna(subset=['mem_filename']).drop_duplicates(subset=['participant', 'mem_filename'])
-
-# The recognition data already has 'item_type' and 'trial_level' columns.
-# We check whether they exist and, if so, only merge agency_rating + detection_accuracy.
-has_tracking = 'item_type' in targets.columns and 'trial_level' in targets.columns
-
-if has_tracking:
-    # Drop agency_rating/detection_accuracy from targets if they already exist (avoid _x/_y suffixes)
-    for col in ['agency_rating', 'detection_accuracy']:
-        if col in targets.columns:
-            targets = targets.drop(columns=[col])
-    targets = targets.merge(
-        img_lookup[['participant', 'mem_filename', 'agency_rating', 'detection_accuracy']],
-        on=['participant', 'mem_filename'], how='left'
-    )
-    # Rename 'trial_level' to 'control_level' for consistency with the rest of the script
-    targets = targets.rename(columns={'trial_level': 'control_level'})
-else:
-    # Fallback: recognition data lacks condition columns, do a full merge
-    # (This path is for older data files that did not log item_type/trial_level)
-    img_lookup_full = img_lookup.copy()
-    # Re-build with control_level and item_type included
-    img_lookups_full = []
-    for _, row in test_data.iterrows():
-        px = row['participant']
-        cond = row['control_condition']
-        target_img = row['true_controlled']
-        _agency = row.get('agency_rating', np.nan)
-        _det_acc = row.get('detection_accuracy', np.nan)
-        ctrl_fn = row['img_A_name'] if target_img == 'img_A' else row['img_B_name']
-        unctrl_fn = row['img_B_name'] if target_img == 'img_A' else row['img_A_name']
-        img_lookups_full.append({'participant': px, 'mem_filename': ctrl_fn, 'control_level': cond, 'item_type': 'controlled', 'agency_rating': _agency, 'detection_accuracy': _det_acc})
-        img_lookups_full.append({'participant': px, 'mem_filename': unctrl_fn, 'control_level': cond, 'item_type': 'uncontrolled', 'agency_rating': _agency, 'detection_accuracy': _det_acc})
-    img_lookup_full = pd.DataFrame(img_lookups_full).dropna(subset=['mem_filename']).drop_duplicates(subset=['participant', 'mem_filename'])
-    targets = targets.merge(img_lookup_full, on=['participant', 'mem_filename'], how='inner')
-
-# Contrast coding for predictors
-targets['control_level_c'] = targets['control_level'].map({'high': 0.5, 'low': -0.5})
-targets['item_type_c'] = targets['item_type'].map({'controlled': 0.5, 'uncontrolled': -0.5})
-targets['detection_accuracy_c'] = targets['detection_accuracy'].map({1: 0.5, 0: -0.5})
-
-# Z-score agency rating within participant
-targets['agency_rating'] = pd.to_numeric(targets['agency_rating'], errors='coerce')
-targets['agency_z'] = targets.groupby('participant')['agency_rating'].transform(lambda x: (x - x.mean()) / (x.std() + 1e-9))
-
-# Log reaction time
-targets['log_mem_rt'] = np.log(targets['mem_rt'])
-
-
-# Create d_prime summary (for ANOVA and Plots)
-fa_rates = foils.groupby('participant')['said_old'].mean().reset_index().rename(columns={'said_old': 'FA_rate'})
+# ---------------------------------------------------------------------------
+# Helper: derive recognition variables from a (main_data, recog_data) pair.
+# This is called once with post-exclusion data (for statistics & pooled plots)
+# and once with pre-exclusion data (for per-participant plots).
+# ---------------------------------------------------------------------------
 def calc_dprime(hr, far, clip_val=0.01):
     hr_clipped = np.clip(hr, clip_val, 1.0 - clip_val)
     far_clipped = np.clip(far, clip_val, 1.0 - clip_val)
     return norm.ppf(hr_clipped) - norm.ppf(far_clipped)
 
-mem_results_2x2 = targets.groupby(['participant', 'control_level', 'item_type'])['said_old'].mean().reset_index().rename(columns={'said_old': 'Hit_rate'})
-mem_results_2x2 = mem_results_2x2.merge(fa_rates, on='participant')
-mem_results_2x2['d_prime'] = mem_results_2x2.apply(lambda r: calc_dprime(r['Hit_rate'], r['FA_rate']), axis=1)
+def derive_recognition_vars(main_df, recog_df):
+    """Derive targets, foils, mem_results_2x2, and fa_rates from raw data."""
+    td = main_df[main_df['phase'] == 'test'].copy()
+    td['detection_accuracy'] = pd.to_numeric(td['detection_accuracy'], errors='coerce')
+    td['agency_rating'] = pd.to_numeric(td['agency_rating'], errors='coerce')
+
+    rd = recog_df.copy()
+    rd['said_old'] = rd['mem_response'].str.lower() == 'yes'
+    rd['said_old_int'] = rd['said_old'].astype(int)
+
+    tgt = rd[rd['mem_ground_truth'] == 'seen'].copy()
+    fl  = rd[rd['mem_ground_truth'] == 'unseen'].copy()
+
+    # Build lookup: (participant, mem_filename) -> agency_rating, detection_accuracy
+    img_lk = []
+    for _, row in td.iterrows():
+        px = row['participant']
+        ctrl_img = row['true_controlled']
+        ag = row.get('agency_rating', np.nan)
+        da = row.get('detection_accuracy', np.nan)
+        ctrl_fn   = row['img_A_name'] if ctrl_img == 'img_A' else row['img_B_name']
+        unctrl_fn = row['img_B_name'] if ctrl_img == 'img_A' else row['img_A_name']
+        img_lk.append({'participant': px, 'mem_filename': ctrl_fn,   'agency_rating': ag, 'detection_accuracy': da})
+        img_lk.append({'participant': px, 'mem_filename': unctrl_fn, 'agency_rating': ag, 'detection_accuracy': da})
+
+    if img_lk:
+        img_lookup = pd.DataFrame(img_lk).dropna(subset=['mem_filename']).drop_duplicates(subset=['participant', 'mem_filename'])
+    else:
+        img_lookup = pd.DataFrame(columns=['participant', 'mem_filename', 'agency_rating', 'detection_accuracy'])
+
+    has_tracking = 'item_type' in tgt.columns and 'trial_level' in tgt.columns
+    if has_tracking:
+        for col in ['agency_rating', 'detection_accuracy']:
+            if col in tgt.columns:
+                tgt = tgt.drop(columns=[col])
+        tgt = tgt.merge(
+            img_lookup[['participant', 'mem_filename', 'agency_rating', 'detection_accuracy']],
+            on=['participant', 'mem_filename'], how='left'
+        )
+        tgt = tgt.rename(columns={'trial_level': 'control_level'})
+    else:
+        img_lk_full = []
+        for _, row in td.iterrows():
+            px = row['participant']; cond = row['control_condition']; ctrl_img = row['true_controlled']
+            ag = row.get('agency_rating', np.nan); da = row.get('detection_accuracy', np.nan)
+            ctrl_fn   = row['img_A_name'] if ctrl_img == 'img_A' else row['img_B_name']
+            unctrl_fn = row['img_B_name'] if ctrl_img == 'img_A' else row['img_A_name']
+            img_lk_full.append({'participant': px, 'mem_filename': ctrl_fn,   'control_level': cond, 'item_type': 'controlled',   'agency_rating': ag, 'detection_accuracy': da})
+            img_lk_full.append({'participant': px, 'mem_filename': unctrl_fn, 'control_level': cond, 'item_type': 'uncontrolled', 'agency_rating': ag, 'detection_accuracy': da})
+        img_lookup_full = pd.DataFrame(img_lk_full).dropna(subset=['mem_filename']).drop_duplicates(subset=['participant', 'mem_filename'])
+        tgt = tgt.merge(img_lookup_full, on=['participant', 'mem_filename'], how='inner')
+
+    # Contrast coding
+    tgt['control_level_c'] = tgt['control_level'].map({'high': 0.5, 'low': -0.5})
+    tgt['item_type_c'] = tgt['item_type'].map({'controlled': 0.5, 'uncontrolled': -0.5})
+    tgt['detection_accuracy_c'] = tgt['detection_accuracy'].map({1: 0.5, 0: -0.5})
+    tgt['agency_rating'] = pd.to_numeric(tgt['agency_rating'], errors='coerce')
+    tgt['agency_z'] = tgt.groupby('participant')['agency_rating'].transform(lambda x: (x - x.mean()) / (x.std() + 1e-9))
+    tgt['log_mem_rt'] = np.log(tgt['mem_rt'])
+
+    # d' summary
+    fa_r = fl.groupby('participant')['said_old'].mean().reset_index().rename(columns={'said_old': 'FA_rate'})
+    m2x2 = tgt.groupby(['participant', 'control_level', 'item_type'])['said_old'].mean().reset_index().rename(columns={'said_old': 'Hit_rate'})
+    m2x2 = m2x2.merge(fa_r, on='participant')
+    m2x2['d_prime'] = m2x2.apply(lambda r: calc_dprime(r['Hit_rate'], r['FA_rate']), axis=1)
+
+    return tgt, fl, fa_r, m2x2
+
+# --- Derive for post-exclusion data (used in statistics & pooled plots) ---
+targets, foils, fa_rates, mem_results_2x2 = derive_recognition_vars(data, recog_data)
+
+# --- Derive for ALL participants (used in per-participant plots) ---
+targets_all, foils_all, fa_rates_all, mem_results_2x2_all = derive_recognition_vars(data_all, recog_data_all)
 
 
 # Helper function to fit and report mixed models
@@ -562,6 +549,9 @@ if coefs_3g is not None:
 # ============================================================================
 # 5. PLOTTING
 # ============================================================================
+# Determine which participants were excluded (by any criterion) for plot labelling
+excluded_all_px = set(data_all['participant'].unique()) - set(data['participant'].unique())
+
 print("\nGenerating Plots in CDmem_final_output/...")
 
 # Prepare breakdown data for plotting (Row 2 of plots)
@@ -570,12 +560,19 @@ def get_subtype(row):
         return 'ctrl_detected' if row['detection_accuracy'] == 1 else 'ctrl_not_detected'
     return 'uncontrolled'
 
-targets_bd = targets.dropna(subset=['item_type', 'detection_accuracy']).copy()
-targets_bd['item_subtype'] = targets_bd.apply(get_subtype, axis=1)
+def _make_bd_results(tgt_df, fa_df):
+    bd = tgt_df.dropna(subset=['item_type', 'detection_accuracy']).copy()
+    bd['item_subtype'] = bd.apply(get_subtype, axis=1)
+    res = bd.groupby(['participant', 'control_level', 'item_subtype'])['said_old'].mean().reset_index().rename(columns={'said_old': 'Hit_rate'})
+    res = res.merge(fa_df, on='participant', how='left')
+    res['d_prime'] = res.apply(lambda r: calc_dprime(r['Hit_rate'], r['FA_rate']), axis=1)
+    return res
 
-bd_results = targets_bd.groupby(['participant', 'control_level', 'item_subtype'])['said_old'].mean().reset_index().rename(columns={'said_old': 'Hit_rate'})
-bd_results = bd_results.merge(fa_rates, on='participant', how='left')
-bd_results['d_prime'] = bd_results.apply(lambda r: calc_dprime(r['Hit_rate'], r['FA_rate']), axis=1)
+bd_results = _make_bd_results(targets, fa_rates)
+bd_results_all = _make_bd_results(targets_all, fa_rates_all)
+
+# Controlled items for agency-recognition plot (all participants)
+df_controlled_all = targets_all[targets_all['item_type'] == 'controlled'].copy()
 
 def draw_bd_bars(ax, bd, y_col):
     colors = {'ctrl_detected': '#2e8b57', 'ctrl_not_detected': '#90ee90', 'uncontrolled': '#fc8d62'}
@@ -646,13 +643,14 @@ def make_3row_plot(df_2x2, df_bd, y_col, y_label, title, out_path):
 make_3row_plot(mem_results_2x2, bd_results, 'd_prime', "d'", "Sensitivity (d')", POOLED_DIR / "dprime_pooled.png")
 make_3row_plot(mem_results_2x2, bd_results, 'Hit_rate', "Hit Rate", "Hit Rate", POOLED_DIR / "hitrate_pooled.png")
 
-# Generate Per-Participant Plots
-for px in mem_results_2x2['participant'].unique():
-    px_2x2 = mem_results_2x2[mem_results_2x2['participant'] == px]
-    px_bd = bd_results[bd_results['participant'] == px]
+# Generate Per-Participant Plots (ALL participants, including excluded)
+for px in sorted(data_all['participant'].unique()):
+    px_2x2 = mem_results_2x2_all[mem_results_2x2_all['participant'] == px]
+    px_bd = bd_results_all[bd_results_all['participant'] == px]
+    excl_flag = " -- [!] CONSIDER EXCLUSION" if px in excluded_all_px else ""
     if len(px_bd) > 0:
-        make_3row_plot(px_2x2, px_bd, 'd_prime', "d'", f"Sensitivity (d') - Participant {px}", PER_PARTICIPANT_DIR / f"dprime_p{px}.png")
-        make_3row_plot(px_2x2, px_bd, 'Hit_rate', "Hit Rate", f"Hit Rate - Participant {px}", PER_PARTICIPANT_DIR / f"hitrate_p{px}.png")
+        make_3row_plot(px_2x2, px_bd, 'd_prime', "d'", f"Sensitivity (d') - Participant {px}{excl_flag}", PER_PARTICIPANT_DIR / f"dprime_p{px}.png")
+        make_3row_plot(px_2x2, px_bd, 'Hit_rate', "Hit Rate", f"Hit Rate - Participant {px}{excl_flag}", PER_PARTICIPANT_DIR / f"hitrate_p{px}.png")
 
 
 # ============================================================================
@@ -895,19 +893,22 @@ def make_agency_recognition_plot(plot_data, out_path, title_suffix=""):
     print(f"Saved agency vs memory plot: {out_path}")
 
 # --- Generate Pooled Sanity Check & Calibration Plots ---
+# Pooled plots use post-exclusion data (only valid participants)
 make_sanity_plot(data, POOLED_DIR / "sanity_check_pooled.png", title_suffix="  (All Participants)")
 
 if 'df_controlled' in locals():
     make_agency_recognition_plot(df_controlled, POOLED_DIR / "agency_recognition_pooled.png", title_suffix="  (All Participants)")
 
 # --- Generate Per-Participant Sanity Check & Calibration Plots ---
-for px in sorted(data['participant'].unique()):
-    px_data = data[data['participant'] == px]
-    make_sanity_plot(px_data, PER_PARTICIPANT_DIR / f"sanity_check_p{px}.png", title_suffix=f"  (p. {px})")
+# Iterate over ALL participants (pre-exclusion) so every participant gets a plot.
+# Excluded participants are flagged in the title for visual inspection.
+for px in sorted(data_all['participant'].unique()):
+    px_data = data_all[data_all['participant'] == px]
+    excl_flag = " -- [!] CONSIDER EXCLUSION" if px in excluded_all_px else ""
+    make_sanity_plot(px_data, PER_PARTICIPANT_DIR / f"sanity_check_p{px}.png", title_suffix=f"  (p. {px}){excl_flag}")
 
-    
-    if 'df_controlled' in locals():
-        px_controlled = df_controlled[df_controlled['participant'] == px]
-        make_agency_recognition_plot(px_controlled, PER_PARTICIPANT_DIR / f"agency_recognition_p{px}.png", title_suffix=f"  (p. {px})")
+    px_controlled = df_controlled_all[df_controlled_all['participant'] == px]
+    if not px_controlled.empty:
+        make_agency_recognition_plot(px_controlled, PER_PARTICIPANT_DIR / f"agency_recognition_p{px}.png", title_suffix=f"  (p. {px}){excl_flag}")
 
 print("Analysis Complete! Report and plots generated in:", OUTPUT_DIR)
