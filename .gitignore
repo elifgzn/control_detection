@@ -31,3 +31,6 @@ experiment_documents/
 # Data folders — large EEG/behavioral files, keep local only
 main_data/
 pilot_data/
+
+# Analysis output — generated files, exclude from git
+CDmem_final_output/
