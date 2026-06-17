@@ -11,7 +11,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) do you want to process?
 # ──────────────────────────────────────────────────────────────
-plist = [31]
+plist = []
 
 # Paths
 eeg_path = r"C:\Users\elifg\Desktop\PHD\MNE_learn\eeg3_clean"

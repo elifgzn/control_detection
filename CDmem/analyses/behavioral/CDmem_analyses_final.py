@@ -27,7 +27,7 @@ if hasattr(sys.stdout, 'buffer'):
 # ============================================================================
 # CONFIGURATION & OUTPUT DIRECTORIES
 # ============================================================================
-DATA_DIR = Path(r"H:\PHD\control_detection\pilot_data")
+DATA_DIR = Path(r"H:\PHD\control_detection\main_data\behavioral")
 SCRIPT_DIR = Path(__file__).parent
 OUTPUT_DIR = SCRIPT_DIR / "CDmem_final_output"
 POOLED_DIR = OUTPUT_DIR / "pooled"
@@ -46,7 +46,7 @@ def write_report(text):
     with open(REPORT_FILE, "a", encoding="utf-8") as f:
         f.write(text + "\n")
 
-PARTICIPANT_FILTER = [9,10,11,12,13,14,15,16,17]
+PARTICIPANT_FILTER = list(range(2,18))
 # [7]
 TIMEOUT_THRESHOLD = 0.50
 ACCURACY_SD_THRESHOLD = 2.5
@@ -192,26 +192,34 @@ for px in sorted(data["participant"].unique()):
                              f"(acc={acc_diff:+.3f}, agency={ag_diff:+.3f})")
         continue
 
-    # (B) Both staircases converged and diffs OK -> pass
+    # (B) Both staircases converged and diffs OK -> pass (no report line needed)
     if both_converged:
-        manip_details.append(f"  P{int(px)}: PASS -- both staircases converged "
-                             f"(acc={acc_diff:+.3f}, agency={ag_diff:+.3f})")
         continue
 
-    # (C) Partial convergence -> OR t-tests
+    # (C) Partial convergence -> independent-samples t-tests (high vs low)
     t_acc, p_acc = ttest_ind(high["detection_accuracy"].dropna(), low["detection_accuracy"].dropna())
     t_ag, p_ag = ttest_ind(high["agency_rating"].dropna(), low["agency_rating"].dropna())
+    df_acc = len(high["detection_accuracy"].dropna()) + len(low["detection_accuracy"].dropna()) - 2
+    df_ag = len(high["agency_rating"].dropna()) + len(low["agency_rating"].dropna()) - 2
 
     acc_ok = acc_diff > 0 and p_acc < 0.05
     ag_ok = ag_diff > 0 and p_ag < 0.05
 
     if not acc_ok or not ag_ok:
         excluded_manip.append(px)
-        manip_details.append(f"  P{int(px)}: EXCLUDED -- partial convergence, OR t-test failed "
-                             f"(acc={acc_diff:+.3f} p={p_acc:.4f}, agency={ag_diff:+.3f} p={p_ag:.4f})")
-    else:
-        manip_details.append(f"  P{int(px)}: PASS -- partial convergence, both t-tests sig "
-                             f"(acc={acc_diff:+.3f} p={p_acc:.4f}, agency={ag_diff:+.3f} p={p_ag:.4f})")
+        # Build per-variable diagnostic
+        failures = []
+        if not acc_ok:
+            if acc_diff <= 0:
+                failures.append(f"accuracy wrong direction (diff={acc_diff:+.3f})")
+            else:
+                failures.append(f"accuracy t-test n.s. (diff={acc_diff:+.3f}, t({df_acc})={t_acc:.3f}, p={p_acc:.4f})")
+        if not ag_ok:
+            if ag_diff <= 0:
+                failures.append(f"agency wrong direction (diff={ag_diff:+.3f})")
+            else:
+                failures.append(f"agency t-test n.s. (diff={ag_diff:+.3f}, t({df_ag})={t_ag:.3f}, p={p_ag:.4f})")
+        manip_details.append(f"  P{int(px)}: EXCLUDED -- partial convergence; {'; '.join(failures)}")
 
 data = data[~data["participant"].isin(excluded_manip)].copy()
 

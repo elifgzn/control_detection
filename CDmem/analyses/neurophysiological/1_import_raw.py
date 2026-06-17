@@ -10,7 +10,7 @@ from mne.preprocessing import ICA
 # Use a single-element list (e.g. [31]) to test one participant,
 # or list(range(5, 38)) to run all of them.
 # ──────────────────────────────────────────────────────────────
-plist = [10]  # <-- change this as needed
+plist = [17]  # <-- change this as needed
 
 # ──────────────────────────────────────────────────────────────
 # Bad channels per participant (Step 6 from FieldTrip workflow)
