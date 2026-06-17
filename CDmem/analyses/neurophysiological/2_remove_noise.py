@@ -15,7 +15,8 @@ from mne.preprocessing import read_ica
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) do you want to process?
 # ──────────────────────────────────────────────────────────────
-plist = [17]
+plist = [4,5,6,7,8,9,10,12,13,14,15,17]
+# plist = [5,9,13,15,17]
 
 # ──────────────────────────────────────────────────────────────
 # Component exclusions — fill these in AFTER inspecting the plots; during the second run of the script .
@@ -25,20 +26,23 @@ plist = [17]
 # participant; the script will then show the inspection plots.
 # ──────────────────────────────────────────────────────────────
 component_exclusions = {
-    2: [0, 1, 2],
-    3: [0, 1],
-    4: [0, 1],
-    5: [0, 1, 2, 3],  
-    6: [0, 1], 
-    7: [0,1],
-    8: [0,1,2],
-    9: [0,1],
-    10: [0,1,2],
-    12: [0,1],
-    13: [0,1],
-    14: [0,1,2,4],
-    15: [0,1,2],
-    17: [0,1,2]
+ 4: [0,1,2],
+ 5: [0,1,2,3,4],
+ 6: [0,1],
+ 7: [0,1,2],
+ 8: [0,1,2,3,5],
+ 9: [0,1,2],
+ 10: [0,1,2],
+ 12: [0,1,2],
+ 13: [0,1,2,5],
+ 14: [0,1,2,4],
+ 15: [0,1,2,3],
+ 17: [0,1]
+
+
+
+
+
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -46,13 +50,18 @@ component_exclusions = {
 # ──────────────────────────────────────────────────────────────
 bad_channels = {
     7: ['P2'],
-    8: ['F3']
+    8: ['F3'],
+    9: ['AF4'],
+    5: ['C6'],
+    13: ['FC5'],
+    15: ['P3'],
+    17: ['FT8']
 }
 
 
 # Paths
-input_path  = r"H:\PHD\control_detection\main_data\eeg\eeg2_ica"
-output_path = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean"   # separate folder for clean data
+input_path  = r"H:\PHD\control_detection\main_data\eeg\eeg2_ica_wen"
+output_path = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_wen"   # separate folder for clean data
 os.makedirs(output_path, exist_ok=True)   # create folder if it doesn't exist
 
 # ──────────────────────────────────────────────────────────────

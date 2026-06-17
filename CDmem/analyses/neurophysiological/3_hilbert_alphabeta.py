@@ -73,7 +73,7 @@ from mne.stats import permutation_cluster_1samp_test
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) to analyze?
 # ──────────────────────────────────────────────────────────────
-plist = [2]  # <-- change this as needed
+plist = [4,6,7,8,9,10,12,13,14,15,17]  # <-- change this as needed
 
 # ──────────────────────────────────────────────────────────────
 # Frequency band of interest
@@ -104,7 +104,7 @@ SEED           = 42     # for reproducibility
 eeg_path       = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_stimlocked"
 behavioral_path = r"H:\PHD\control_detection\main_data\behavioral"
 output_path    = r"H:\PHD\control_detection\main_data\eeg\eeg4_alphabeta"
-figures_path   = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures"
+figures_path   = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_alphabeta"
 
 os.makedirs(output_path, exist_ok=True)
 os.makedirs(figures_path, exist_ok=True)
@@ -391,8 +391,9 @@ for sub in plist:
     #   cfg.channel = {'P*','O*'};
     #   cfg.avgoverchan = 'yes';
     print("  Step 6: Selecting posterior channels (P*, O*)...")
-    # MNE's pick() supports glob patterns just like FieldTrip
-    epochs_post = epochs_filt.copy().pick(picks=['P*', 'O*'])
+    # Match channels starting with P or O
+    picks = [ch for ch in epochs_filt.ch_names if ch.startswith('P') or ch.startswith('O')]
+    epochs_post = epochs_filt.copy().pick(picks=picks)
     post_channels = epochs_post.ch_names
     print(f"    Selected {len(post_channels)} channels: {post_channels}")
 

@@ -11,11 +11,11 @@ sys.stdout.reconfigure(encoding='utf-8')
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) do you want to process?
 # ──────────────────────────────────────────────────────────────
-plist = []
+plist = [4,5,6,7,8,9,10,12,13,14,15,17]
 
 # Paths
-eeg_path = r"C:\Users\elifg\Desktop\PHD\MNE_learn\eeg3_clean"
-log_path = r"H:\PHD\control_detection\pilot_data"
+eeg_path = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean"
+log_path = r"H:\PHD\control_detection\main_data\behavioral"
 
 # Accumulates one summary dict per participant (FieldTrip: behavSummary array)
 # so we can do a cross-participant trial-count check after the loop.
@@ -24,7 +24,7 @@ all_summaries = []
 # Loop through selected participants
 for sub in plist:
     sub_id = f"{sub:04d}"
-    epo_file = os.path.join(eeg_path, f"MCRL_{sub_id}-epo-clean.fif")
+    epo_file = os.path.join(eeg_path, f"CDmem_{sub_id}-epo.fif")
     
     # Find behavioral log file
     import glob
@@ -99,16 +99,14 @@ for sub in plist:
     logdat = logdat[log_survived].copy()
     print(f"  Trials surviving preprocessing: {len(logdat)}")
 
-    # ── 3. Filter for relevant trials ───────────────────────
-    # Filter for trials with correct agency responses (Wen et al., 2017)
-    is_correct_agency = (logdat['detection_accuracy'] == 1)
-    logdat = logdat[is_correct_agency].copy()
-    
-    # Match EEG data accordingly
-    # In MNE, we can use the boolean mask directly if it matches the current number of epochs
-    epochs = epochs[is_correct_agency.values]
-    
-    print(f"  Trials after agency filtering: {len(logdat)} (Behavioral == EEG: {len(logdat) == len(epochs)})")
+    # # ── 3. Filter for relevant trials ───────────────────────
+    # # (Commented out: previously filtered for correct agency responses only,
+    # #  following Wen et al. 2017. Now we keep ALL trials for the main ERP
+    # #  analysis and handle detection accuracy as a separate factor below.)
+    # is_correct_agency = (logdat['detection_accuracy'] == 1)
+    # logdat = logdat[is_correct_agency].copy()
+    # epochs = epochs[is_correct_agency.values]
+    # print(f"  Trials after agency filtering: {len(logdat)} (Behavioral == EEG: {len(logdat) == len(epochs)})")
 
     # ── 4. Sanity Check: Match Triggers ────────────────────
     # Compare logdat.trigger_motion_start with epochs.events[:, 2]
@@ -156,7 +154,7 @@ for sub in plist:
 
     # Output folder — create it if it doesn't exist (FieldTrip assumes it exists;
     # we add os.makedirs to be safe, equivalent to a one-time mkdir in the shell)
-    erp_out_path = r"C:\Users\elifg\Desktop\PHD\MNE_learn\eeg4_ERPSummaries"
+    erp_out_path = r"H:\PHD\control_detection\main_data\eeg\eeg4_ERPSummaries"
     os.makedirs(erp_out_path, exist_ok=True)
 
     # We need a reset positional index on logdat so boolean masks align with
@@ -208,12 +206,12 @@ for sub in plist:
 
     # Save all 4 Evoked objects in a single FIF file (one file per participant)
     evoked_list = [ev for ev in eeg_dat.values() if ev is not None]
-    evoked_file = os.path.join(erp_out_path, f"MCRL_{sub_id}-erp-ave.fif")
+    evoked_file = os.path.join(erp_out_path, f"CDmem_{sub_id}-erp-ave.fif")
     mne.write_evokeds(evoked_file, evoked_list, overwrite=True, verbose=False)
     print(f"  ✓ Saved ERP file: {evoked_file}")
 
     # Save summary (trial counts per condition) as CSV alongside the ERP file
-    summary_file = os.path.join(erp_out_path, f"MCRL_{sub_id}-erp-summary.csv")
+    summary_file = os.path.join(erp_out_path, f"CDmem_{sub_id}-erp-summary.csv")
     pd.DataFrame([summary]).to_csv(summary_file, index=False)
     print(f"  ✓ Saved summary:  {summary_file}")
 
@@ -223,6 +221,51 @@ for sub in plist:
     # Append this participant's summary to the cross-participant list
     # FieldTrip: behavSummary = [behavSummary summary];
     all_summaries.append(summary)
+
+    # ── 8. Detection-split ERP analysis ───────────────────
+    # 4 conditions: control (high/low) × detection accuracy (detected/nondetected)
+    # Saved separately from the main 2-condition ERPs.
+    print(f"\n  --- Detection-split ERP analysis ---")
+
+    eeg_dat_det   = {}
+    cond_name_det = []
+    summary_det   = {'sub': sub}
+
+    for control in ['high', 'low']:
+        for detected in [1, 0]:
+            det_label = 'detected' if detected == 1 else 'nondetected'
+            label = f"{control}_control_{det_label}"
+            cond_name_det.append(label)
+
+            mask = ((logdat_reset['control_condition'] == control) &
+                    (logdat_reset['detection_accuracy'] == detected))
+            n_trials = mask.sum()
+            summary_det[f"num_{label}"] = int(n_trials)
+
+            if n_trials == 0:
+                print(f"  WARNING: no trials for condition {label} — skipping.")
+                eeg_dat_det[label] = None
+                continue
+
+            epochs_cond = epochs[mask.values]
+            evoked = epochs_cond.average()
+            evoked.comment = label
+            eeg_dat_det[label] = evoked
+
+            print(f"  [{label}]  {n_trials} trials  →  ERP computed")
+
+    # Save detection-split Evoked objects
+    evoked_list_det = [ev for ev in eeg_dat_det.values() if ev is not None]
+    evoked_file_det = os.path.join(erp_out_path, f"CDmem_{sub_id}-erp-detection-ave.fif")
+    mne.write_evokeds(evoked_file_det, evoked_list_det, overwrite=True, verbose=False)
+    print(f"  ✓ Saved detection ERP file: {evoked_file_det}")
+
+    summary_file_det = os.path.join(erp_out_path, f"CDmem_{sub_id}-erp-detection-summary.csv")
+    pd.DataFrame([summary_det]).to_csv(summary_file_det, index=False)
+    print(f"  ✓ Saved detection summary:  {summary_file_det}")
+
+    print(f"  Detection conditions: {cond_name_det}")
+    print(f"  Detection trial counts: { {k: summary_det[f'num_{k}'] for k in cond_name_det} }")
 
 print("\nAll selected participants processed.")
 
