@@ -14,7 +14,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) do you want to process?
 # ──────────────────────────────────────────────────────────────
-plist = [4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 17]
+plist = [4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18]
 
 # ──────────────────────────────────────────────────────────────
 # Paths
@@ -62,8 +62,10 @@ for p_idx, pnum in enumerate(plist):
 # ──────────────────────────────────────────────────────────────
 # Electrode and time window selection (matches 4_ERP_graphs.py)
 # ──────────────────────────────────────────────────────────────
-elec_include = ['FCz', 'Cz', 'CPz', 'Pz']
-time_include = [0.45, 0.65]
+# elec_include = ['FCz', 'Cz', 'CPz', 'Pz']  # (Wen et al., 2017)
+elec_include = ['Fz', 'FCz', 'FC1', 'FC2']  # (following Giersiepen et al., 2024, 2025)
+# time_include = [0.45, 0.65]  # P500 window (Wen et al., 2017)
+time_include = [0.0, 1.0]  # full post-stimulus epoch for exploratory cluster search
 
 # Get shared time axis from first loaded participant
 t_axis = None

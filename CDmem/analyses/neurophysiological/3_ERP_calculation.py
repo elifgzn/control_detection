@@ -11,7 +11,8 @@ sys.stdout.reconfigure(encoding='utf-8')
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) do you want to process?
 # ──────────────────────────────────────────────────────────────
-plist = [4,5,6,7,8,9,10,12,13,14,15,17]
+plist = [4,5,6,7,8,9,10,12,13,14,15,16,17,18]
+# plist = [18]
 
 # Paths
 eeg_path = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean"
@@ -99,14 +100,14 @@ for sub in plist:
     logdat = logdat[log_survived].copy()
     print(f"  Trials surviving preprocessing: {len(logdat)}")
 
-    # # ── 3. Filter for relevant trials ───────────────────────
-    # # (Commented out: previously filtered for correct agency responses only,
-    # #  following Wen et al. 2017. Now we keep ALL trials for the main ERP
-    # #  analysis and handle detection accuracy as a separate factor below.)
-    # is_correct_agency = (logdat['detection_accuracy'] == 1)
-    # logdat = logdat[is_correct_agency].copy()
-    # epochs = epochs[is_correct_agency.values]
-    # print(f"  Trials after agency filtering: {len(logdat)} (Behavioral == EEG: {len(logdat) == len(epochs)})")
+    # ── 3. Filter for relevant trials ───────────────────────
+    # (Commented out: previously filtered for correct agency responses only,
+    #  following Wen et al. 2017. Now we keep ALL trials for the main ERP
+    #  analysis and handle detection accuracy as a separate factor below.)
+    is_correct_agency = (logdat['detection_accuracy'] == 1)
+    logdat = logdat[is_correct_agency].copy()
+    epochs = epochs[is_correct_agency.values]
+    print(f"  Trials after agency filtering: {len(logdat)} (Behavioral == EEG: {len(logdat) == len(epochs)})")
 
     # ── 4. Sanity Check: Match Triggers ────────────────────
     # Compare logdat.trigger_motion_start with epochs.events[:, 2]

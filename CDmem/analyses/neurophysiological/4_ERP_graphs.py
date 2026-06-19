@@ -10,7 +10,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) do you want to process?
 # ──────────────────────────────────────────────────────────────
-plist = [4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 17]
+plist = [4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18]
 
 # ──────────────────────────────────────────────────────────────
 # Paths
@@ -27,7 +27,8 @@ os.makedirs(save_to, exist_ok=True)
 # Electrode and time window selection for P500 (Wen et al., 2017)
 # ──────────────────────────────────────────────────────────────
 
-electrodes_select = ['FCz', 'Cz', 'CPz', 'Pz']
+# electrodes_select = ['FCz', 'Cz', 'CPz', 'Pz']  # (Wen et al., 2017)
+electrodes_select = ['Fz', 'FCz', 'FC1', 'FC2']  # (following Giersiepen et al., 2024, 2025)
 
 # Time window for P500 analysis and topoplots (Wen et al., 2017)
 time_select = [0.45, 0.65]

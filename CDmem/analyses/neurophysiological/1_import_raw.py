@@ -12,7 +12,7 @@ from mne.preprocessing import ICA
 # ──────────────────────────────────────────────────────────────
 # plist = [4,5,6,7,8,9,10,12,13,14,15,17]  # <-- change this as needed
 # plist = [5,9,13,15,17]
-plist = [5]
+plist = [18]
 
 # ──────────────────────────────────────────────────────────────
 # Bad channels per participant (Step 6 from FieldTrip workflow)
@@ -26,14 +26,15 @@ bad_channels = {
     5: ['C6'],
     13: ['FC5'],
     15: ['P3'],
-    17: ['FT8']
+    17: ['FT8'],
+    # 18: ['FC4', 'FC5', 'FC6']
     
    
 }
 
 # Input and output folders
 input_path = r"H:\PHD\control_detection\main_data\eeg\eeg1_raweeg"
-output_path = r"H:\PHD\control_detection\main_data\eeg\eeg2_ica_wen"
+output_path = r"H:\PHD\control_detection\main_data\eeg\eeg2_ica"
 
 # Create output folder if it doesn't exist
 os.makedirs(output_path, exist_ok=True)
@@ -79,18 +80,18 @@ for sub in plist:
         # The P500 is a "late, slow" brain wave. High-pass filters at 1.0 Hz or higher are known to 
         # severely attenuate and distort late slow waves. 
         # If the P500 looks small/non-existent, consider using the commented out 0.1 Hz filter instead.
-        raw.filter(
-            l_freq=0.1, 
-            h_freq=40, 
-            method='iir', 
-            iir_params=dict(order=4, ftype='butter')
-        )
         # raw.filter(
-        #     l_freq=1.,
-        #     h_freq=40.,
-        #     method='iir',
+        #     l_freq=0.1, 
+        #     h_freq=40, 
+        #     method='iir', 
         #     iir_params=dict(order=4, ftype='butter')
         # )
+        raw.filter(
+            l_freq=1.,
+            h_freq=40.,
+            method='iir',
+            iir_params=dict(order=4, ftype='butter')
+        )
         
         # Re-reference to average of all electrodes
        
