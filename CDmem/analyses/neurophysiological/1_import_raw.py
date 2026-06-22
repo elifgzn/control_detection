@@ -12,7 +12,7 @@ from mne.preprocessing import ICA
 # ──────────────────────────────────────────────────────────────
 # plist = [4,5,6,7,8,9,10,12,13,14,15,17]  # <-- change this as needed
 # plist = [5,9,13,15,17]
-plist = [18]
+plist = [20]
 
 # ──────────────────────────────────────────────────────────────
 # Bad channels per participant (Step 6 from FieldTrip workflow)
@@ -27,7 +27,9 @@ bad_channels = {
     13: ['FC5'],
     15: ['P3'],
     17: ['FT8'],
-    # 18: ['FC4', 'FC5', 'FC6']
+    18: ['AF8', 'Fp2'],
+    19: ['P3', 'TP10', 'T8', 'CP6', 'T7'],
+    20: ['P3', 'T8']
     
    
 }

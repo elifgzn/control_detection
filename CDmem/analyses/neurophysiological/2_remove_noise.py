@@ -16,7 +16,7 @@ from mne.preprocessing import read_ica
 # Which participant(s) do you want to process?
 # ──────────────────────────────────────────────────────────────
 # plist = [4,5,6,7,8,9,10,12,13,14,15,17]
-plist = [16]
+plist = [20]
 
 # ──────────────────────────────────────────────────────────────
 # Component exclusions — fill these in AFTER inspecting the plots; during the second run of the script .
@@ -39,7 +39,9 @@ component_exclusions = {
  15: [0,1,2,3],
  16: [0,1,2],
  17: [0,1],
- 18: [0,1,2,3,5,6,7]
+ 18: [0,1,2,3,4,5,6],
+ 19: [0,1,2,3,4],
+ 20: [0,1,2,6]
 
 
 
@@ -57,7 +59,14 @@ bad_channels = {
     5: ['C6'],
     13: ['FC5'],
     15: ['P3'],
-    17: ['FT8']
+    17: ['FT8'],
+    18: ['AF8', 'Fp2'],
+
+    19: ['P3', 'TP10', 'T8', 'CP6', 'T7'],
+    20: ['P3', 'T8']
+    
+    
+    
 }
 
 

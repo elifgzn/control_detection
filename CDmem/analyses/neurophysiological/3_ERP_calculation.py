@@ -11,8 +11,8 @@ sys.stdout.reconfigure(encoding='utf-8')
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) do you want to process?
 # ──────────────────────────────────────────────────────────────
-plist = [4,5,6,7,8,9,10,12,13,14,15,16,17,18]
-# plist = [18]
+# plist = [4,5,6,7,8,9,10,12,13,14,15,16,17,18,19,20]
+plist = [18,19,20]
 
 # Paths
 eeg_path = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean"
