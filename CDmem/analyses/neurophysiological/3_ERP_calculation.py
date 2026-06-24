@@ -105,7 +105,7 @@ for sub in plist:
     # # ── 3. Filter for relevant trials ───────────────────────
     # # (Commented out: previously filtered for correct agency responses only,
     # #  following Wen et al. 2017. Now we keep ALL trials for the main ERP
-    # #  analysis and handle detection accuracy as a separate factor below.)
+    # #  analysis (and maybe handle detection accuracy as a separate factor below.)
     # is_correct_agency = (logdat['detection_accuracy'] == 1)
     # logdat = logdat[is_correct_agency].copy()
     # epochs = epochs[is_correct_agency.values]
