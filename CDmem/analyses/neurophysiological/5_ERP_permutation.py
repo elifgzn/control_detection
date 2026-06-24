@@ -179,11 +179,12 @@ def run_permutation_test(X_condA, X_condB, label_A, label_B, title, save_filenam
         
     good_cluster_inds = np.where(cluster_p_values < alpha)[0]
     
-    print(f"\nRESULTS FOR: {title}")
-    print(f"----------------------------------------")
-    print(f"Total clusters found: {len(clusters)}")
-    print(f"Significant clusters (p < {alpha}): {len(good_cluster_inds)}")
-    print(f"----------------------------------------")
+    txt_out = []
+    txt_out.append(f"RESULTS FOR: {title}")
+    txt_out.append(f"----------------------------------------")
+    txt_out.append(f"Total clusters found: {len(clusters)}")
+    txt_out.append(f"Significant clusters (p < {alpha}): {len(good_cluster_inds)}")
+    txt_out.append(f"----------------------------------------\n")
     
     for i_clu in range(len(clusters)):
         clu_inds = _get_cluster_inds(clusters[i_clu])
@@ -204,17 +205,25 @@ def run_permutation_test(X_condA, X_condB, label_A, label_B, title, save_filenam
         std_diff = np.std(participant_mean_diff, ddof=1)
         cohens_d = mean_diff / std_diff if std_diff > 0 else np.nan
         
-        print(f"\n  Cluster {i_clu+1}: {direction} cluster from {c_tmin:.3f} s to {c_tmax:.3f} s  "
-              f"(p = {p_val:.4f}){sig_marker}")
-        print(f"    n_timepoints:    {len(clu_inds)}")
-        print(f"    Mean T-obs:      {avg_T:8.4f}")
-        print(f"    Sum T-obs:       {sum_T:8.4f}")
-        print(f"    Mean difference: {mean_diff:8.4f} µV")
-        print(f"    SD difference:   {std_diff:8.4f} µV")
-        print(f"    Cohen's d:       {cohens_d:8.4f}")
+        txt_out.append(f"  Cluster {i_clu+1}: {direction} cluster from {c_tmin:.3f} s to {c_tmax:.3f} s  (p = {p_val:.4f}){sig_marker}")
+        txt_out.append(f"    n_timepoints:    {len(clu_inds)}")
+        txt_out.append(f"    Mean T-obs:      {avg_T:8.4f}")
+        txt_out.append(f"    Sum T-obs:       {sum_T:8.4f}")
+        txt_out.append(f"    Mean difference: {mean_diff:8.4f} µV")
+        txt_out.append(f"    SD difference:   {std_diff:8.4f} µV")
+        txt_out.append(f"    Cohen's d:       {cohens_d:8.4f}\n")
     
     if len(clusters) == 0:
-        print(f"\n  No clusters found at all.")
+        txt_out.append(f"  No clusters found at all.\n")
+        
+    final_text = "\n".join(txt_out)
+    print(f"\n{final_text}")
+    
+    # Save the text to a file
+    txt_filename = save_filename.replace('.svg', '.txt')
+    txt_filepath = os.path.join(save_to, txt_filename)
+    with open(txt_filepath, 'w', encoding='utf-8') as f:
+        f.write(final_text)
             
     # Plotting Setup
     # Plotting Setup
