@@ -15,8 +15,10 @@ from mne.preprocessing import read_ica
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) do you want to process?
 # ──────────────────────────────────────────────────────────────
-# plist = [4,5,6,7,8,9,10,12,13,14,15,17]
-plist = [20]
+# plist = [4,6,7,8,9,10,12,13,14,15,16,17,18,19,20,21,22]
+# plist = [15,16,17,18,19,20,21,22]
+
+plist = [18]
 
 # ──────────────────────────────────────────────────────────────
 # Component exclusions — fill these in AFTER inspecting the plots; during the second run of the script .
@@ -26,22 +28,24 @@ plist = [20]
 # participant; the script will then show the inspection plots.
 # ──────────────────────────────────────────────────────────────
 component_exclusions = {
- 4: [0,1,2],
- 5: [0,1,2,3,4],
+ 4: [0,1],
+#  5: [0,1,2,3],
  6: [0,1],
- 7: [0,1,2],
- 8: [0,1,2,3,5],
+ 7: [0,1],
+ 8: [0,1,2],
  9: [0,1,2],
  10: [0,1,2],
- 12: [0,1,2],
- 13: [0,1,2,5],
- 14: [0,1,2,4],
- 15: [0,1,2,3],
+ 12: [0,1],
+ 13: [0,1],
+ 14: [0,1,2,5,18],
+ 15: [0,1,2],
  16: [0,1,2],
- 17: [0,1],
- 18: [0,1,2,3,4,5,6],
+ 17: [0,1,2],
+#  18: [0,1,2,3,4,5,6],
  19: [0,1,2,3,4],
- 20: [0,1,2,6]
+ 20: [0,1,2,6],
+ 21: [0,1,2,5],
+ 22: [0,1,2,4,15]
 
 
 
@@ -55,15 +59,16 @@ component_exclusions = {
 bad_channels = {
     7: ['P2'],
     8: ['F3'],
-    9: ['AF4'],
-    5: ['C6'],
+   
+    
     13: ['FC5'],
     15: ['P3'],
     17: ['FT8'],
     18: ['AF8', 'Fp2'],
 
     19: ['P3', 'TP10', 'T8', 'CP6', 'T7'],
-    20: ['P3', 'T8']
+    20: ['P3', 'T8'],
+    21: ['T8']
     
     
     
@@ -162,8 +167,8 @@ for sub in plist:
         # ── Baseline correction ────────────────────────────────
         # Subtracts the mean of the −200 ms to 0 ms window from every
         # epoch. Applied after ICA (before artifact rejection).
-        epochs_clean.apply_baseline(baseline=(-0.20, 0.0))
-        print(f"  ✓ Baseline correction applied (−200 ms to 0 ms)")
+        epochs_clean.apply_baseline(baseline=(-0.30, 0.0))
+        print(f"  ✓ Baseline correction applied (−300 ms to 0 ms)")
 
         # ── Artifact rejection (general noise) ────────────────
         n_before = len(epochs_clean)

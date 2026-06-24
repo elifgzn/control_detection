@@ -10,7 +10,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) do you want to process?
 # ──────────────────────────────────────────────────────────────
-plist = [4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 19, 20]
+plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 19, 20, 21,22]
 
 # ──────────────────────────────────────────────────────────────
 # Paths
@@ -250,7 +250,7 @@ ax1.axvline(0, color='black', linestyle='--', linewidth=0.5)
 
 ax1.set_xlabel('Time (s)', fontsize=font_size)
 ax1.set_ylabel('µV', fontsize=font_size)
-ax1.set_xticks(np.arange(0, times[-1] + 0.01, 0.1))   # FieldTrip: xticks(0:0.1:max(x))
+ax1.set_xticks(np.arange(-0.3, 1.2 + 0.01, 0.1))
 ax1.tick_params(labelsize=font_size, width=1)
 for spine in ax1.spines.values():
     spine.set_linewidth(1)
@@ -301,6 +301,7 @@ topo_cmap = plt.cm.RdBu_r
 # Color limits matching FieldTrip: cfg.zlim = [-1.5 1.5]   (µV)
 # Adjust these if needed for visibility.
 topo_vlim = (-1.5, 1.5)   # in µV — will be converted to Volts for MNE
+# topo_vlim = (-3, 3)   # in µV — will be converted to Volts for MNE
 
 # Figure size: FieldTrip PaperPosition [0 0 8 8] (cm) → 8×8 cm per topo
 topo_fig_in = 8 / 2.54   # ~3.15 inches
@@ -358,195 +359,195 @@ for cond_idx, cond_label in enumerate(cond_names):
 
 plt.show()   # display main-effect figures interactively; close windows to continue
 
-# ══════════════════════════════════════════════════════════════
-# DETECTION-SPLIT ERP PLOTS
-# ══════════════════════════════════════════════════════════════
-# 4 conditions: high_control × detected/nondetected,
-#               low_control  × detected/nondetected
-# Data comes from the separate '-erp-detection-ave.fif' files
-# saved by 3_ERP_calculation.py.
-# ══════════════════════════════════════════════════════════════
+# # ══════════════════════════════════════════════════════════════
+# # DETECTION-SPLIT ERP PLOTS
+# # ══════════════════════════════════════════════════════════════
+# # 4 conditions: high_control × detected/nondetected,
+# #               low_control  × detected/nondetected
+# # Data comes from the separate '-erp-detection-ave.fif' files
+# # saved by 3_ERP_calculation.py.
+# # ══════════════════════════════════════════════════════════════
 
-print("\n" + "="*60)
-print("  DETECTION-SPLIT ERP PLOTS")
-print("="*60)
+# print("\n" + "="*60)
+# print("  DETECTION-SPLIT ERP PLOTS")
+# print("="*60)
 
-det_cond_names = [
-    'high_control_detected',
-    'high_control_nondetected',
-    'low_control_detected',
-    'low_control_nondetected'
-]
-det_num_cond = len(det_cond_names)
+# det_cond_names = [
+#     'high_control_detected',
+#     'high_control_nondetected',
+#     'low_control_detected',
+#     'low_control_nondetected'
+# ]
+# det_num_cond = len(det_cond_names)
 
-# ── Load detection-split data ─────────────────────────────────
-alleeg_det       = {}
-all_summaries_det = []
+# # ── Load detection-split data ─────────────────────────────────
+# alleeg_det       = {}
+# all_summaries_det = []
 
-for p_idx, pnum in enumerate(plist):
-    sub_id   = f"{pnum:04d}"
-    erp_file = os.path.join(dfolder, f"CDmem_{sub_id}-erp-detection-ave.fif")
-    csv_file = os.path.join(dfolder, f"CDmem_{sub_id}-erp-detection-summary.csv")
+# for p_idx, pnum in enumerate(plist):
+#     sub_id   = f"{pnum:04d}"
+#     erp_file = os.path.join(dfolder, f"CDmem_{sub_id}-erp-detection-ave.fif")
+#     csv_file = os.path.join(dfolder, f"CDmem_{sub_id}-erp-detection-summary.csv")
 
-    if not os.path.exists(erp_file):
-        print(f"  Detection ERP not found, skipping participant {pnum}")
-        continue
+#     if not os.path.exists(erp_file):
+#         print(f"  Detection ERP not found, skipping participant {pnum}")
+#         continue
 
-    print(f"  Loading detection ERPs for participant {pnum}")
-    evoked_list = mne.read_evokeds(erp_file, verbose=False)
-    alleeg_det[p_idx] = {ev.comment: ev for ev in evoked_list}
+#     print(f"  Loading detection ERPs for participant {pnum}")
+#     evoked_list = mne.read_evokeds(erp_file, verbose=False)
+#     alleeg_det[p_idx] = {ev.comment: ev for ev in evoked_list}
 
-    if os.path.exists(csv_file):
-        all_summaries_det.append(pd.read_csv(csv_file).iloc[0].to_dict())
+#     if os.path.exists(csv_file):
+#         all_summaries_det.append(pd.read_csv(csv_file).iloc[0].to_dict())
 
-if all_summaries_det:
-    print("\n  Detection-split trial counts:")
-    print(pd.DataFrame(all_summaries_det).to_string(index=False))
+# if all_summaries_det:
+#     print("\n  Detection-split trial counts:")
+#     print(pd.DataFrame(all_summaries_det).to_string(index=False))
 
-# ── Grand averages ────────────────────────────────────────────
-print("\n  Computing detection-split grand averages...")
-GA_det = {}
+# # ── Grand averages ────────────────────────────────────────────
+# print("\n  Computing detection-split grand averages...")
+# GA_det = {}
 
-for cond_label in det_cond_names:
-    evokeds_this = [alleeg_det[p][cond_label]
-                    for p in alleeg_det if cond_label in alleeg_det[p]]
-    if evokeds_this:
-        GA_det[cond_label] = mne.grand_average(evokeds_this)
-        GA_det[cond_label].comment = cond_label
-        print(f"    GA [{cond_label}]: {len(evokeds_this)} participant(s)")
+# for cond_label in det_cond_names:
+#     evokeds_this = [alleeg_det[p][cond_label]
+#                     for p in alleeg_det if cond_label in alleeg_det[p]]
+#     if evokeds_this:
+#         GA_det[cond_label] = mne.grand_average(evokeds_this)
+#         GA_det[cond_label].comment = cond_label
+#         print(f"    GA [{cond_label}]: {len(evokeds_this)} participant(s)")
 
-# ── pMeanList for detection-split ─────────────────────────────
-det_loaded = list(alleeg_det.keys())
-det_n_part = len(det_loaded)
+# # ── pMeanList for detection-split ─────────────────────────────
+# det_loaded = list(alleeg_det.keys())
+# det_n_part = len(det_loaded)
 
-if det_n_part == 0:
-    print("  No detection-split data found — skipping plots.")
-else:
-    # Find a reference Evoked to get times and channel names robustly
-    ref_evoked = None
-    for p_key in det_loaded:
-        for c_lab in det_cond_names:
-            if c_lab in alleeg_det[p_key]:
-                ref_evoked = alleeg_det[p_key][c_lab]
-                break
-        if ref_evoked is not None:
-            break
+# if det_n_part == 0:
+#     print("  No detection-split data found — skipping plots.")
+# else:
+#     # Find a reference Evoked to get times and channel names robustly
+#     ref_evoked = None
+#     for p_key in det_loaded:
+#         for c_lab in det_cond_names:
+#             if c_lab in alleeg_det[p_key]:
+#                 ref_evoked = alleeg_det[p_key][c_lab]
+#                 break
+#         if ref_evoked is not None:
+#             break
 
-    if ref_evoked is None:
-        print("  No valid detection-split data found (all conditions missing) — skipping plots.")
-    else:
-        det_times = ref_evoked.times
-        det_avail = ref_evoked.ch_names
-        det_picked = [ch for ch in electrodes_select if ch in det_avail]
+#     if ref_evoked is None:
+#         print("  No valid detection-split data found (all conditions missing) — skipping plots.")
+#     else:
+#         det_times = ref_evoked.times
+#         det_avail = ref_evoked.ch_names
+#         det_picked = [ch for ch in electrodes_select if ch in det_avail]
 
-        det_pMean = np.full((det_n_part, det_num_cond, len(det_times)), np.nan)
+#         det_pMean = np.full((det_n_part, det_num_cond, len(det_times)), np.nan)
 
-        for p_i, p_key in enumerate(det_loaded):
-            for c_i, c_lab in enumerate(det_cond_names):
-                if c_lab in alleeg_det[p_key]:
-                    ev = alleeg_det[p_key][c_lab].copy().pick(det_picked)
-                    det_pMean[p_i, c_i, :] = np.mean(ev.data * 1e6, axis=0)
-                else:
-                    pnum = plist[p_key]
-                    print(f"    WARNING: Participant {pnum} missing condition {c_lab} (0 trials). Filled with NaN.")
+#         for p_i, p_key in enumerate(det_loaded):
+#             for c_i, c_lab in enumerate(det_cond_names):
+#                 if c_lab in alleeg_det[p_key]:
+#                     ev = alleeg_det[p_key][c_lab].copy().pick(det_picked)
+#                     det_pMean[p_i, c_i, :] = np.mean(ev.data * 1e6, axis=0)
+#                 else:
+#                     pnum = plist[p_key]
+#                     print(f"    WARNING: Participant {pnum} missing condition {c_lab} (0 trials). Filled with NaN.")
 
-        if det_n_part == 1:
-            det_grandMean = np.squeeze(np.nanmean(det_pMean, axis=1))
-            det_subjMean  = det_grandMean
-        else:
-            det_subjMean  = np.squeeze(np.nanmean(det_pMean, axis=1))   # [P, T]
-            det_grandMean = np.nanmean(det_subjMean, axis=0)             # [T]
+#         if det_n_part == 1:
+#             det_grandMean = np.squeeze(np.nanmean(det_pMean, axis=1))
+#             det_subjMean  = det_grandMean
+#         else:
+#             det_subjMean  = np.squeeze(np.nanmean(det_pMean, axis=1))   # [P, T]
+#             det_grandMean = np.nanmean(det_subjMean, axis=0)             # [T]
 
-        # ── Line plot: 4 conditions ───────────────────────────────
-        det_colors = [
-            [0.00, 0.44, 0.69],   # high_detected      — blue solid
-            [0.00, 0.44, 0.69],   # high_nondetected    — blue dashed
-            [0.80, 0.47, 0.65],   # low_detected        — magenta solid
-            [0.80, 0.47, 0.65],   # low_nondetected     — magenta dashed
-        ]
-        det_lstyles = ['-', '--', '-', '--']
-        det_labels  = [
-            'High Control – Detected',
-            'High Control – Non-detected',
-            'Low Control – Detected',
-            'Low Control – Non-detected',
-        ]
+#         # ── Line plot: 4 conditions ───────────────────────────────
+#         det_colors = [
+#             [0.00, 0.44, 0.69],   # high_detected      — blue solid
+#             [0.00, 0.44, 0.69],   # high_nondetected    — blue dashed
+#             [0.80, 0.47, 0.65],   # low_detected        — magenta solid
+#             [0.80, 0.47, 0.65],   # low_nondetected     — magenta dashed
+#         ]
+#         det_lstyles = ['-', '--', '-', '--']
+#         det_labels  = [
+#             'High Control – Detected',
+#             'High Control – Non-detected',
+#             'Low Control – Detected',
+#             'Low Control – Non-detected',
+#         ]
 
-        fig_det, ax_det = plt.subplots(figsize=(fig_w_in, fig_h_in))
-        H_det = []
+#         fig_det, ax_det = plt.subplots(figsize=(fig_w_in, fig_h_in))
+#         H_det = []
 
-        for c_i, c_lab in enumerate(det_cond_names):
-            y = det_pMean[:, c_i, :]
+#         for c_i, c_lab in enumerate(det_cond_names):
+#             y = det_pMean[:, c_i, :]
 
-            if det_n_part == 1:
-                mean_y = np.nanmean(y, axis=0) if not np.all(np.isnan(y)) else np.full_like(det_times, np.nan)
-                h, = ax_det.plot(det_times, mean_y,
-                                 linestyle=det_lstyles[c_i], color=det_colors[c_i])
-            else:
-                cm_factor = det_num_cond / (det_num_cond - 1)
-                yCorr = (y - det_subjMean + det_grandMean) * cm_factor
-                n_valid = np.sum(~np.isnan(y[:, 0]))
-                if n_valid > 0:
-                    errbar = np.nanstd(yCorr, axis=0, ddof=0) / np.sqrt(n_valid)
-                    mean_y = np.nanmean(y, axis=0)
-                else:
-                    errbar = np.zeros_like(det_times)
-                    mean_y = np.full_like(det_times, np.nan)
+#             if det_n_part == 1:
+#                 mean_y = np.nanmean(y, axis=0) if not np.all(np.isnan(y)) else np.full_like(det_times, np.nan)
+#                 h, = ax_det.plot(det_times, mean_y,
+#                                  linestyle=det_lstyles[c_i], color=det_colors[c_i])
+#             else:
+#                 cm_factor = det_num_cond / (det_num_cond - 1)
+#                 yCorr = (y - det_subjMean + det_grandMean) * cm_factor
+#                 n_valid = np.sum(~np.isnan(y[:, 0]))
+#                 if n_valid > 0:
+#                     errbar = np.nanstd(yCorr, axis=0, ddof=0) / np.sqrt(n_valid)
+#                     mean_y = np.nanmean(y, axis=0)
+#                 else:
+#                     errbar = np.zeros_like(det_times)
+#                     mean_y = np.full_like(det_times, np.nan)
 
-                h, = ax_det.plot(det_times, mean_y,
-                                 linestyle=det_lstyles[c_i], color=det_colors[c_i])
-            H_det.append(h)
+#                 h, = ax_det.plot(det_times, mean_y,
+#                                  linestyle=det_lstyles[c_i], color=det_colors[c_i])
+#             H_det.append(h)
 
-        ax_det.legend(H_det, det_labels, loc='best', fontsize=font_size - 4)
-        ax_det.set_ylim(ylimits)
-        ax_det.invert_yaxis()
-        ax_det.axhline(0, color='black', linestyle='--', linewidth=0.5)
-        ax_det.axvline(0, color='black', linestyle='--', linewidth=0.5)
-        ax_det.set_xlabel('Time (s)', fontsize=font_size)
-        ax_det.set_ylabel('µV', fontsize=font_size)
-        ax_det.set_xticks(np.arange(0, det_times[-1] + 0.01, 0.1))
-        ax_det.tick_params(labelsize=font_size, width=1)
-        for spine in ax_det.spines.values():
-            spine.set_linewidth(1)
-        fig_det.patch.set_facecolor('white')
-        ax_det.set_facecolor('white')
-        ax_det.set_title('')
-        plt.tight_layout()
+#         ax_det.legend(H_det, det_labels, loc='best', fontsize=font_size - 4)
+#         ax_det.set_ylim(ylimits)
+#         ax_det.invert_yaxis()
+#         ax_det.axhline(0, color='black', linestyle='--', linewidth=0.5)
+#         ax_det.axvline(0, color='black', linestyle='--', linewidth=0.5)
+#         ax_det.set_xlabel('Time (s)', fontsize=font_size)
+#         ax_det.set_ylabel('µV', fontsize=font_size)
+#         ax_det.set_xticks(np.arange(np.floor(det_times[0] * 10) / 10, det_times[-1] + 0.01, 0.1))
+#         ax_det.tick_params(labelsize=font_size, width=1)
+#         for spine in ax_det.spines.values():
+#             spine.set_linewidth(1)
+#         fig_det.patch.set_facecolor('white')
+#         ax_det.set_facecolor('white')
+#         ax_det.set_title('')
+#         plt.tight_layout()
 
-        det_line_save = os.path.join(save_to, '00_lineplot_detection_split.svg')
-        fig_det.savefig(det_line_save, format='svg', dpi=600,
-                        bbox_inches='tight', facecolor='white')
-        print(f"\n  Detection line plot saved: {det_line_save}")
+#         det_line_save = os.path.join(save_to, '00_lineplot_detection_split.svg')
+#         fig_det.savefig(det_line_save, format='svg', dpi=600,
+#                         bbox_inches='tight', facecolor='white')
+#         print(f"\n  Detection line plot saved: {det_line_save}")
 
-        # ── Topoplots: one per condition ──────────────────────────
-        det_topo_prefix = '00_topo_detection_split'
+#         # ── Topoplots: one per condition ──────────────────────────
+#         det_topo_prefix = '00_topo_detection_split'
 
-        for c_i, c_lab in enumerate(det_cond_names):
-            if c_lab not in GA_det:
-                print(f"    WARNING: Grand average for {c_lab} not available. Skipping topoplot.")
-                continue
-            ev_topo = GA_det[c_lab].copy()
-            ev_topo.crop(tmin=t_min, tmax=t_max)
-            topo_d = ev_topo.data.mean(axis=1)
+#         for c_i, c_lab in enumerate(det_cond_names):
+#             if c_lab not in GA_det:
+#                 print(f"    WARNING: Grand average for {c_lab} not available. Skipping topoplot.")
+#                 continue
+#             ev_topo = GA_det[c_lab].copy()
+#             ev_topo.crop(tmin=t_min, tmax=t_max)
+#             topo_d = ev_topo.data.mean(axis=1)
 
-            fig_t, ax_t = plt.subplots(figsize=(topo_fig_in, topo_fig_in))
-            h_mask = make_highlight_mask(ev_topo, det_picked)
-            mne.viz.plot_topomap(
-                topo_d, ev_topo.info,
-                axes=ax_t, cmap=topo_cmap,
-                vlim=(topo_vlim[0] * 1e-6, topo_vlim[1] * 1e-6),
-                mask=h_mask, mask_params=mask_params,
-                show=False, contours=6,
-            )
-            ax_t.set_title(det_labels[c_i], fontsize=12)
-            fig_t.patch.set_facecolor('white')
-            fig_t.tight_layout()
+#             fig_t, ax_t = plt.subplots(figsize=(topo_fig_in, topo_fig_in))
+#             h_mask = make_highlight_mask(ev_topo, det_picked)
+#             mne.viz.plot_topomap(
+#                 topo_d, ev_topo.info,
+#                 axes=ax_t, cmap=topo_cmap,
+#                 vlim=(topo_vlim[0] * 1e-6, topo_vlim[1] * 1e-6),
+#                 mask=h_mask, mask_params=mask_params,
+#                 show=False, contours=6,
+#             )
+#             ax_t.set_title(det_labels[c_i], fontsize=12)
+#             fig_t.patch.set_facecolor('white')
+#             fig_t.tight_layout()
 
-            for fmt in ['svg', 'tiff']:
-                tsave = os.path.join(save_to, f"{det_topo_prefix}_{c_lab}.{fmt}")
-                fig_t.savefig(tsave, format=fmt, dpi=600,
-                              bbox_inches='tight', facecolor='white')
-            print(f"  Topo saved: {det_topo_prefix}_{c_lab} (.svg + .tiff)")
+#             for fmt in ['svg', 'tiff']:
+#                 tsave = os.path.join(save_to, f"{det_topo_prefix}_{c_lab}.{fmt}")
+#                 fig_t.savefig(tsave, format=fmt, dpi=600,
+#                               bbox_inches='tight', facecolor='white')
+#             print(f"  Topo saved: {det_topo_prefix}_{c_lab} (.svg + .tiff)")
 
-        plt.show()   # display all figures interactively; close windows to end script
+#         plt.show()   # display all figures interactively; close windows to end script
 

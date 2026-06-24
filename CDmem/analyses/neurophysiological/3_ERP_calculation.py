@@ -11,8 +11,10 @@ sys.stdout.reconfigure(encoding='utf-8')
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) do you want to process?
 # ──────────────────────────────────────────────────────────────
-# plist = [4,5,6,7,8,9,10,12,13,14,15,16,17,18,19,20]
-plist = [18,19,20]
+
+plist = [4,6,7,8,9,10,12,13,14,15,16,17,18,19,20,21,22]
+
+# plist = [18]
 
 # Paths
 eeg_path = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean"
@@ -100,14 +102,14 @@ for sub in plist:
     logdat = logdat[log_survived].copy()
     print(f"  Trials surviving preprocessing: {len(logdat)}")
 
-    # ── 3. Filter for relevant trials ───────────────────────
-    # (Commented out: previously filtered for correct agency responses only,
-    #  following Wen et al. 2017. Now we keep ALL trials for the main ERP
-    #  analysis and handle detection accuracy as a separate factor below.)
-    is_correct_agency = (logdat['detection_accuracy'] == 1)
-    logdat = logdat[is_correct_agency].copy()
-    epochs = epochs[is_correct_agency.values]
-    print(f"  Trials after agency filtering: {len(logdat)} (Behavioral == EEG: {len(logdat) == len(epochs)})")
+    # # ── 3. Filter for relevant trials ───────────────────────
+    # # (Commented out: previously filtered for correct agency responses only,
+    # #  following Wen et al. 2017. Now we keep ALL trials for the main ERP
+    # #  analysis and handle detection accuracy as a separate factor below.)
+    # is_correct_agency = (logdat['detection_accuracy'] == 1)
+    # logdat = logdat[is_correct_agency].copy()
+    # epochs = epochs[is_correct_agency.values]
+    # print(f"  Trials after agency filtering: {len(logdat)} (Behavioral == EEG: {len(logdat) == len(epochs)})")
 
     # ── 4. Sanity Check: Match Triggers ────────────────────
     # Compare logdat.trigger_motion_start with epochs.events[:, 2]
@@ -136,8 +138,9 @@ for sub in plist:
 
     # ── 5. Narrow time window ──────────────────────────────
     # FieldTrip: cfg.toilim = [-0.20 1.00];
-    epochs.crop(tmin=-0.20, tmax=1.00)
-    print(f"  ✓ EEG cropped to window: [-0.20, 1.00] s")
+    # Following Wen et al., 2017
+    epochs.crop(tmin=-0.30, tmax=1.20)
+    print(f"  ✓ EEG cropped to window: [-0.30, 1.20] s")
 
     # ── 6. ERP analysis per condition ─────────────────────
     # FieldTrip equivalent (Step 15):
@@ -223,7 +226,7 @@ for sub in plist:
     # FieldTrip: behavSummary = [behavSummary summary];
     all_summaries.append(summary)
 
-    # ── 8. Detection-split ERP analysis ───────────────────
+    # ── 8. Detection-split ERP analysis NOT PREREGISTERED!!!!! ───────────────────
     # 4 conditions: control (high/low) × detection accuracy (detected/nondetected)
     # Saved separately from the main 2-condition ERPs.
     print(f"\n  --- Detection-split ERP analysis ---")

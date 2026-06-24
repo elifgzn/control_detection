@@ -46,7 +46,7 @@ def write_report(text):
     with open(REPORT_FILE, "a", encoding="utf-8") as f:
         f.write(text + "\n")
 
-PARTICIPANT_FILTER = list(range(2,20))
+PARTICIPANT_FILTER = [2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,19,20,21,22]
 # [7]
 TIMEOUT_THRESHOLD = 0.50
 ACCURACY_SD_THRESHOLD = 2.5
@@ -485,22 +485,12 @@ if len(overall_dprime) >= 2:
 # 1B) Binomial GLMM
 write_report("**1B) Binomial GLMM on OLD ITEMS ONLY: said_old ~ C(control_level) * C(item_type) + (1 | participant)**")
 df_1b = targets.dropna(subset=['said_old_int', 'control_level_c', 'item_type_c']).copy()
-coefs_1b = fit_print_lmm("said_old_int ~ control_level_c * item_type_c + (1 | participant)", df_1b, is_glmer=True)
-if coefs_1b is not None:
-    row_1b = coefs_1b.filter(pl.col('term') == 'control_level_c')
-    if len(row_1b) > 0:
-        est = row_1b['estimate'][0]; se = row_1b['std_error'][0]; z = row_1b['z_stat'][0]; p = row_1b['p_value'][0]
-        write_report(f"> **APA 7 Reporting Example:**\n> A binomial generalized linear mixed model on target trials revealed that Control Level predicted memory hits, $\\beta$ = {est:.2f}, *SE* = {se:.2f}, *z* = {z:.2f}, *p* = {p:.3f}.\n")
+fit_print_lmm("said_old_int ~ control_level_c * item_type_c + (1 | participant)", df_1b, is_glmer=True)
 
 # 1C) Gaussian LMM
 write_report("**1C) Gaussian LMM on OLD ITEMS ONLY: log_mem_rt ~ C(control_level) * C(item_type) + (1 | participant)**")
 df_1c = targets[targets['said_old_int'] == 1].dropna(subset=['log_mem_rt', 'control_level_c', 'item_type_c']).copy()
-coefs_1c = fit_print_lmm("log_mem_rt ~ control_level_c * item_type_c + (1 | participant)", df_1c, is_glmer=False)
-if coefs_1c is not None:
-    row_1c = coefs_1c.filter(pl.col('term') == 'control_level_c')
-    if len(row_1c) > 0:
-        est = row_1c['estimate'][0]; se = row_1c['std_error'][0]; t = row_1c['t_stat'][0]; p = row_1c['p_value'][0]
-        write_report(f"> **APA 7 Reporting Example:**\n> A linear mixed model on log-transformed reaction times for correct old items showed an effect of Control Level, $\\beta$ = {est:.2f}, *SE* = {se:.2f}, *t* = {t:.2f}, *p* = {p:.3f}.\n")
+fit_print_lmm("log_mem_rt ~ control_level_c * item_type_c + (1 | participant)", df_1c, is_glmer=False)
 
 
 # --- 2) DOES THIS MEMORY EFFECT DEPEND ON THE CONSCIOUS DETECTION OF CONTROL? ---
@@ -511,22 +501,12 @@ df_controlled = targets[targets['item_type'] == 'controlled'].copy()
 # 2D) Binomial GLMM
 write_report("**2D) Binomial GLMM on OLD CONTROLLED ITEMS ONLY: said_old ~ C(detection_accuracy) * C(control_level) + (1 | participant)**")
 df_2d = df_controlled.dropna(subset=['said_old_int', 'detection_accuracy_c', 'control_level_c']).copy()
-coefs_2d = fit_print_lmm("said_old_int ~ detection_accuracy_c * control_level_c + (1 | participant)", df_2d, is_glmer=True)
-if coefs_2d is not None:
-    row_2d = coefs_2d.filter(pl.col('term') == 'detection_accuracy_c')
-    if len(row_2d) > 0:
-        est = row_2d['estimate'][0]; se = row_2d['std_error'][0]; z = row_2d['z_stat'][0]; p = row_2d['p_value'][0]
-        write_report(f"> **APA 7 Reporting Example:**\n> Detection accuracy significantly predicted subsequent recognition of controlled items, $\\beta$ = {est:.2f}, *SE* = {se:.2f}, *z* = {z:.2f}, *p* = {p:.3f}.\n")
+fit_print_lmm("said_old_int ~ detection_accuracy_c * control_level_c + (1 | participant)", df_2d, is_glmer=True)
 
 # 2E) Gaussian LMM
 write_report("**2E) Gaussian LMM on OLD CONTROLLED ITEMS ONLY: log_mem_rt ~ C(detection_accuracy) * C(control_level) + (1 | participant)**")
 df_2e = df_controlled[df_controlled['said_old_int'] == 1].dropna(subset=['log_mem_rt', 'detection_accuracy_c', 'control_level_c']).copy()
-coefs_2e = fit_print_lmm("log_mem_rt ~ detection_accuracy_c * control_level_c + (1 | participant)", df_2e, is_glmer=False)
-if coefs_2e is not None:
-    row_2e = coefs_2e.filter(pl.col('term') == 'detection_accuracy_c')
-    if len(row_2e) > 0:
-        est = row_2e['estimate'][0]; se = row_2e['std_error'][0]; t = row_2e['t_stat'][0]; p = row_2e['p_value'][0]
-        write_report(f"> **APA 7 Reporting Example:**\n> Detection accuracy was associated with reaction times for correctly remembered controlled items, $\\beta$ = {est:.2f}, *SE* = {se:.2f}, *t* = {t:.2f}, *p* = {p:.3f}.\n")
+fit_print_lmm("log_mem_rt ~ detection_accuracy_c * control_level_c + (1 | participant)", df_2e, is_glmer=False)
 
 
 # --- 3) CAN WE PREDICT THIS EFFECT FROM PARTICIPANTS' SUBJECTIVE AGENCY RATINGS? ---
@@ -536,22 +516,12 @@ write_report("*Note: Restricted to `item_type == 'controlled'` as agency is prim
 # 3F) Binomial GLMM
 write_report("**3F) Binomial GLMM on OLD CONTROLLED ITEMS ONLY: said_old ~ C(agency_rating_ztransformed) * C(control_level) + (1 | participant)**")
 df_3f = df_controlled.dropna(subset=['said_old_int', 'agency_z', 'control_level_c']).copy()
-coefs_3f = fit_print_lmm("said_old_int ~ agency_z * control_level_c + (1 | participant)", df_3f, is_glmer=True)
-if coefs_3f is not None:
-    row_3f = coefs_3f.filter(pl.col('term') == 'agency_z')
-    if len(row_3f) > 0:
-        est = row_3f['estimate'][0]; se = row_3f['std_error'][0]; z = row_3f['z_stat'][0]; p = row_3f['p_value'][0]
-        write_report(f"> **APA 7 Reporting Example:**\n> Within-participant variation in subjective agency ratings significantly predicted recognition hits for controlled items, $\\beta$ = {est:.2f}, *SE* = {se:.2f}, *z* = {z:.2f}, *p* = {p:.3f}.\n")
+fit_print_lmm("said_old_int ~ agency_z * control_level_c + (1 | participant)", df_3f, is_glmer=True)
 
 # 3G) Gaussian LMM
 write_report("**3G) Gaussian LMM on OLD CONTROLLED ITEMS ONLY: log_mem_rt ~ C(agency_rating_ztransformed) * C(control_level) + (1 | participant)**")
 df_3g = df_controlled[df_controlled['said_old_int'] == 1].dropna(subset=['log_mem_rt', 'agency_z', 'control_level_c']).copy()
-coefs_3g = fit_print_lmm("log_mem_rt ~ agency_z * control_level_c + (1 | participant)", df_3g, is_glmer=False)
-if coefs_3g is not None:
-    row_3g = coefs_3g.filter(pl.col('term') == 'agency_z')
-    if len(row_3g) > 0:
-        est = row_3g['estimate'][0]; se = row_3g['std_error'][0]; t = row_3g['t_stat'][0]; p = row_3g['p_value'][0]
-        write_report(f"> **APA 7 Reporting Example:**\n> Subjective agency ratings predicted recognition reaction times for controlled items, $\\beta$ = {est:.2f}, *SE* = {se:.2f}, *t* = {t:.2f}, *p* = {p:.3f}.\n")
+fit_print_lmm("log_mem_rt ~ agency_z * control_level_c + (1 | participant)", df_3g, is_glmer=False)
 
 
 # ============================================================================
@@ -602,12 +572,34 @@ def draw_bd_bars(ax, bd, y_col):
     by_label = dict(zip(lbls, handles))
     ax.legend(by_label.values(), by_label.keys(), title='Item Subtype', frameon=True, loc='upper right')
 
-def make_3row_plot(df_2x2, df_bd, y_col, y_label, title, out_path):
+def make_3row_plot(df_2x2, df_bd, y_col, y_label, title, out_path, annotate_stats=False):
     plt.style.use('seaborn-v0_8-whitegrid')
     fig, axes = plt.subplots(3, 1, figsize=(10, 18))
     
     # Row 1: 2x2 Factorial
     sns.barplot(data=df_2x2, x='control_level', y=y_col, hue='item_type', errorbar='se', palette='Set2', capsize=0.1, ax=axes[0], order=['high', 'low'], hue_order=['controlled', 'uncontrolled'])
+    
+    if annotate_stats:
+        summary = df_2x2.groupby(['item_type', 'control_level'], observed=True)[y_col].agg(['mean', 'std', 'sem']).reindex([
+            ('controlled', 'high'), ('controlled', 'low'),
+            ('uncontrolled', 'high'), ('uncontrolled', 'low')
+        ])
+        means = summary['mean'].values
+        sds = summary['std'].values
+        ses = summary['sem'].values
+        
+        y_offset = 0.05 if y_col == 'Hit_rate' else 0.1
+        
+        for i in range(len(means)):
+            p = axes[0].patches[i]
+            x = p.get_x() + p.get_width() / 2
+            y = p.get_height()
+            
+            axes[0].text(x, y - (y_offset / 1.5), f"M={means[i]:.2f}", ha='center', va='top', fontsize=10, color='black', fontweight='bold')
+            
+            err_top = y + ses[i]
+            axes[0].text(x, err_top + (y_offset / 1.5), f"SD={sds[i]:.2f}", ha='center', va='bottom', fontsize=10, color='black', fontweight='bold')
+
     axes[0].set_title(f"{title}: 2x2 Factorial", fontsize=14, fontweight='bold')
     axes[0].set_xlabel('Control Task Level', fontsize=12)
     axes[0].set_ylabel(y_label, fontsize=12)
@@ -648,7 +640,7 @@ def make_3row_plot(df_2x2, df_bd, y_col, y_label, title, out_path):
     plt.close()
 
 # Generate Pooled Plots
-make_3row_plot(mem_results_2x2, bd_results, 'd_prime', "d'", "Sensitivity (d')", POOLED_DIR / "dprime_pooled.png")
+make_3row_plot(mem_results_2x2, bd_results, 'd_prime', "d'", "Sensitivity (d')", POOLED_DIR / "dprime_pooled.png", annotate_stats=True)
 make_3row_plot(mem_results_2x2, bd_results, 'Hit_rate', "Hit Rate", "Hit Rate", POOLED_DIR / "hitrate_pooled.png")
 
 # Generate Per-Participant Plots (ALL participants, including excluded)

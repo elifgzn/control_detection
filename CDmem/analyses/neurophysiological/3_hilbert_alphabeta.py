@@ -66,6 +66,22 @@ import matplotlib.pyplot as plt
 import mne
 from mne.stats import permutation_cluster_1samp_test
 
+def _get_cluster_inds(cluster):
+    """Return a 1-D integer array of time-point indices for *cluster*.
+    
+    MNE 1.11+ returns clusters as tuples of slices, e.g. (slice(32, 45),),
+    regardless of out_type. This helper handles all formats.
+    """
+    if isinstance(cluster, tuple):
+        obj = cluster[0]
+        if isinstance(obj, slice):
+            return np.arange(obj.start, obj.stop)
+        else:
+            return np.asarray(obj).ravel()
+    if isinstance(cluster, np.ndarray) and cluster.dtype == bool:
+        return np.flatnonzero(cluster)
+    return np.flatnonzero(np.asarray(cluster))
+
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════════════════
@@ -73,7 +89,7 @@ from mne.stats import permutation_cluster_1samp_test
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) to analyze?
 # ──────────────────────────────────────────────────────────────
-plist = [4,6,7,8,9,10,12,13,14,15,17]  # <-- change this as needed
+plist = [4,6,7,8,9,10,12,13,14,15,17,18,19,20,21,22]  # <-- change this as needed
 
 # ──────────────────────────────────────────────────────────────
 # Frequency band of interest
@@ -573,7 +589,6 @@ else:
             X_diff_clean,
             n_permutations=N_PERMUTATIONS,
             tail=TAIL,
-            out_type='mask',
             n_jobs=-1,      # use all CPU cores
             seed=SEED
         )
@@ -582,15 +597,22 @@ else:
         sig_clusters = [c for c, p in zip(clusters, cluster_p) if p < 0.05]
         n_sig = len(sig_clusters)
 
-        print(f"    {condition.upper()}: {len(clusters)} clusters found, "
+        print(f"\n    {condition.upper()}: {len(clusters)} clusters found, "
               f"{n_sig} significant (p < 0.05)")
+        print(f"    {'─'*56}")
         for i, (c, p) in enumerate(zip(clusters, cluster_p)):
-            if p < 0.05:
-                # Find the time range of this cluster
-                cluster_times = times[c[0]] if isinstance(c, tuple) else times[c]
-                t_start = cluster_times.min()
-                t_end = cluster_times.max()
-                print(f"      Cluster {i+1}: {t_start:.3f}–{t_end:.3f}s, p={p:.4f}")
+            # Extract time indices using the robust helper
+            cluster_t_indices = _get_cluster_inds(c)
+            t_start = times[cluster_t_indices[0]]
+            t_end = times[cluster_t_indices[-1]]
+            # Compute cluster-level statistics
+            mean_T = np.mean(T_obs[cluster_t_indices])
+            sum_T  = np.sum(T_obs[cluster_t_indices])
+            n_timepoints = len(cluster_t_indices)
+            sig_marker = " ★ SIGNIFICANT" if p < 0.05 else ""
+            print(f"      Cluster {i+1}: {t_start:.3f}–{t_end:.3f}s, "
+                  f"p={p:.4f}, mean T={mean_T:.3f}, sum T={sum_T:.3f}, "
+                  f"n_timepoints={n_timepoints}{sig_marker}")
 
         cluster_results[condition] = {
             'T_obs': T_obs,
@@ -645,9 +667,8 @@ else:
             for cluster, p_val in zip(cluster_results[condition]['clusters'],
                                        cluster_results[condition]['cluster_p']):
                 if p_val < 0.05:
-                    cluster_mask = cluster[0] if isinstance(cluster, tuple) else cluster
-                    cluster_times = times[cluster_mask]
-                    ax.axvspan(cluster_times.min(), cluster_times.max(),
+                    c_inds = _get_cluster_inds(cluster)
+                    ax.axvspan(times[c_inds[0]], times[c_inds[-1]],
                               color='grey', alpha=0.3, label=f'p={p_val:.3f}')
 
         # Formatting

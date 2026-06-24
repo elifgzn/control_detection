@@ -319,7 +319,6 @@ This Markdown file contains:
 - Exclusion summaries
 - Sanity check results
 - Full model output tables
-- **APA 7 reporting examples** — ready-to-copy sentences with italicized statistics
 
 ---
 
