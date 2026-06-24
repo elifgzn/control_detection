@@ -230,7 +230,7 @@ for cond_idx, cond_label in enumerate(cond_names):
                       color=colors[cond_idx])
 
     H1.append(h)
-save_name = '00_lineplot_main_effects.svg'
+save_name = '00_lineplot_main_effects.png'
 
 
 # ── Formatting ────────────────────────────────────────────────
@@ -274,7 +274,7 @@ plt.tight_layout()
 # FieldTrip: print(gcf, '-dsvg', [save_to '00_lineplot_...'], dpi)
 # dpi=600 matches FieldTrip's -r600; SVG is vector so DPI mainly affects rasterised elements.
 save_path = os.path.join(save_to, save_name)
-fig1.savefig(save_path, format='svg', dpi=600, bbox_inches='tight',
+fig1.savefig(save_path, format='png', dpi=600, bbox_inches='tight',
              facecolor='white')
 print(f"\n  Figure saved: {save_path}")
 
@@ -349,13 +349,11 @@ for cond_idx, cond_label in enumerate(cond_names):
     fig_topo.patch.set_facecolor('white')
     fig_topo.tight_layout()
 
-    # Save as SVG and TIFF
-    # FieldTrip: print(gcf, '-dsvg', [...], dpi); print(gcf, '-dtiff', [...], dpi)
-    for fmt in ['svg', 'tiff']:
-        topo_save = os.path.join(save_to, f"{topo_prefix}_{cond_label}.{fmt}")
-        fig_topo.savefig(topo_save, format=fmt, dpi=600,
-                         bbox_inches='tight', facecolor='white')
-    print(f"  Topo saved: {topo_prefix}_{cond_label} (.svg + .tiff)")
+    # Save as PNG
+    topo_save = os.path.join(save_to, f"{topo_prefix}_{cond_label}.png")
+    fig_topo.savefig(topo_save, format='png', dpi=600,
+                     bbox_inches='tight', facecolor='white')
+    print(f"  Topo saved: {topo_prefix}_{cond_label}.png")
 
 plt.show()   # display main-effect figures interactively; close windows to continue
 
