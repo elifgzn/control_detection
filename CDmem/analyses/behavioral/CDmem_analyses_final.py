@@ -46,7 +46,7 @@ def write_report(text):
     with open(REPORT_FILE, "a", encoding="utf-8") as f:
         f.write(text + "\n")
 
-PARTICIPANT_FILTER = [2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,19,20,21,22]
+PARTICIPANT_FILTER = [4,6,7,8,9,10,12,13,14,15,16,17,19,20,21,22]
 # [7]
 TIMEOUT_THRESHOLD = 0.50
 ACCURACY_SD_THRESHOLD = 2.5
@@ -552,7 +552,7 @@ bd_results_all = _make_bd_results(targets_all, fa_rates_all)
 # Controlled items for agency-recognition plot (all participants)
 df_controlled_all = targets_all[targets_all['item_type'] == 'controlled'].copy()
 
-def draw_bd_bars(ax, bd, y_col):
+def draw_bd_bars(ax, bd, y_col, annotate_stats=False):
     colors = {'ctrl_detected': '#2e8b57', 'ctrl_not_detected': '#90ee90', 'uncontrolled': '#fc8d62'}
     labels = {'ctrl_detected': 'Controlled (Detected)', 'ctrl_not_detected': 'Controlled (Not Detected)', 'uncontrolled': 'Uncontrolled'}
     subtypes = ['ctrl_detected', 'ctrl_not_detected', 'uncontrolled']
@@ -564,7 +564,12 @@ def draw_bd_bars(ax, bd, y_col):
         for si, sub in enumerate(subtypes):
             subset = bd[(bd['control_level'] == cond) & (bd['item_subtype'] == sub)]
             val = subset[y_col].mean() if len(subset) > 0 else 0
-            ax.bar(cx + offsets[si], val, width=bar_w, color=colors[sub], edgecolor='white', linewidth=0.5, label=labels[sub] if ci == 0 else None)
+            sd_val = subset[y_col].std() if len(subset) > 1 else 0
+            bar = ax.bar(cx + offsets[si], val, width=bar_w, color=colors[sub], edgecolor='white', linewidth=0.5, label=labels[sub] if ci == 0 else None)
+            if annotate_stats:
+                bx = cx + offsets[si]
+                ax.text(bx, val * 0.5, f"M={val:.2f}", ha='center', va='center', fontsize=8, color='black', fontweight='bold')
+                ax.text(bx, val + 0.03, f"SD={sd_val:.2f}", ha='center', va='bottom', fontsize=8, color='black', fontweight='bold')
     
     ax.set_xticks([0, 1.5])
     ax.set_xticklabels(['High', 'Low'])
@@ -575,6 +580,8 @@ def draw_bd_bars(ax, bd, y_col):
 def make_3row_plot(df_2x2, df_bd, y_col, y_label, title, out_path, annotate_stats=False):
     plt.style.use('seaborn-v0_8-whitegrid')
     fig, axes = plt.subplots(3, 1, figsize=(10, 18))
+    
+    is_rt = y_col == 'mean_rt'  # RT plots need different y-axis treatment
     
     # Row 1: 2x2 Factorial
     sns.barplot(data=df_2x2, x='control_level', y=y_col, hue='item_type', errorbar='se', palette='Set2', capsize=0.1, ax=axes[0], order=['high', 'low'], hue_order=['controlled', 'uncontrolled'])
@@ -603,7 +610,9 @@ def make_3row_plot(df_2x2, df_bd, y_col, y_label, title, out_path, annotate_stat
     axes[0].set_title(f"{title}: 2x2 Factorial", fontsize=14, fontweight='bold')
     axes[0].set_xlabel('Control Task Level', fontsize=12)
     axes[0].set_ylabel(y_label, fontsize=12)
-    if y_col == 'd_prime':
+    if is_rt:
+        pass  # auto y-limits for RT
+    elif y_col == 'd_prime':
         axes[0].axhline(0, color='black', linestyle='--')
         axes[0].set_ylim(0, 2.5)
     else:
@@ -611,11 +620,13 @@ def make_3row_plot(df_2x2, df_bd, y_col, y_label, title, out_path, annotate_stat
         axes[0].set_ylim(0, 1)
         
     # Row 2: Detection Breakdown
-    draw_bd_bars(axes[1], df_bd, y_col)
+    draw_bd_bars(axes[1], df_bd, y_col, annotate_stats=annotate_stats)
     axes[1].set_title(f"{title}: Detection Breakdown", fontsize=14, fontweight='bold')
     axes[1].set_xlabel('Control Task Level', fontsize=12)
     axes[1].set_ylabel(y_label, fontsize=12)
-    if y_col == 'd_prime':
+    if is_rt:
+        pass  # auto y-limits for RT
+    elif y_col == 'd_prime':
         axes[1].axhline(0, color='black', linestyle='--')
         axes[1].set_ylim(0, 2.5)
     else:
@@ -623,12 +634,25 @@ def make_3row_plot(df_2x2, df_bd, y_col, y_label, title, out_path, annotate_stat
         axes[1].set_ylim(0, 1)
         
     # Row 3: Overall main effect of control
-    overall = df_2x2.groupby('control_level', observed=True)[y_col].mean().reindex(['high', 'low'])
-    axes[2].bar(['High', 'Low'], overall.values, color=['#1f77b4', '#ff7f0e'], edgecolor='white', width=0.45)
+    overall_stats = df_2x2.groupby('control_level', observed=True)[y_col].agg(['mean', 'std']).reindex(['high', 'low'])
+    axes[2].bar(['High', 'Low'], overall_stats['mean'].values, color=['#1f77b4', '#ff7f0e'], edgecolor='white', width=0.45)
+    
+    if annotate_stats:
+        for i, cond in enumerate(['high', 'low']):
+            m_val = overall_stats.loc[cond, 'mean']
+            sd_val = overall_stats.loc[cond, 'std']
+            p = axes[2].patches[i]
+            bx = p.get_x() + p.get_width() / 2
+            by = p.get_height()
+            axes[2].text(bx, by * 0.5, f"M={m_val:.2f}", ha='center', va='center', fontsize=11, color='black', fontweight='bold')
+            axes[2].text(bx, by + 0.03, f"SD={sd_val:.2f}", ha='center', va='bottom', fontsize=11, color='black', fontweight='bold')
+    
     axes[2].set_title(f"{title}: Overall Main Effect of Control Level", fontsize=14, fontweight='bold')
     axes[2].set_xlabel('Control Task Level', fontsize=12)
     axes[2].set_ylabel(y_label, fontsize=12)
-    if y_col == 'd_prime':
+    if is_rt:
+        pass  # auto y-limits for RT
+    elif y_col == 'd_prime':
         axes[2].axhline(0, color='black', linestyle='--')
         axes[2].set_ylim(0, 2.5)
     else:
@@ -639,18 +663,40 @@ def make_3row_plot(df_2x2, df_bd, y_col, y_label, title, out_path, annotate_stat
     plt.savefig(out_path, dpi=150)
     plt.close()
 
+# --- Derive RT data for 3-row plots (same structure as d'/Hit_rate) ---
+# 2x2: mean RT per participant x control_level x item_type
+def _make_rt_2x2(tgt_df):
+    df_rt = tgt_df.dropna(subset=['mem_rt', 'control_level', 'item_type']).copy()
+    return df_rt.groupby(['participant', 'control_level', 'item_type'])['mem_rt'].mean().reset_index().rename(columns={'mem_rt': 'mean_rt'})
+
+# Breakdown: mean RT per participant x control_level x item_subtype
+def _make_rt_bd(tgt_df):
+    bd = tgt_df.dropna(subset=['item_type', 'detection_accuracy', 'mem_rt']).copy()
+    bd['item_subtype'] = bd.apply(get_subtype, axis=1)
+    return bd.groupby(['participant', 'control_level', 'item_subtype'])['mem_rt'].mean().reset_index().rename(columns={'mem_rt': 'mean_rt'})
+
+rt_2x2 = _make_rt_2x2(targets)
+rt_bd = _make_rt_bd(targets)
+rt_2x2_all = _make_rt_2x2(targets_all)
+rt_bd_all = _make_rt_bd(targets_all)
+
 # Generate Pooled Plots
 make_3row_plot(mem_results_2x2, bd_results, 'd_prime', "d'", "Sensitivity (d')", POOLED_DIR / "dprime_pooled.png", annotate_stats=True)
 make_3row_plot(mem_results_2x2, bd_results, 'Hit_rate', "Hit Rate", "Hit Rate", POOLED_DIR / "hitrate_pooled.png")
+make_3row_plot(rt_2x2, rt_bd, 'mean_rt', "Mean RT (s)", "Recognition Reaction Time", POOLED_DIR / "rt_pooled.png", annotate_stats=True)
 
 # Generate Per-Participant Plots (ALL participants, including excluded)
 for px in sorted(data_all['participant'].unique()):
     px_2x2 = mem_results_2x2_all[mem_results_2x2_all['participant'] == px]
     px_bd = bd_results_all[bd_results_all['participant'] == px]
+    px_rt_2x2 = rt_2x2_all[rt_2x2_all['participant'] == px]
+    px_rt_bd = rt_bd_all[rt_bd_all['participant'] == px]
     excl_flag = " -- [!] CONSIDER EXCLUSION" if px in excluded_all_px else ""
     if len(px_bd) > 0:
         make_3row_plot(px_2x2, px_bd, 'd_prime', "d'", f"Sensitivity (d') - Participant {px}{excl_flag}", PER_PARTICIPANT_DIR / f"dprime_p{px}.png")
         make_3row_plot(px_2x2, px_bd, 'Hit_rate', "Hit Rate", f"Hit Rate - Participant {px}{excl_flag}", PER_PARTICIPANT_DIR / f"hitrate_p{px}.png")
+    if len(px_rt_bd) > 0:
+        make_3row_plot(px_rt_2x2, px_rt_bd, 'mean_rt', "Mean RT (s)", f"Recognition RT - Participant {px}{excl_flag}", PER_PARTICIPANT_DIR / f"rt_p{px}.png")
 
 
 # ============================================================================
