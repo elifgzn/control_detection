@@ -18,7 +18,7 @@ from mne.preprocessing import read_ica
 # plist = [4,6,7,8,9,10,12,13,14,15,16,17,18,19,20,21,22]
 # plist = [15,16,17,18,19,20,21,22]
 
-plist = [18]
+plist = [24]
 
 # ──────────────────────────────────────────────────────────────
 # Component exclusions — fill these in AFTER inspecting the plots; during the second run of the script .
@@ -45,7 +45,9 @@ component_exclusions = {
  19: [0,1,2,3,4],
  20: [0,1,2,6],
  21: [0,1,2,5],
- 22: [0,1,2,4,15]
+ 22: [0,1,2,4,15],
+ 23: [0,1,2,9,13],
+ 24: [0,1,2]
 
 
 

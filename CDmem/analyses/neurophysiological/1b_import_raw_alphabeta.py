@@ -21,6 +21,8 @@ WHAT IT DOES (step by step):
     5. Adds back the implicit reference channel (FCz) and re-references to average
     6. Epochs around STIMULUS ONSET triggers (S 11 = low control, S 13 = high control)
        with a window of -0.5 to +5.5 seconds (covers pre-stimulus baseline + full encoding)
+    6e. Computes per-trial encoding duration from S 91/S 92 triggers (agency rating
+        onset = encoding end) and stores in epoch metadata
     7. Downsamples to 250 Hz
     8. Fits ICA (Picard algorithm) for later artifact removal
     9. Saves epochs + ICA to eeg2_ica_stimlocked/
@@ -52,6 +54,7 @@ NOTE:
 import os
 import gc
 import numpy as np
+import pandas as pd
 import mne
 from mne.preprocessing import ICA
 
@@ -64,7 +67,8 @@ from mne.preprocessing import ICA
 # Use a single-element list (e.g. [2]) to test one participant,
 # or list(range(2, 21)) to run all of them.
 # ──────────────────────────────────────────────────────────────
-plist = [22]  # <-- change this as needed
+plist = [7,8,17,19,20,21,22]
+# plist = [22]  # <-- change this as needed
 
 # ──────────────────────────────────────────────────────────────
 # Bad channels per participant
@@ -75,10 +79,11 @@ plist = [22]  # <-- change this as needed
 bad_channels = {
     7: ['P2'],
     8: ['F3'],
-    17: ['FT8'],
+    17: ['O1'],
     19: ['P3', 'TP10', 'T8', 'CP6', 'T7'],
     20: ['P3', 'T8'],
-    21: ['T8']
+    21: ['T8'],
+    22: ['TP10']
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -220,6 +225,77 @@ for sub in plist:
             preload=True, verbose=False,
             baseline=None  # applied later in analysis script
         )
+
+        # ── STEP 6e: Compute per-trial encoding duration from S 91/S 92 ──────
+        # S 91 = agency rating onset, LOW control condition
+        # S 92 = agency rating onset, HIGH control condition
+        # These triggers mark the moment stimuli go OFF-SCREEN, i.e., the end
+        # of the encoding period. The encoding duration for each trial is:
+        #     encoding_duration = (S 91/S 92 sample) - (S 11/S 13 sample) / sfreq
+        #
+        # This is stored as epoch metadata so downstream analysis scripts
+        # (3_TFR.py, 3_hilbert_alphabeta.py) can use it to:
+        #   - Set informed statistical time windows
+        #   - Mask data after encoding ends per trial
+        #   - Quality-check trial durations
+        #
+        # We need the FULL event list (not the filtered one) to find S 91/S 92.
+        all_events_full, all_event_id_full = mne.events_from_annotations(
+            raw, verbose=False
+        )
+
+        # Find S 91/S 92 event codes
+        encoding_end_triggers = ['Stimulus/S 91', 'Stimulus/S 92']
+        encoding_end_ids = []
+        for t in encoding_end_triggers:
+            if t in all_event_id_full:
+                encoding_end_ids.append(all_event_id_full[t])
+            else:
+                print(f"  WARNING: trigger '{t}' not found — encoding duration "
+                      f"will be NaN for some trials")
+
+        encoding_end_events = all_events_full[
+            np.isin(all_events_full[:, 2], encoding_end_ids)
+        ]
+
+        # For each stimulus onset event, find the NEXT S 91/S 92 event
+        # and compute the time difference (= encoding duration in seconds).
+        sfreq_raw = raw.info['sfreq']  # original sampling rate (1000 Hz)
+        stim_onset_events = events  # these are the filtered S 11/S 13 events
+        encoding_durations = np.full(len(stim_onset_events), np.nan)
+
+        for i, stim_ev in enumerate(stim_onset_events):
+            stim_sample = stim_ev[0]
+            # Find encoding-end events that come AFTER this stimulus onset
+            later_ends = encoding_end_events[
+                encoding_end_events[:, 0] > stim_sample
+            ]
+            if len(later_ends) > 0:
+                # Take the first one (nearest encoding end after this stimulus)
+                end_sample = later_ends[0, 0]
+                encoding_durations[i] = (end_sample - stim_sample) / sfreq_raw
+
+        # Build a reverse map for trigger IDs (for metadata)
+        event_id_rev = {v: int(k.split('S ')[1]) for k, v in triggers.items()}
+
+        # Attach encoding duration as epoch metadata (pandas DataFrame).
+        # This survives epoch dropping (artifact rejection in 2b) and is
+        # automatically saved/loaded with the .fif file.
+        epochs.metadata = pd.DataFrame({
+            'encoding_duration': encoding_durations,
+            'trigger_id': [event_id_rev.get(e, 0) for e in epochs.events[:, 2]]
+        })
+
+        # Print encoding duration summary
+        valid_dur = encoding_durations[~np.isnan(encoding_durations)]
+        if len(valid_dur) > 0:
+            print(f"  Encoding durations: "
+                  f"mean={np.mean(valid_dur):.2f}s, "
+                  f"min={np.min(valid_dur):.2f}s, "
+                  f"max={np.max(valid_dur):.2f}s")
+        else:
+            print(f"  WARNING: No S 91/S 92 triggers found — "
+                  f"encoding durations are all NaN")
 
         # ── STEP 7: Downsample to 250 Hz ────────────────────────────────────
         # Reduces data size by 4x (1000 Hz → 250 Hz).
