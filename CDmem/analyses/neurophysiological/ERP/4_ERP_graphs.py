@@ -69,6 +69,16 @@ for p_idx, pnum in enumerate(plist):
     # FieldTrip: participant = load([dfolder '/MCRL_' num2str(pnum)]);
     evoked_list = mne.read_evokeds(erp_file, verbose=False)
 
+    # ──────────────────────────────────────────────────────────
+    # CRITICAL FIX: Re-apply montage to restore FCz positions 
+    # that were lost in earlier preprocessing runs.
+    # ──────────────────────────────────────────────────────────
+    bvef_path = r"H:\PHD\control_detection\CDmem\analyses\neurophysiological\CACS-64_REF_new.bvef"
+    montage = mne.channels.read_custom_montage(bvef_path)
+    montage.rename_channels({'REF': 'FCz'})
+    for ev in evoked_list:
+        ev.set_montage(montage, on_missing='ignore')
+
     # Index by condition label (stored in evoked.comment during ERP_calculation.py)
     alleeg[p_idx] = {ev.comment: ev for ev in evoked_list}
 

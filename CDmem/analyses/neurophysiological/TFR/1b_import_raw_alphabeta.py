@@ -173,6 +173,7 @@ for sub in plist:
         #   Adding it back as a flat (all zeros) channel restores it,
         #   and the re-referencing step below will recover its actual signal.
         raw.add_reference_channels('FCz')
+        raw.set_montage(montage, on_missing='warn')  # re-apply so FCz gets its position
 
         # Step 5b: Re-reference all channels to the common average.
         #   After this, each channel = original – mean(all 65 channels).

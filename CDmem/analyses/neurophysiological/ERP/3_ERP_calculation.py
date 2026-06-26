@@ -51,6 +51,15 @@ for sub in plist:
     # ── 1. Load data ──────────────────────────────────────────
     # Load cleaned EEG epochs
     epochs = mne.read_epochs(epo_file, preload=True, verbose=False)
+
+    # ──────────────────────────────────────────────────────────
+    # CRITICAL FIX: Re-apply montage to restore FCz positions 
+    # that were lost in earlier preprocessing runs.
+    # ──────────────────────────────────────────────────────────
+    bvef_path = r"H:\PHD\control_detection\CDmem\analyses\neurophysiological\CACS-64_REF_new.bvef"
+    montage = mne.channels.read_custom_montage(bvef_path)
+    montage.rename_channels({'REF': 'FCz'})
+    epochs.set_montage(montage, on_missing='ignore')
     
     # Load behavioral log file
     logdat = pd.read_csv(log_file)

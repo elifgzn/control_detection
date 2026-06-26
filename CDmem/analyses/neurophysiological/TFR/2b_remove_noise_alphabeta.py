@@ -268,20 +268,21 @@ for sub in plist:
             )
             plt.show()
 
-        # ── Spherical spline interpolation of bad channels ────────────────
-        # Channels that were dropped in the preprocessing step are added back
-        # as flat (zero) channels, marked as 'bad', and interpolated from
-        # surrounding electrodes using spherical spline interpolation.
+        # ── Spherical spline interpolation ──────────────────────────────────
+        # Replaces channels that were dropped during preprocessing (1b script).
+        
+        # ──────────────────────────────────────────────────────────
+        # CRITICAL: Apply montage so all channels (including FCz) get positions.
+        # Without positions, interpolate_bads() fails with NaNs, and FCz is dropped in stats.
+        # ──────────────────────────────────────────────────────────
+        montage = mne.channels.read_custom_montage(bvef_path)
+        montage.rename_channels({'REF': 'FCz'})
+        epochs_clean.set_montage(montage, on_missing='ignore')
+
         bads = bad_channels.get(sub, [])
         if bads:
             print(f"  Adding back and interpolating dropped channel(s): {bads}")
             epochs_clean.add_reference_channels(bads)
-
-            # Re-apply montage so the added channels get electrode positions.
-            # Without valid positions, interpolate_bads() would fail.
-            montage = mne.channels.read_custom_montage(bvef_path)
-            montage.rename_channels({'REF': 'FCz'})
-            epochs_clean.set_montage(montage, on_missing='ignore')
 
             epochs_clean.info['bads'] = bads
             epochs_clean.interpolate_bads(reset_bads=True)

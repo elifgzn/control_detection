@@ -56,6 +56,16 @@ for p_idx, pnum in enumerate(plist):
     evokeds_main = mne.read_evokeds(erp_file, verbose=False)
     evokeds_det = mne.read_evokeds(det_erp_file, verbose=False)
     
+    # ──────────────────────────────────────────────────────────
+    # CRITICAL FIX: Re-apply montage to restore FCz positions 
+    # that were lost in earlier preprocessing runs.
+    # ──────────────────────────────────────────────────────────
+    bvef_path = r"H:\PHD\control_detection\CDmem\analyses\neurophysiological\CACS-64_REF_new.bvef"
+    montage = mne.channels.read_custom_montage(bvef_path)
+    montage.rename_channels({'REF': 'FCz'})
+    for ev in evokeds_main + evokeds_det:
+        ev.set_montage(montage, on_missing='ignore')
+
     # Store all by comment/condition label
     eeg_set[p_idx] = {ev.comment: ev for ev in evokeds_main + evokeds_det}
 

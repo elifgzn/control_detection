@@ -220,22 +220,23 @@ for sub in plist:
         # ── Spherical spline interpolation ────────────────────
         # Replaces channels that were dropped during preprocessing (first script).
         # We add them back as flat channels, mark them as 'bad', and interpolate.
+        
+        # ──────────────────────────────────────────────────────────
+        # CRITICAL: Apply montage so all channels (including FCz) get positions.
+        # Without positions, interpolate_bads() fails with NaNs, and FCz is dropped in stats.
+        # Uses the actual actiCAP .bvef file.
+        # ──────────────────────────────────────────────────────────
+        bvef_path = r"H:\PHD\control_detection\CDmem\analyses\neurophysiological\CACS-64_REF_new.bvef"
+        montage = mne.channels.read_custom_montage(bvef_path)
+        # Rename 'REF' → 'FCz' to match our channel naming (see 1_import_raw.py)
+        montage.rename_channels({'REF': 'FCz'})
+        epochs_clean.set_montage(montage, on_missing='ignore')
+
         bads = bad_channels.get(sub, [])
         if bads:
             print(f"  Adding back and interpolating dropped channel(s): {bads}")
             # Add the missing channels back as flat (all zeros) channels
             epochs_clean.add_reference_channels(bads)
-            
-            # ──────────────────────────────────────────────────────────
-            # CRITICAL: Re-apply montage so the added channels get positions.
-            # Without positions, interpolate_bads() fails with NaNs.
-            # Uses the actual actiCAP .bvef file.
-            # ──────────────────────────────────────────────────────────
-            bvef_path = r"H:\PHD\control_detection\CDmem\analyses\neurophysiological\CACS-64_REF_new.bvef"
-            montage = mne.channels.read_custom_montage(bvef_path)
-            # Rename 'REF' → 'FCz' to match our channel naming (see 1_import_raw.py)
-            montage.rename_channels({'REF': 'FCz'})
-            epochs_clean.set_montage(montage, on_missing='ignore')
             
             # Mark them as bad for interpolation
             epochs_clean.info['bads'] = bads
