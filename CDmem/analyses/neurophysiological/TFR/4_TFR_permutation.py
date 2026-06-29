@@ -25,6 +25,7 @@ import matplotlib.colors as mcolors
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════════════════
 input_path     = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_alphabeta_static"
+eeg_path       = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_alphabeta_static"
 figures_path   = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_alphabeta_static"
 os.makedirs(figures_path, exist_ok=True)
 
@@ -40,10 +41,14 @@ plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 19, 20, 21, 22]
 # ══════════════════════════════════════════════════════════════════════════════
 group_recalled = {'low': [], 'high': []}
 group_not_recalled = {'low': [], 'high': []}
+topo_recalled = {'low': [], 'high': []}
+topo_not_recalled = {'low': [], 'high': []}
 times = None
 freqs = None
+ch_names = None
+info = None
 
-print("Loading per-subject ROI TFR data...")
+print("Loading per-subject ROI TFR data and topoplot data...")
 for sub in plist:
     sub_id = f"{sub:04d}"
     data_file = os.path.join(input_path, f"CDmem_{sub_id}_TFR_ROI.npz")
@@ -54,8 +59,6 @@ for sub in plist:
         
     saved = np.load(data_file, allow_pickle=True)
     data_roi = saved['data_roi']  # (n_epochs, n_freqs, n_times)
-    cond_arr = saved['trial_info_condition']
-    rec_arr = saved['trial_info_recalled']
     
     if times is None:
         times = saved['times']
@@ -63,6 +66,34 @@ for sub in plist:
         # Find indices for 0.0 to 3.5 seconds
         time_mask = (times >= 0.0) & (times <= 3.5)
         times = times[time_mask]
+        
+        # Load info object for topoplots
+        epo_file = os.path.join(eeg_path, f"CDmem_{sub_id}-epo.fif")
+        if os.path.exists(epo_file):
+            import mne
+            info = mne.io.read_info(epo_file, verbose=False)
+            if 'ch_names' in saved:
+                ch_names = info.ch_names  # Use the info object's channels as standard
+    
+    if 'topo_data' in saved:
+        topo_data_raw = saved['topo_data'] # (n_epochs, n_sub_channels)
+        sub_ch_names = saved['ch_names'].tolist() if 'ch_names' in saved else []
+        
+        # Map subject channels to standard info channels
+        if info is not None and len(sub_ch_names) > 0:
+            topo_data = np.full((topo_data_raw.shape[0], len(info.ch_names)), np.nan)
+            for i, ch in enumerate(info.ch_names):
+                if ch in sub_ch_names:
+                    idx = sub_ch_names.index(ch)
+                    topo_data[:, i] = topo_data_raw[:, idx]
+        else:
+            topo_data = topo_data_raw
+    else:
+        print(f"  Warning: topo_data not found in {data_file}. Please re-run 3_TFR_calculation.py")
+        topo_data = None
+        
+    cond_arr = saved['trial_info_condition']
+    rec_arr = saved['trial_info_recalled']
         
     data_roi = data_roi[:, :, time_mask]
         
@@ -83,6 +114,12 @@ for sub in plist:
         
         group_recalled[condition].append(avg_recalled)
         group_not_recalled[condition].append(avg_not_recalled)
+        
+        if topo_data is not None:
+            avg_topo_rec = np.nanmean(topo_data[recalled_idx], axis=0)
+            avg_topo_not_rec = np.nanmean(topo_data[not_recalled_idx], axis=0)
+            topo_recalled[condition].append(avg_topo_rec)
+            topo_not_recalled[condition].append(avg_topo_not_rec)
 
 n_subs = len(group_recalled.get('low', []))
 
@@ -239,5 +276,48 @@ for condition in ['low', 'high']:
     plt.tight_layout()
     plt.savefig(os.path.join(figures_path, f'TFR_Absolute_Heatmaps_{condition}.png'), dpi=300)
     plt.close(fig)
+    
+    # ──────────────────────────────────────────────────────────────────
+    # PLOT 3: Topoplots (2-20Hz, 0.0-3.5s)
+    # ──────────────────────────────────────────────────────────────────
+    if len(topo_recalled[condition]) > 0 and info is not None:
+        print(f"Generating Topoplots for {condition.upper()} control...")
+        
+        # Average across subjects
+        # Shape: (n_channels,)
+        grand_topo_rec = np.nanmean(topo_recalled[condition], axis=0)
+        grand_topo_not_rec = np.nanmean(topo_not_recalled[condition], axis=0)
+        
+        # Convert to dB: 10 * log10(power)
+        # Note: raw power from tfr_morlet is positive
+        topo_rec_db = 10 * np.log10(np.maximum(grand_topo_rec, 1e-15))
+        topo_not_rec_db = 10 * np.log10(np.maximum(grand_topo_not_rec, 1e-15))
+        topo_diff_db = topo_rec_db - topo_not_rec_db
+        
+        import mne
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+        
+        # Recalled
+        im_rec, _ = mne.viz.plot_topomap(topo_rec_db, info, axes=axes[0], show=False, sphere='eeglab')
+        axes[0].set_title('Recalled')
+        cbar_rec = plt.colorbar(im_rec, ax=axes[0], orientation='vertical')
+        cbar_rec.set_label('Power (dB)')
+        
+        # Not Recalled
+        im_not_rec, _ = mne.viz.plot_topomap(topo_not_rec_db, info, axes=axes[1], show=False, sphere='eeglab')
+        axes[1].set_title('Not Recalled')
+        cbar_not_rec = plt.colorbar(im_not_rec, ax=axes[1], orientation='vertical')
+        cbar_not_rec.set_label('Power (dB)')
+        
+        # Difference
+        im_diff, _ = mne.viz.plot_topomap(topo_diff_db, info, axes=axes[2], show=False, sphere='eeglab', cmap='RdBu_r')
+        axes[2].set_title('Difference (Recalled - Not Recalled)')
+        cbar_diff = plt.colorbar(im_diff, ax=axes[2], orientation='vertical')
+        cbar_diff.set_label('Power Difference (dB)')
+        
+        fig.suptitle(f'{condition.upper()} Control: Alpha-Beta (2-20Hz) Topography (0.0-3.5s)', fontsize=16)
+        plt.tight_layout()
+        fig.savefig(os.path.join(figures_path, f'TFR_Topoplots_{condition}.png'), dpi=300)
+        plt.close(fig)
 
 print("✓ All figures saved!")

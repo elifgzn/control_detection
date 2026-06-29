@@ -127,11 +127,23 @@ for sub in plist:
     # We mean over axis 1 (channels) to get (n_epochs, n_freqs, n_times)
     data_roi = tfr_roi.data.mean(axis=1)
 
+    # Calculate Topoplot data: all channels, alpha-beta (2-20Hz), 0.0-3.5s
+    print("  Step 4: Extracting topoplot data (2-20Hz, 0.0-3.5s)...")
+    freq_mask = (FREQS >= 2) & (FREQS <= 20)
+    time_mask = (tfr.times >= 0.0) & (tfr.times <= 3.5)
+    
+    # shape: (n_epochs, n_channels, n_freqs_masked, n_times_masked)
+    topo_data = tfr.data[:, :, freq_mask, :][:, :, :, time_mask]
+    # Average over freqs and times -> shape: (n_epochs, n_channels)
+    topo_data_mean = topo_data.mean(axis=(2, 3))
+
     # 6. Save data
-    print("  Step 4: Saving per-subject ROI data...")
+    print("  Step 5: Saving per-subject ROI and topoplot data...")
     np.savez(
         out_file,
         data_roi=data_roi,                                   # (n_epochs, n_freqs, n_times)
+        topo_data=topo_data_mean,                            # (n_epochs, n_channels)
+        ch_names=tfr.ch_names,                               # list of all channel names
         trial_info_condition=trial_info['control_condition'].values,
         trial_info_recalled=trial_info['mem_response'].values,
         times=tfr.times,

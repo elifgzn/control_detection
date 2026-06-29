@@ -104,9 +104,10 @@ component_exclusions = {
 bad_channels = {
     7: ['P2'],
     8: ['F3'],
-    17: ['O1'],
-    19: ['P3', 'TP10', 'T8', 'CP6', 'T7'],
-    20: ['P3', 'T8'],
+    15: ['P3'],
+    17: ['O1', 'AF7', 'Iz'],
+    19: ['P3', 'TP10', 'T8', 'CP6', 'T7', 'Fp1', 'Fp2'],
+    20: ['P3', 'T8', 'P1'],
     21: ['T8'],
     22: ['TP10']
 }
@@ -274,18 +275,20 @@ for sub in plist:
         # Replaces channels that were dropped during preprocessing (1b script).
         
         # ──────────────────────────────────────────────────────────
-        # CRITICAL: Apply montage so all channels (including FCz) get positions.
-        # Without positions, interpolate_bads() fails with NaNs, and FCz is dropped in stats.
+        # CRITICAL: Add back missing channels FIRST, then apply montage 
+        # so that the newly added channels get their correct 3D positions!
+        # Without positions, interpolate_bads() interpolates them at [0,0,0].
         # ──────────────────────────────────────────────────────────
+        bads = bad_channels.get(sub, [])
+        if bads:
+            print(f"  Adding back dropped channel(s): {bads}")
+            epochs_clean.add_reference_channels(bads)
+
         montage = mne.channels.read_custom_montage(bvef_path)
         montage.rename_channels({'REF': 'FCz'})
         epochs_clean.set_montage(montage, on_missing='ignore')
 
-        bads = bad_channels.get(sub, [])
         if bads:
-            print(f"  Adding back and interpolating dropped channel(s): {bads}")
-            epochs_clean.add_reference_channels(bads)
-
             epochs_clean.info['bads'] = bads
             epochs_clean.interpolate_bads(reset_bads=True)
             print(f"  ✓ Spherical spline interpolation done")
