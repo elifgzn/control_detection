@@ -1,21 +1,19 @@
 """
 3_TFR_calculation.py
 ====================
-Alpha-Band ROI Time-Frequency Calculation
------------------------------------------
+Alpha-Band Time-Frequency Calculation & Baseline Correction
+-----------------------------------------------------------
 
 PURPOSE:
     Computes Time-Frequency Representation (TFR) via Morlet wavelets, 
-    applies baseline correction, selects a posterior/occipital Region of 
-    Interest (ROI), and averages across the spatial dimension.
+    averages power per condition across trials, and applies baseline correction 
+    to the condition-averaged power.
     
-    This functionally replicates the FieldTrip step:
-        `ft_freqanalysis` followed by `cfg.avgoverchan = 'yes'`
-    as seen in the provided MATLAB script `A2_5_permuatation_TFmaps_stimonset.m`.
-
-    By explicitly averaging over the posterior electrodes here, we collapse
-    the spatial dimension, massively increasing statistical sensitivity for 
-    the targeted permutation test in the next script.
+    This functionally replicates the FieldTrip steps from A2_3_freqCalc_feedback.m:
+        - ft_freqanalysis (for baseline across all trials)
+        - ft_freqdescriptives (to get grand average baseline over time & trials)
+        - ft_freqanalysis (with keeptrials='no' for condition averages)
+        - Baseline correction: 10 * log10(condition_power / grand_baseline)
 """
 
 import os
@@ -38,11 +36,9 @@ FREQS = np.arange(2, 41, 1)  # 2 to 40 Hz (broadband, so we have all data availa
 N_CYCLES = FREQS * 0.5       # Fixed 0.5s effective window (matches FieldTrip t_ftimwin=0.5)
 DECIM = 10                   # Downsample TFR to 25 Hz to save memory/disk space
 BASELINE = (-0.5, -0.2)      # Baseline correction window (-500 to -200 ms)
-BASELINE_MODE = 'logratio'   # Log-ratio (dB) is standard for TFR baseline correction
 
-# plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 19, 20, 21, 22]
-plist = [16]
-
+plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+# plist = [17]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # HELPER FUNCTIONS
@@ -80,13 +76,13 @@ def load_behavioral_data(sub):
 # ══════════════════════════════════════════════════════════════════════════════
 
 print("=" * 70)
-print("  PART 1: ROI-AVERAGED TFR COMPUTATION")
+print("  PART 1: TFR COMPUTATION & BASELINE CORRECTION")
 print("=" * 70)
 
 for sub in plist:
     sub_id = f"{sub:04d}"
     epo_file = os.path.join(eeg_path, f"CDmem_{sub_id}-epo.fif")
-    out_file = os.path.join(output_path, f"CDmem_{sub_id}_TFR_ROI.npz")
+    out_file = os.path.join(output_path, f"CDmem_{sub_id}_TFR_ConditionAverages.npz")
 
     if not os.path.exists(epo_file):
         print(f"\nSkipping participant {sub}: epoch file not found")
@@ -97,14 +93,28 @@ for sub in plist:
     # 1. Load Epochs
     epochs = mne.read_epochs(epo_file, preload=True, verbose=False)
     
+    # Apply Spatial Laplacian (matches FieldTrip ft_scalpcurrentdensity)
+    print("  Step 1: Applying Surface Laplacian (CSD)...")
+    epochs = mne.preprocessing.compute_current_source_density(epochs)
+    
     # 2. Load Behavioral Data
     trial_info = load_behavioral_data(sub)
     kept_indices = epochs.selection if hasattr(epochs, 'selection') and epochs.selection is not None else np.arange(len(epochs))
     trial_info = trial_info.iloc[kept_indices].reset_index(drop=True)
 
-    # 3. Compute TFR (Morlet Wavelets)
-    # Equivalent to ft_freqanalysis
-    print("  Step 1: Computing TFR (Morlet wavelets)...")
+    cond_arr = trial_info['control_condition'].values
+    rec_arr = trial_info['mem_response'].values
+    
+    conditions_dict = {
+        'low_recalled': (cond_arr == 'low') & (rec_arr == 'yes'),
+        'low_not_recalled': (cond_arr == 'low') & (rec_arr == 'no'),
+        'high_recalled': (cond_arr == 'high') & (rec_arr == 'yes'),
+        'high_not_recalled': (cond_arr == 'high') & (rec_arr == 'no')
+    }
+
+    # 3. Compute TFR (Morlet Wavelets) for ALL trials
+    # Equivalent to ft_freqanalysis(keeptrials='yes')
+    print("  Step 2: Computing TFR (Morlet wavelets) for all trials...")
     tfr = tfr_morlet(
         epochs,
         freqs=FREQS,
@@ -115,44 +125,60 @@ for sub in plist:
         n_jobs=-1,
         verbose=False
     )
-
-    # 4. Skip Baseline Correction
-    print(f"  Step 2: No baseline correction applied (raw oscillatory power).")
-
-    # 5. Select ROI and Average Over Channels
-    # Equivalent to cfgPermut.avgoverchan = 'yes' in FieldTrip
-    print("  Step 3: Selecting posterior ROI and averaging across channels...")
-    roi_channels = [ch for ch in tfr.ch_names if ch.startswith('P') or ch.startswith('O')]
-    tfr_roi = tfr.copy().pick(picks=roi_channels)
     
     # Data shape is (n_epochs, n_channels, n_freqs, n_times)
-    # We mean over axis 1 (channels) to get (n_epochs, n_freqs, n_times)
-    data_roi = tfr_roi.data.mean(axis=1)
-
-    # Calculate Topoplot data: all channels, alpha-beta (2-20Hz), 0.0-3.5s
-    print("  Step 4: Extracting topoplot data (2-20Hz, 0.0-3.5s)...")
-    freq_mask = (FREQS >= 2) & (FREQS <= 20)
-    time_mask = (tfr.times >= 0.0) & (tfr.times <= 3.5)
     
-    # shape: (n_epochs, n_channels, n_freqs_masked, n_times_masked)
-    topo_data = tfr.data[:, :, freq_mask, :][:, :, :, time_mask]
-    # Average over freqs and times -> shape: (n_epochs, n_channels)
-    topo_data_mean = topo_data.mean(axis=(2, 3))
+    # 4. Calculate Grand-Average Baseline Power
+    # FieldTrip Step 15: average power during baseline time window per trial,
+    # then compute grand average of baseline over all trials.
+    print(f"  Step 3: Calculating grand-average baseline ({BASELINE[0]} to {BASELINE[1]} s) across all trials...")
+    baseline_mask = (tfr.times >= BASELINE[0]) & (tfr.times <= BASELINE[1])
+    
+    # Average across time (axis=3) and trials (axis=0)
+    # This gives a single baseline power value per channel and frequency
+    grand_baseline = np.nanmean(tfr.data[:, :, :, baseline_mask], axis=(0, 3))
+    
+    # 5. Average Trials Per Condition and Apply Baseline Correction
+    # FieldTrip Step 16: ft_freqanalysis(keeptrials='no') -> condition average
+    # Then: 10 * log10(bsxfun(@rdivide,powavg.powspctrm,ga_base))
+    print("  Step 4: Calculating condition averages and applying baseline correction...")
+    
+    out_data = {}
+    epsilon = 1e-15 # small constant to avoid divide by zero or log of zero
+    
+    for cond_name, mask in conditions_dict.items():
+        if mask.sum() < 2:
+            print(f"    Warning: Not enough trials for {cond_name}. Skipping condition.")
+            continue
+            
+        # Get raw power for trials in this condition
+        cond_trials_power = tfr.data[mask]
+        
+        # Average across trials (axis=0) -> shape: (n_channels, n_freqs, n_times)
+        cond_avg_power = np.nanmean(cond_trials_power, axis=0)
+        
+        # Apply baseline correction (dB = 10 * log10(signal / baseline))
+        cond_db = 10 * np.log10(
+            np.maximum(cond_avg_power, epsilon) / 
+            np.maximum(grand_baseline[:, :, np.newaxis], epsilon)
+        )
+        
+        out_data[cond_name] = cond_db
 
-    # 6. Save data
-    print("  Step 5: Saving per-subject ROI and topoplot data...")
+    # 6. Save Data
+    # We save all channels, allowing subsequent scripts to pick ROIs for heatmaps or run topoplots.
+    print("  Step 5: Saving per-subject condition-averaged data...")
+    roi_channels = [ch for ch in tfr.ch_names if ch.startswith('P') or ch.startswith('O')]
+    
     np.savez(
         out_file,
-        data_roi=data_roi,                                   # (n_epochs, n_freqs, n_times)
-        topo_data=topo_data_mean,                            # (n_epochs, n_channels)
-        ch_names=tfr.ch_names,                               # list of all channel names
-        trial_info_condition=trial_info['control_condition'].values,
-        trial_info_recalled=trial_info['mem_response'].values,
+        ch_names=tfr.ch_names,
         times=tfr.times,
         freqs=FREQS,
-        roi_channels=roi_channels
+        roi_channels=roi_channels,
+        **out_data
     )
-    print(f"  ✓ Saved to {out_file}")
+    print(f"  ✓ Saved condition averages to {out_file}")
 
 print("\n" + "=" * 70)
 print("  TFR CALCULATION COMPLETE")
