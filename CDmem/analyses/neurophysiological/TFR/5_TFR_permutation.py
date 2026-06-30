@@ -115,6 +115,19 @@ low_diff = low_rec - low_not
 high_diff = high_rec - high_not
 contrasts['Interaction_Memory_x_Control'] = low_diff - high_diff
 
+# 3. OLD ANALYSIS: Simple Effect of Memory in Low Control
+contrasts['OLD_ANALYSIS__Low_Control_Memory_Effect'] = low_diff
+
+# 4. OLD ANALYSIS: Simple Effect of Memory in High Control
+contrasts['OLD_ANALYSIS__High_Control_Memory_Effect'] = high_diff
+
+descriptions = {
+    'Main_Effect_Memory': '(Recalled vs Not Recalled across all conditions)',
+    'Interaction_Memory_x_Control': '(Difference in Memory Effect between Low and High Control)',
+    'OLD_ANALYSIS__Low_Control_Memory_Effect': '(Recalled vs Not Recalled WITHIN Low Control only)',
+    'OLD_ANALYSIS__High_Control_Memory_Effect': '(Recalled vs Not Recalled WITHIN High Control only)'
+}
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 2. RUN CLUSTER PERMUTATION TEST (ft_freqstatistics)
@@ -146,7 +159,8 @@ for comp_name, X_diff in contrasts.items():
     sig_clusters = [c for c, p in zip(clusters, cluster_p) if p < 0.05]
     n_sig = len(sig_clusters)
     
-    msg_header = f"\n{comp_name.replace('_', ' ').upper()}: {len(clusters)} clusters found, {n_sig} significant (p < 0.05)"
+    desc = descriptions.get(comp_name, '')
+    msg_header = f"\n{comp_name.replace('_', ' ').upper()} {desc}\n{len(clusters)} clusters found, {n_sig} significant (p < 0.05)"
     print(msg_header)
     report_lines.append(msg_header)
     report_lines.append("-" * 70)
