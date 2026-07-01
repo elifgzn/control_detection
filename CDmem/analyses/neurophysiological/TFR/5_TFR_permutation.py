@@ -25,11 +25,11 @@ from scipy.stats import ttest_1samp
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════════════════
-input_path   = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_alphabeta_static"
-figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_alphabeta_static"
+input_path   = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked"
+figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_stimlocked"
 os.makedirs(figures_path, exist_ok=True)
 
-plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,25]
 
 # Permutation test parameters (matches FieldTrip cfg.numrandomization=1000)
 N_PERMUTATIONS = 1000
@@ -40,7 +40,7 @@ Z_LIMITS_DIFF = [-1.5, 1.5]  # Z-limits for difference heatmap
 Z_LIMITS_STAT = [0, 25]      # FieldTrip scripts occasionally use [0 25] for F-stats/T-stats
 
 # Time and Frequency ranges to test (like FieldTrip cfgPermut.latency / .frequency)
-TEST_TIME = (0.0, 3.5)
+TEST_TIME = (0.0, 3.0)
 TEST_FREQ = (2.0, 20.0)
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -262,5 +262,4 @@ for comp_name, X_diff in contrasts.items():
 report_file = os.path.join(figures_path, 'TFR_permutation_statistics_report.txt')
 with open(report_file, 'w', encoding='utf-8') as f:
     f.write('\n'.join(report_lines) + '\n')
-print(f"\n✓ Statistical report saved to {report_file}")
-print("✓ All permutation analyses complete!")
+    print(f"\n* Statistical report saved to {report_file}")

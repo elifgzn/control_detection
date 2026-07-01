@@ -22,9 +22,9 @@ import mne
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════════════════
-input_path   = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_alphabeta_static"
-eeg_path     = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_alphabeta_static"
-figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_alphabeta_static"
+input_path   = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked"
+eeg_path     = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_stimlocked"
+figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_stimlocked"
 os.makedirs(figures_path, exist_ok=True)
 
 plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]

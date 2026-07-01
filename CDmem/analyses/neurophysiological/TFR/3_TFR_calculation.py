@@ -25,9 +25,9 @@ from mne.time_frequency import tfr_morlet
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════════════════
-eeg_path       = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_alphabeta_static"
+eeg_path       = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_stimlocked"
 behavioral_path = r"H:\PHD\control_detection\main_data\behavioral"
-output_path    = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_alphabeta_static"
+output_path    = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked"
 
 os.makedirs(output_path, exist_ok=True)
 
@@ -37,8 +37,8 @@ N_CYCLES = FREQS * 0.5       # Fixed 0.5s effective window (matches FieldTrip t_
 DECIM = 10                   # Downsample TFR to 25 Hz to save memory/disk space
 BASELINE = (-0.5, -0.2)      # Baseline correction window (-500 to -200 ms)
 
-plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
-# plist = [17]
+# plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+plist = [25]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # HELPER FUNCTIONS

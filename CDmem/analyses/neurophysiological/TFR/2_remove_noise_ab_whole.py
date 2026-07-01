@@ -56,12 +56,12 @@ from mne.preprocessing import read_ica
 # Which participant(s) to process?
 # ──────────────────────────────────────────────────────────────
 # plist = [4,6,7,8,9,10,12,13,14,15,16,17,18,19,20,21,22,23,24]
-plist = [15,17,19,20,21,22]
+# plist = [15,17,19,20,21,22]
 
 
 
 
-# plist = [14,15]
+plist = [25]
 
 # ──────────────────────────────────────────────────────────────
 # Component exclusions — fill these in AFTER inspecting the plots.
@@ -95,7 +95,8 @@ component_exclusions = {
     21: [0,1,7,10,16],
     22: [0,1],
     23: [0,1,2, 9,10,13,15,17,18],
-    24: [0,1,2, 15,19]
+    24: [0,1,2, 15,19],
+    25: [0,1,5,8,16,17]
 
 
 }
@@ -112,7 +113,9 @@ bad_channels = {
     19: ['P3', 'TP10', 'T8', 'CP6', 'T7'],
     20: ['P3', 'T8'],
     21: ['T8'],
-    22: ['TP10']
+    22: ['TP10'],
+    25: ['AF4']
+
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -278,18 +281,20 @@ for sub in plist:
         # Replaces channels that were dropped during preprocessing (1b script).
         
         # ──────────────────────────────────────────────────────────
-        # CRITICAL: Apply montage so all channels (including FCz) get positions.
-        # Without positions, interpolate_bads() fails with NaNs, and FCz is dropped in stats.
+        # CRITICAL: Add back missing channels FIRST, then apply montage 
+        # so that the newly added channels get their correct 3D positions!
+        # Without positions, interpolate_bads() interpolates them at [0,0,0].
         # ──────────────────────────────────────────────────────────
+        bads = bad_channels.get(sub, [])
+        if bads:
+            print(f"  Adding back dropped channel(s): {bads}")
+            epochs_clean.add_reference_channels(bads)
+
         montage = mne.channels.read_custom_montage(bvef_path)
         montage.rename_channels({'REF': 'FCz'})
         epochs_clean.set_montage(montage, on_missing='ignore')
 
-        bads = bad_channels.get(sub, [])
         if bads:
-            print(f"  Adding back and interpolating dropped channel(s): {bads}")
-            epochs_clean.add_reference_channels(bads)
-
             epochs_clean.info['bads'] = bads
             epochs_clean.interpolate_bads(reset_bads=True)
             print(f"  ✓ Spherical spline interpolation done")
