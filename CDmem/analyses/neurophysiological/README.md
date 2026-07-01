@@ -15,7 +15,7 @@ This project adapts an EEG preprocessing and ERP analysis pipeline from MATLAB/F
 | ICA fit (eyeblink correction) | `1_import_raw.py` | `mne.preprocessing.ICA(method='picard')` | `ft_componentanalysis(cfg.method='runica')` |
 | Inspect ICA components | `2_remove_noise.py` | `ica.plot_components()`, `ica.plot_sources()` | `ft_topoplotIC()`, `ft_databrowser()` |
 | Remove ICA components | `2_remove_noise.py` | `ica.apply()` | `ft_rejectcomponent()` |
-| Baseline correction (−200 ms to 0) | `2_remove_noise.py` | `epochs.apply_baseline((-0.20, 0.0))` | `ft_preprocessing(cfg.demean='yes')` |
+| Baseline correction (−300 ms to 0) | `2_remove_noise.py` | `epochs.apply_baseline((-0.30, 0.0))` | `ft_preprocessing(cfg.demean='yes')` |
 | Artifact rejection (> ±100 µV) | `2_remove_noise.py` | `epochs.drop()` via absolute thresholding | `ft_artifact_threshold()` + `ft_rejectartifact()` |
 | Spherical spline interpolation | `2_remove_noise.py` | `epochs.interpolate_bads()` | `ft_channelrepair(cfg.method='spline')` |
 | ERP extraction & Match Logfile | `3_ERP_calculation.py` | `epochs[mask].average()` -> `Evoked` | `ft_timelockanalysis()` |

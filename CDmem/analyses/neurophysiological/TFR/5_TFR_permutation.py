@@ -20,7 +20,6 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from mne.stats import permutation_cluster_1samp_test
-from scipy.stats import ttest_1samp
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -29,7 +28,7 @@ input_path   = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked"
 figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_stimlocked"
 os.makedirs(figures_path, exist_ok=True)
 
-plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,25]
+plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,25]
 
 # Permutation test parameters (matches FieldTrip cfg.numrandomization=1000)
 N_PERMUTATIONS = 1000
@@ -38,6 +37,20 @@ SEED = 2025
 
 Z_LIMITS_DIFF = [-1.5, 1.5]  # Z-limits for difference heatmap
 Z_LIMITS_STAT = [0, 25]      # FieldTrip scripts occasionally use [0 25] for F-stats/T-stats
+
+# ── Robust 2D cluster index helper ──────────────────────────────────────────
+# MNE returns 2D clusters as (freq_array, time_array) tuples of numpy arrays,
+# but the exact format can vary. This helper always gives (freq_inds, time_inds)
+# as plain integer arrays, regardless of format.
+def _get_2d_cluster_inds(cluster):
+    """Return (freq_inds, time_inds) as 1-D integer arrays for a 2D cluster."""
+    if isinstance(cluster, tuple) and len(cluster) == 2:
+        freq_part, time_part = cluster
+        return np.asarray(freq_part).ravel(), np.asarray(time_part).ravel()
+    if isinstance(cluster, np.ndarray) and cluster.dtype == bool and cluster.ndim == 2:
+        freq_inds, time_inds = np.where(cluster)
+        return freq_inds, time_inds
+    raise ValueError(f"Unexpected 2D cluster format: type={type(cluster)}")
 
 # Time and Frequency ranges to test (like FieldTrip cfgPermut.latency / .frequency)
 TEST_TIME = (0.0, 3.0)
@@ -174,7 +187,7 @@ for comp_name, X_diff in contrasts.items():
             mask[c] = True
             
             # Extract time and freq ranges
-            freq_inds, time_inds = c
+            freq_inds, time_inds = _get_2d_cluster_inds(c)
             f_start, f_end = freqs[freq_inds.min()], freqs[freq_inds.max()]
             t_start, t_end = times[time_inds.min()], times[time_inds.max()]
             
@@ -190,7 +203,7 @@ for comp_name, X_diff in contrasts.items():
             print(msg)
             report_lines.append(msg)
         else:
-            freq_inds, time_inds = c
+            freq_inds, time_inds = _get_2d_cluster_inds(c)
             f_start, f_end = freqs[freq_inds.min()], freqs[freq_inds.max()]
             t_start, t_end = times[time_inds.min()], times[time_inds.max()]
             msg = f"  Cluster {i+1}: {t_start:.3f}–{t_end:.3f}s, {f_start:.1f}–{f_end:.1f}Hz, p={p:.4f}"

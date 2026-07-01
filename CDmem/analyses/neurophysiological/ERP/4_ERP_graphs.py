@@ -230,9 +230,10 @@ for cond_idx, cond_label in enumerate(cond_names):
         h, = ax1.plot(times, y[0, :],
                       linestyle='-', color=linecol_colors[cond_idx])
     else:
-        # Cousineau-Morey correction (factor for 2 conditions is 2/1 = 2.0)
+        # Cousineau-Morey correction: factor = J / (J-1) where J = number of conditions
+        cm_factor = num_cond / (num_cond - 1)
         yCorrect = y - subjMean
-        yCorrect = (yCorrect + grandMean) * (2.0)
+        yCorrect = (yCorrect + grandMean) * cm_factor
         errbar   = np.std(yCorrect, axis=0, ddof=0) / np.sqrt(n_participants)
 
         h, = ax1.plot(times, np.mean(y, axis=0),

@@ -102,6 +102,33 @@ for sub in plist:
     kept_indices = epochs.selection if hasattr(epochs, 'selection') and epochs.selection is not None else np.arange(len(epochs))
     trial_info = trial_info.iloc[kept_indices].reset_index(drop=True)
 
+    # ── Trigger sanity check ──────────────────────────────────────────────────
+    # Verify that the EEG epoch triggers (S 11 = low control, S 13 = high control)
+    # align perfectly with the behavioral CSV trigger_stim_onset values.
+    # This is the TFR equivalent of the check in 3_ERP_calculation.py (lines 131–146).
+    #
+    # epoch.events[:, 2] → integer MNE event codes
+    # epochs.event_id    → maps 'Stimulus/S 11' / 'Stimulus/S 13' to those codes
+    event_id_rev_check = {v: int(k.split('S ')[1]) for k, v in epochs.event_id.items()}
+    eeg_triggers = np.array([event_id_rev_check[e] for e in epochs.events[:, 2]])
+    log_triggers  = trial_info['trigger_stim_onset'].values   # should be 11 or 13
+
+    if len(eeg_triggers) != len(log_triggers):
+        print(f"  ERROR: EEG epoch count ({len(eeg_triggers)}) ≠ "
+              f"behavioral rows ({len(log_triggers)}) after selection. "
+              f"Check trigger alignment!")
+    else:
+        mismatch_found = False
+        for i in range(len(eeg_triggers)):
+            if eeg_triggers[i] != log_triggers[i]:
+                print(f"  ERROR: Trigger mismatch at trial index {i}: "
+                      f"EEG={eeg_triggers[i]}, Log={log_triggers[i]}")
+                mismatch_found = True
+                break
+        if not mismatch_found:
+            print(f"  ✓ Sanity check passed: all {len(eeg_triggers)} EEG triggers "
+                  f"match behavioral CSV trigger_stim_onset values (S 11 / S 13).")
+
     cond_arr = trial_info['control_condition'].values
     rec_arr = trial_info['mem_response'].values
     

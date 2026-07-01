@@ -14,7 +14,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) do you want to process?
 # ──────────────────────────────────────────────────────────────
-plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 19, 20, 21, 22,23,24,25]
+plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 19, 20, 21, 22,23,25]
 
 # ──────────────────────────────────────────────────────────────
 # Paths
@@ -205,7 +205,7 @@ def run_permutation_test(X_condA, X_condB, label_A, label_B, title, save_filenam
         p_val  = cluster_p_values[i_clu]
         avg_T = np.mean(T_obs[clu_inds])
         sum_T = np.sum(T_obs[clu_inds])
-        direction = "Negative" if avg_T > 0 else "Positive"
+        direction = "Positive" if avg_T > 0 else "Negative"
         sig_marker = " ★ SIGNIFICANT" if p_val < alpha else ""
         
         # Compute Cohen's d and statistics for every cluster
