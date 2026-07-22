@@ -38,7 +38,7 @@ DECIM = 10                   # Downsample TFR to 25 Hz to save memory/disk space
 BASELINE = (-0.5, -0.2)      # Baseline correction window (-500 to -200 ms)
 
 # plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
-plist = [25]
+plist = [26]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # HELPER FUNCTIONS
