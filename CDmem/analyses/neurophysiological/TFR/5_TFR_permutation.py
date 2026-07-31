@@ -28,7 +28,8 @@ input_path   = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked"
 figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_stimlocked"
 os.makedirs(figures_path, exist_ok=True)
 
-plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,25]
+plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,25,27,29,30,31]
+# plist = [4, 6, 8, 9, 10, 12, 13, 14,16, 17,19, 20, 22, 23,25,29,30,31]
 
 # Permutation test parameters (matches FieldTrip cfg.numrandomization=1000)
 N_PERMUTATIONS = 1000
@@ -271,8 +272,211 @@ for comp_name, X_diff in contrasts.items():
     fig.savefig(os.path.join(figures_path, f'01_stat_permut_{comp_name}.png'), dpi=300)
     plt.close(fig)
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 5. SUPPLEMENTARY ANALYSIS (H5): All Items (Collapsed across item type)
+# ══════════════════════════════════════════════════════════════════════════════
+print("\n" + "=" * 70)
+print("RUNNING SUPPLEMENTARY ANALYSIS (ALL ITEMS)")
+print("=" * 70)
+
+supp_conditions = ['low_recalled', 'low_not_recalled', 'high_recalled', 'high_not_recalled']
+supp_subject_roi_data = {f"{sub:04d}": {} for sub in plist}
+
+for sub in plist:
+    sub_id = f"{sub:04d}"
+    data_file = os.path.join(input_path, f"CDmem_{sub_id}_TFR_ConditionAverages_AllItems.npz")
+    
+    if not os.path.exists(data_file):
+        continue
+        
+    saved = np.load(data_file, allow_pickle=True)
+    for cond in supp_conditions:
+        if cond in saved:
+            roi_avg = np.nanmean(saved[cond][roi_idx, :, :], axis=0)
+            supp_subject_roi_data[sub_id][cond] = roi_avg[np.ix_(freq_mask, time_mask)]
+
+valid_subs_supp = [sub for sub in supp_subject_roi_data if len(supp_subject_roi_data[sub]) == 4]
+print(f"Found {len(valid_subs_supp)} subjects with all 4 supplementary conditions.")
+
+if len(valid_subs_supp) >= 2:
+    low_rec_s = np.array([supp_subject_roi_data[sub]['low_recalled'] for sub in valid_subs_supp])
+    low_not_s = np.array([supp_subject_roi_data[sub]['low_not_recalled'] for sub in valid_subs_supp])
+    high_rec_s = np.array([supp_subject_roi_data[sub]['high_recalled'] for sub in valid_subs_supp])
+    high_not_s = np.array([supp_subject_roi_data[sub]['high_not_recalled'] for sub in valid_subs_supp])
+    
+    main_rec_s = (low_rec_s + high_rec_s) / 2
+    main_not_s = (low_not_s + high_not_s) / 2
+    
+    supp_contrasts = {
+        'SUPPLEMENTARY__Main_Effect_Memory': main_rec_s - main_not_s
+    }
+    
+    for comp_name, X_diff in supp_contrasts.items():
+        X_diff_clean = np.nan_to_num(X_diff, nan=0.0)
+        T_obs, clusters, cluster_p, H0 = permutation_cluster_1samp_test(
+            X_diff_clean, n_permutations=N_PERMUTATIONS, tail=TAIL, n_jobs=-1, seed=SEED
+        )
+        ga_diff = np.nanmean(X_diff_clean, axis=0)
+        sig_clusters = [c for c, p in zip(clusters, cluster_p) if p < 0.05]
+        n_sig = len(sig_clusters)
+        
+        msg_header = f"\n{comp_name.replace('_', ' ').upper()} (Collapsed across item types)\n{len(clusters)} clusters found, {n_sig} significant (p < 0.05)"
+        print(msg_header)
+        report_lines.append(msg_header)
+        report_lines.append("-" * 70)
+        
+        for i, (c, p) in enumerate(zip(clusters, cluster_p)):
+            if p < 0.05:
+                mask = np.zeros_like(ga_diff, dtype=bool)
+                mask[c] = True
+                freq_inds, time_inds = _get_2d_cluster_inds(c)
+                f_start, f_end = freqs[freq_inds.min()], freqs[freq_inds.max()]
+                t_start, t_end = times[time_inds.min()], times[time_inds.max()]
+                mean_diff = np.nanmean(X_diff_clean, axis=0)
+                std_diff = np.nanstd(X_diff_clean, axis=0, ddof=1)
+                cohens_d_map = mean_diff / np.where(std_diff == 0, 1e-10, std_diff)
+                cluster_cohens_d = np.mean(np.abs(cohens_d_map[mask]))
+                msg = (f"  Cluster {i+1}: {t_start:.3f}–{t_end:.3f}s, {f_start:.1f}–{f_end:.1f}Hz, "
+                       f"p={p:.4f} ★ | Cohen's d: {cluster_cohens_d:.2f}")
+                print(msg)
+                report_lines.append(msg)
+            else:
+                freq_inds, time_inds = _get_2d_cluster_inds(c)
+                f_start, f_end = freqs[freq_inds.min()], freqs[freq_inds.max()]
+                t_start, t_end = times[time_inds.min()], times[time_inds.max()]
+                msg = f"  Cluster {i+1}: {t_start:.3f}–{t_end:.3f}s, {f_start:.1f}–{f_end:.1f}Hz, p={p:.4f}"
+                print(msg)
+                report_lines.append(msg)
+                
+        fig, ax = plt.subplots(figsize=(10, 6))
+        im = ax.imshow(ga_diff, aspect='auto', origin='lower', extent=[times[0], times[-1], freqs[0], freqs[-1]],
+                       cmap='RdBu_r', vmin=Z_LIMITS_DIFF[0], vmax=Z_LIMITS_DIFF[1])
+        cbar = fig.colorbar(im, ax=ax)
+        cbar.set_label('Power Difference (dB)')
+        for c, p in zip(clusters, cluster_p):
+            if p < 0.05:
+                mask = np.zeros_like(ga_diff, dtype=bool)
+                mask[c] = True
+                ax.contour(times, freqs, mask, levels=[0.5], colors='black', linewidths=2)
+        ax.set_xlabel('Time (s)', fontsize=14, fontname='Times New Roman')
+        ax.set_ylabel('Frequency (Hz)', fontsize=14, fontname='Times New Roman')
+        ax.set_title(f"{comp_name.replace('_', ' ').upper()}", fontsize=16, fontname='Times New Roman')
+        ax.axvline(0, color='black', linestyle='--', linewidth=1)
+        plt.tight_layout()
+        fig.savefig(os.path.join(figures_path, f'02_tf_permut_{comp_name}_diff.png'), dpi=300)
+        plt.close(fig)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 6. EXPLORATORY ANALYSIS: Item Type Split (NOT PREREGISTERED)
+# ══════════════════════════════════════════════════════════════════════════════
+print("\n" + "=" * 70)
+print("RUNNING EXPLORATORY ANALYSIS (ITEM TYPE SPLIT) - NOT PREREGISTERED")
+print("=" * 70)
+
+exp_conditions = [
+    'low_controlled_recalled', 'low_controlled_not_recalled',
+    'low_uncontrolled_recalled', 'low_uncontrolled_not_recalled',
+    'high_controlled_recalled', 'high_controlled_not_recalled',
+    'high_uncontrolled_recalled', 'high_uncontrolled_not_recalled'
+]
+exp_subject_roi_data = {f"{sub:04d}": {} for sub in plist}
+
+for sub in plist:
+    sub_id = f"{sub:04d}"
+    data_file = os.path.join(input_path, f"CDmem_{sub_id}_TFR_ItemTypeAverages.npz")
+    
+    if not os.path.exists(data_file):
+        continue
+        
+    saved = np.load(data_file, allow_pickle=True)
+    for cond in exp_conditions:
+        if cond in saved:
+            roi_avg = np.nanmean(saved[cond][roi_idx, :, :], axis=0)
+            exp_subject_roi_data[sub_id][cond] = roi_avg[np.ix_(freq_mask, time_mask)]
+
+valid_subs_exp = [sub for sub in exp_subject_roi_data if len(exp_subject_roi_data[sub]) == 8]
+print(f"Found {len(valid_subs_exp)} subjects with all 8 item-type conditions.")
+
+if len(valid_subs_exp) >= 2:
+    low_ctrl_rec = np.array([exp_subject_roi_data[sub]['low_controlled_recalled'] for sub in valid_subs_exp])
+    low_ctrl_not = np.array([exp_subject_roi_data[sub]['low_controlled_not_recalled'] for sub in valid_subs_exp])
+    low_unctrl_rec = np.array([exp_subject_roi_data[sub]['low_uncontrolled_recalled'] for sub in valid_subs_exp])
+    low_unctrl_not = np.array([exp_subject_roi_data[sub]['low_uncontrolled_not_recalled'] for sub in valid_subs_exp])
+    
+    high_ctrl_rec = np.array([exp_subject_roi_data[sub]['high_controlled_recalled'] for sub in valid_subs_exp])
+    high_ctrl_not = np.array([exp_subject_roi_data[sub]['high_controlled_not_recalled'] for sub in valid_subs_exp])
+    high_unctrl_rec = np.array([exp_subject_roi_data[sub]['high_uncontrolled_recalled'] for sub in valid_subs_exp])
+    high_unctrl_not = np.array([exp_subject_roi_data[sub]['high_uncontrolled_not_recalled'] for sub in valid_subs_exp])
+    
+    Dm_low_ctrl = low_ctrl_rec - low_ctrl_not
+    Dm_low_unctrl = low_unctrl_rec - low_unctrl_not
+    Dm_high_ctrl = high_ctrl_rec - high_ctrl_not
+    Dm_high_unctrl = high_unctrl_rec - high_unctrl_not
+    
+    exp_contrasts = {
+        'EXPLORATORY__Main_Effect_ItemType_on_Dm': ((Dm_low_ctrl + Dm_high_ctrl)/2) - ((Dm_low_unctrl + Dm_high_unctrl)/2),
+        'EXPLORATORY__Interaction_Control_x_ItemType_on_Dm': (Dm_high_ctrl - Dm_high_unctrl) - (Dm_low_ctrl - Dm_low_unctrl)
+    }
+    
+    for comp_name, X_diff in exp_contrasts.items():
+        X_diff_clean = np.nan_to_num(X_diff, nan=0.0)
+        T_obs, clusters, cluster_p, H0 = permutation_cluster_1samp_test(
+            X_diff_clean, n_permutations=N_PERMUTATIONS, tail=TAIL, n_jobs=-1, seed=SEED
+        )
+        ga_diff = np.nanmean(X_diff_clean, axis=0)
+        sig_clusters = [c for c, p in zip(clusters, cluster_p) if p < 0.05]
+        n_sig = len(sig_clusters)
+        
+        msg_header = f"\n{comp_name.replace('_', ' ').upper()} (NOT PREREGISTERED)\n{len(clusters)} clusters found, {n_sig} significant (p < 0.05)"
+        print(msg_header)
+        report_lines.append(msg_header)
+        report_lines.append("-" * 70)
+        
+        for i, (c, p) in enumerate(zip(clusters, cluster_p)):
+            if p < 0.05:
+                mask = np.zeros_like(ga_diff, dtype=bool)
+                mask[c] = True
+                freq_inds, time_inds = _get_2d_cluster_inds(c)
+                f_start, f_end = freqs[freq_inds.min()], freqs[freq_inds.max()]
+                t_start, t_end = times[time_inds.min()], times[time_inds.max()]
+                mean_diff = np.nanmean(X_diff_clean, axis=0)
+                std_diff = np.nanstd(X_diff_clean, axis=0, ddof=1)
+                cohens_d_map = mean_diff / np.where(std_diff == 0, 1e-10, std_diff)
+                cluster_cohens_d = np.mean(np.abs(cohens_d_map[mask]))
+                msg = (f"  Cluster {i+1}: {t_start:.3f}–{t_end:.3f}s, {f_start:.1f}–{f_end:.1f}Hz, "
+                       f"p={p:.4f} ★ | Cohen's d: {cluster_cohens_d:.2f}")
+                print(msg)
+                report_lines.append(msg)
+            else:
+                freq_inds, time_inds = _get_2d_cluster_inds(c)
+                f_start, f_end = freqs[freq_inds.min()], freqs[freq_inds.max()]
+                t_start, t_end = times[time_inds.min()], times[time_inds.max()]
+                msg = f"  Cluster {i+1}: {t_start:.3f}–{t_end:.3f}s, {f_start:.1f}–{f_end:.1f}Hz, p={p:.4f}"
+                print(msg)
+                report_lines.append(msg)
+                
+        fig, ax = plt.subplots(figsize=(10, 6))
+        im = ax.imshow(ga_diff, aspect='auto', origin='lower', extent=[times[0], times[-1], freqs[0], freqs[-1]],
+                       cmap='RdBu_r', vmin=Z_LIMITS_DIFF[0], vmax=Z_LIMITS_DIFF[1])
+        cbar = fig.colorbar(im, ax=ax)
+        cbar.set_label('Power Difference (dB)')
+        for c, p in zip(clusters, cluster_p):
+            if p < 0.05:
+                mask = np.zeros_like(ga_diff, dtype=bool)
+                mask[c] = True
+                ax.contour(times, freqs, mask, levels=[0.5], colors='black', linewidths=2)
+        ax.set_xlabel('Time (s)', fontsize=14, fontname='Times New Roman')
+        ax.set_ylabel('Frequency (Hz)', fontsize=14, fontname='Times New Roman')
+        ax.set_title(f"{comp_name.replace('_', ' ').upper()}", fontsize=16, fontname='Times New Roman')
+        ax.axvline(0, color='black', linestyle='--', linewidth=1)
+        plt.tight_layout()
+        fig.savefig(os.path.join(figures_path, f'03_tf_permut_{comp_name}_diff.png'), dpi=300)
+        plt.close(fig)
+
 # Save text report to file
 report_file = os.path.join(figures_path, 'TFR_permutation_statistics_report.txt')
 with open(report_file, 'w', encoding='utf-8') as f:
     f.write('\n'.join(report_lines) + '\n')
     print(f"\n* Statistical report saved to {report_file}")
+

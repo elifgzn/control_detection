@@ -16,6 +16,8 @@ PURPOSE:
         - Baseline correction: 10 * log10(condition_power / grand_baseline)
 """
 
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
 import os
 import numpy as np
 import pandas as pd
@@ -38,7 +40,7 @@ DECIM = 10                   # Downsample TFR to 25 Hz to save memory/disk space
 BASELINE = (-0.5, -0.2)      # Baseline correction window (-500 to -200 ms)
 
 # plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
-plist = [26]
+plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # HELPER FUNCTIONS
@@ -51,12 +53,16 @@ def load_behavioral_data(sub):
     test_df = enc_df[enc_df['phase'] == 'test'].copy().reset_index(drop=True)
 
     controlled_imgs = []
+    uncontrolled_imgs = []
     for _, row in test_df.iterrows():
         if row['true_controlled'] == 'img_A':
             controlled_imgs.append(row['img_A_name'])
+            uncontrolled_imgs.append(row['img_B_name'])
         else:
             controlled_imgs.append(row['img_B_name'])
+            uncontrolled_imgs.append(row['img_A_name'])
     test_df['controlled_img'] = controlled_imgs
+    test_df['uncontrolled_img'] = uncontrolled_imgs
 
     rec_file = os.path.join(behavioral_path, f"CDmem_1_{sub}_recognition.csv")
     rec_df = pd.read_csv(rec_file)
@@ -65,11 +71,22 @@ def load_behavioral_data(sub):
         (rec_df['mem_ground_truth'] == 'seen') &
         (rec_df['controlled'] == 'yes')
     ][['mem_filename', 'mem_response']].copy()
+    rec_controlled = rec_controlled.rename(columns={'mem_response': 'ctrl_mem_response'})
+
+    rec_uncontrolled = rec_df[
+        (rec_df['mem_ground_truth'] == 'seen') &
+        (rec_df['controlled'] == 'no')
+    ][['mem_filename', 'mem_response']].copy()
+    rec_uncontrolled = rec_uncontrolled.rename(columns={'mem_response': 'unctrl_mem_response'})
 
     trial_info = test_df.merge(
         rec_controlled, left_on='controlled_img', right_on='mem_filename', how='left'
-    )
-    return trial_info[['control_condition', 'controlled_img', 'mem_response', 'trigger_stim_onset']].copy()
+    ).drop(columns=['mem_filename'], errors='ignore')
+    trial_info = trial_info.merge(
+        rec_uncontrolled, left_on='uncontrolled_img', right_on='mem_filename', how='left'
+    ).drop(columns=['mem_filename'], errors='ignore')
+
+    return trial_info[['control_condition', 'controlled_img', 'uncontrolled_img', 'ctrl_mem_response', 'unctrl_mem_response', 'trigger_stim_onset']].copy()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN ANALYSIS LOOP
@@ -130,13 +147,38 @@ for sub in plist:
                   f"match behavioral CSV trigger_stim_onset values (S 11 / S 13).")
 
     cond_arr = trial_info['control_condition'].values
-    rec_arr = trial_info['mem_response'].values
+    ctrl_rec = trial_info['ctrl_mem_response'].values
+    unctrl_rec = trial_info['unctrl_mem_response'].values
     
+    # ── PREREGISTERED: Controlled items only ──
     conditions_dict = {
-        'low_recalled': (cond_arr == 'low') & (rec_arr == 'yes'),
-        'low_not_recalled': (cond_arr == 'low') & (rec_arr == 'no'),
-        'high_recalled': (cond_arr == 'high') & (rec_arr == 'yes'),
-        'high_not_recalled': (cond_arr == 'high') & (rec_arr == 'no')
+        'low_recalled': (cond_arr == 'low') & (ctrl_rec == 'yes'),
+        'low_not_recalled': (cond_arr == 'low') & (ctrl_rec == 'no'),
+        'high_recalled': (cond_arr == 'high') & (ctrl_rec == 'yes'),
+        'high_not_recalled': (cond_arr == 'high') & (ctrl_rec == 'no')
+    }
+
+    # ── SUPPLEMENTARY (H5): All items (collapsed across item type) ──
+    # If either item was recalled, trial is recalled; if both not recalled, trial is not recalled.
+    any_recalled = (ctrl_rec == 'yes') | (unctrl_rec == 'yes')
+    both_not_recalled = (ctrl_rec == 'no') & (unctrl_rec == 'no')
+    conditions_dict_all_items = {
+        'low_recalled': (cond_arr == 'low') & any_recalled,
+        'low_not_recalled': (cond_arr == 'low') & both_not_recalled,
+        'high_recalled': (cond_arr == 'high') & any_recalled,
+        'high_not_recalled': (cond_arr == 'high') & both_not_recalled
+    }
+
+    # ── EXPLORATORY (NOT PREREGISTERED): Item Type split ──
+    conditions_dict_itemtype = {
+        'low_controlled_recalled': (cond_arr == 'low') & (ctrl_rec == 'yes'),
+        'low_controlled_not_recalled': (cond_arr == 'low') & (ctrl_rec == 'no'),
+        'low_uncontrolled_recalled': (cond_arr == 'low') & (unctrl_rec == 'yes'),
+        'low_uncontrolled_not_recalled': (cond_arr == 'low') & (unctrl_rec == 'no'),
+        'high_controlled_recalled': (cond_arr == 'high') & (ctrl_rec == 'yes'),
+        'high_controlled_not_recalled': (cond_arr == 'high') & (ctrl_rec == 'no'),
+        'high_uncontrolled_recalled': (cond_arr == 'high') & (unctrl_rec == 'yes'),
+        'high_uncontrolled_not_recalled': (cond_arr == 'high') & (unctrl_rec == 'no')
     }
 
     # 3. Compute TFR (Morlet Wavelets) for ALL trials
@@ -168,44 +210,51 @@ for sub in plist:
     # 5. Average Trials Per Condition and Apply Baseline Correction
     # FieldTrip Step 16: ft_freqanalysis(keeptrials='no') -> condition average
     # Then: 10 * log10(bsxfun(@rdivide,powavg.powspctrm,ga_base))
-    print("  Step 4: Calculating condition averages and applying baseline correction...")
+    print("  Step 4 & 5: Calculating condition averages, baseline correction, and saving...")
     
-    out_data = {}
-    epsilon = 1e-15 # small constant to avoid divide by zero or log of zero
-    
-    for cond_name, mask in conditions_dict.items():
-        if mask.sum() < 2:
-            print(f"    Warning: Not enough trials for {cond_name}. Skipping condition.")
-            continue
-            
-        # Get raw power for trials in this condition
-        cond_trials_power = tfr.data[mask]
-        
-        # Average across trials (axis=0) -> shape: (n_channels, n_freqs, n_times)
-        cond_avg_power = np.nanmean(cond_trials_power, axis=0)
-        
-        # Apply baseline correction (dB = 10 * log10(signal / baseline))
-        cond_db = 10 * np.log10(
-            np.maximum(cond_avg_power, epsilon) / 
-            np.maximum(grand_baseline[:, :, np.newaxis], epsilon)
-        )
-        
-        out_data[cond_name] = cond_db
+    file_configs = [
+        (conditions_dict, f"CDmem_{sub_id}_TFR_ConditionAverages.npz", "Preregistered (Controlled only)"),
+        (conditions_dict_all_items, f"CDmem_{sub_id}_TFR_ConditionAverages_AllItems.npz", "Supplementary (All items)"),
+        (conditions_dict_itemtype, f"CDmem_{sub_id}_TFR_ItemTypeAverages.npz", "EXPLORATORY - NOT PREREGISTERED (Item Type)")
+    ]
 
-    # 6. Save Data
-    # We save all channels, allowing subsequent scripts to pick ROIs for heatmaps or run topoplots.
-    print("  Step 5: Saving per-subject condition-averaged data...")
+    epsilon = 1e-15 # small constant to avoid divide by zero or log of zero
     roi_channels = [ch for ch in tfr.ch_names if ch.startswith('P') or ch.startswith('O')]
     
-    np.savez(
-        out_file,
-        ch_names=tfr.ch_names,
-        times=tfr.times,
-        freqs=FREQS,
-        roi_channels=roi_channels,
-        **out_data
-    )
-    print(f"  ✓ Saved condition averages to {out_file}")
+    for conds, filename, desc in file_configs:
+        print(f"    Processing: {desc}")
+        out_data = {}
+        
+        for cond_name, mask in conds.items():
+            if mask.sum() < 2:
+                print(f"      Warning: Not enough trials for {cond_name}. Skipping condition.")
+                continue
+                
+            # Get raw power for trials in this condition
+            cond_trials_power = tfr.data[mask]
+            
+            # Average across trials (axis=0) -> shape: (n_channels, n_freqs, n_times)
+            cond_avg_power = np.nanmean(cond_trials_power, axis=0)
+            
+            # Apply baseline correction (dB = 10 * log10(signal / baseline))
+            cond_db = 10 * np.log10(
+                np.maximum(cond_avg_power, epsilon) / 
+                np.maximum(grand_baseline[:, :, np.newaxis], epsilon)
+            )
+            
+            out_data[cond_name] = cond_db
+
+        # 6. Save Data
+        out_path_file = os.path.join(output_path, filename)
+        np.savez(
+            out_path_file,
+            ch_names=tfr.ch_names,
+            times=tfr.times,
+            freqs=FREQS,
+            roi_channels=roi_channels,
+            **out_data
+        )
+        print(f"      ✓ Saved to {filename}")
 
 print("\n" + "=" * 70)
 print("  TFR CALCULATION COMPLETE")

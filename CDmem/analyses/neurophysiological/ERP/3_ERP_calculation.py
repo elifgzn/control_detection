@@ -14,7 +14,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 
 # plist = [4,6,7,8,9,10,12,13,14,15,16,17,19,20,21,22,23,24]
 
-plist = [26]
+plist = [27,29,30,31]
 
 
 # Paths
