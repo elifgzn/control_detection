@@ -30,8 +30,8 @@ os.makedirs(figures_path, exist_ok=True)
 plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
 
 # Parameters matching MATLAB script `A2_4_freqGraphs_feedbacktheta.m`
-# Z_LIMITS = [-1.5, 1.5]  # Fixed z-limits for heatmaps and topoplots
-Z_LIMITS = [-2.5, 2.5]  # Fixed z-limits for heatmaps and topoplots (matches Wu et al)
+Z_LIMITS = [-1.5, 1.5]  # Fixed z-limits for heatmaps and topoplots
+# Z_LIMITS = [-2.5, 2.5]  # Fixed z-limits for heatmaps and topoplots (matches Wu et al)
 TOPO_FREQ = (2, 20)     # Hz
 TOPO_TIME = (0.0, 3.5)  # seconds
 
@@ -110,7 +110,7 @@ for cond in conditions:
     
     ax.set_xlabel('Time (s)', fontsize=14, fontname='Times New Roman')
     ax.set_ylabel('Frequency (Hz)', fontsize=14, fontname='Times New Roman')
-    ax.set_ylim(0, 20)
+    ax.set_ylim(0, 40)
     ax.set_title(cond.replace('_', ' ').title(), fontsize=16, fontname='Times New Roman')
     
     plt.tight_layout()
