@@ -12,9 +12,15 @@ sys.stdout.reconfigure(encoding='utf-8')
 # Which participant(s) do you want to process?
 # ──────────────────────────────────────────────────────────────
 
-# plist = [4,6,7,8,9,10,12,13,14,15,16,17,19,20,21,22,23,24]
+# filter_modes: 
+#   1: compute without filter (all trials)
+#   2: compute with filter (only correct detection trials)
+#   [1, 2]: compute both
+filter_modes = [1, 2]
 
-plist = [27,29,30,31]
+plist = [4,6,7,8,9,10,12,13,14,15,16,17,18,19,20,21,22,23,25,26,27,29,30,31]
+
+# plist = [27,29,30,31]
 
 
 # Paths
@@ -153,133 +159,101 @@ for sub in plist:
     print(f"  ✓ EEG cropped to window: [-0.30, 1.20] s")
 
     # ── 6. ERP analysis per condition ─────────────────────
-    # FieldTrip equivalent (Step 15):
-    #   cfgerp.keeptrials = 'no';              → average across trials (no single-trial output)
-    #   cfgerp.trials     = <boolean mask>;    → select trials per condition
-    #   erp_dat{cnum}     = ft_timelockanalysis(cfgerp, dataClean);
-    #
-    # In MNE, epochs[mask].average() is the direct equivalent of
-    # ft_timelockanalysis with keeptrials='no': it returns an Evoked object
-    # containing the trial-averaged ERP for the selected subset.
-    #
-    # Conditions: control_condition
-    #   control_condition  'high' = high control   'low' = low control
-    # → 2 conditions total: high_control, low_control
-
-    # Output folder — create it if it doesn't exist (FieldTrip assumes it exists;
-    # we add os.makedirs to be safe, equivalent to a one-time mkdir in the shell)
-    erp_out_path = r"H:\PHD\control_detection\main_data\eeg\eeg4_ERPSummaries"
-    os.makedirs(erp_out_path, exist_ok=True)
-
-    # We need a reset positional index on logdat so boolean masks align with
-    # epochs (which are already in the same order after HV filtering above).
     logdat_reset = logdat.reset_index(drop=True)
 
-    eeg_dat   = {}   # dict of condition_name → mne.Evoked  (FieldTrip: erp_dat cell array)
-    cond_name = []   # list of condition label strings       (FieldTrip: cond_name cell array)
-    summary   = {'sub': sub}  # trial counts per condition  (FieldTrip: summary struct)
-
-    cnum = 0
-    for control in ['high', 'low']:  # high control, low control
-        cnum += 1
-
-        # Build condition label, e.g. 'high_control'
-        label = f"{control}_control"
-        cond_name.append(label)
-
-        # Boolean mask over the current (filtered, preprocessed) trials
-        mask = (logdat_reset['control_condition'] == control)
-
-        n_trials = mask.sum()
-
-        # Store trial count in summary
-        # FieldTrip: summary.(['num_' cond_name{cnum}]) = sum(cfgerp.trials);
-        summary[f"num_{label}"] = int(n_trials)
-
-        if n_trials == 0:
-            print(f"  WARNING: no trials for condition {label} — skipping.")
-            eeg_dat[label] = None
+    for fmode in filter_modes:
+        print(f"\n  === Processing Filter Mode: {fmode} ===")
+        if fmode == 1:
+            erp_out_path = r"H:\PHD\control_detection\main_data\eeg\eeg4_ERPSummaries"
+            mode_mask = np.ones(len(logdat_reset), dtype=bool)
+        elif fmode == 2:
+            erp_out_path = r"H:\PHD\control_detection\main_data\eeg\eeg4_ERPSummaries_onlycorrect"
+            # Filter for correct responses (where detection_accuracy == 1)
+            mode_mask = (logdat_reset['detection_accuracy'] == 1).values
+        else:
             continue
 
-        # Select the matching epochs and average across trials → Evoked object
-        # FieldTrip: erp_dat{cnum} = ft_timelockanalysis(cfgerp, dataClean);
-        epochs_cond = epochs[mask.values]
-        evoked = epochs_cond.average()
-        evoked.comment = label   # label the Evoked so it's identifiable when saved
-        eeg_dat[label] = evoked
+        os.makedirs(erp_out_path, exist_ok=True)
 
-        print(f"  [{label}]  {n_trials} trials  →  ERP computed")
+        eeg_dat   = {}
+        cond_name = []
+        summary   = {'sub': sub, 'filter_mode': fmode}
 
-    # ── 7. Save ERP results ───────────────────────────────
-    # FieldTrip: save(['D:/MCRL DATA/eeg4_ERPSummaries/MCRL_' addStr num2str(pnum)], ...
-    #                 'eegdat', 'cond_name', 'summary');
-    #
-    # In MNE, Evoked objects are saved as FIF files (one per participant, containing
-    # all 4 conditions). The summary dict is saved separately as a CSV.
-    # mne.write_evokeds() is the MNE equivalent of saving eegdat in FieldTrip.
+        cnum = 0
+        for control in ['high', 'low']:
+            cnum += 1
+            label = f"{control}_control"
+            cond_name.append(label)
 
-    # Save all 4 Evoked objects in a single FIF file (one file per participant)
-    evoked_list = [ev for ev in eeg_dat.values() if ev is not None]
-    evoked_file = os.path.join(erp_out_path, f"CDmem_{sub_id}-erp-ave.fif")
-    mne.write_evokeds(evoked_file, evoked_list, overwrite=True, verbose=False)
-    print(f"  ✓ Saved ERP file: {evoked_file}")
-
-    # Save summary (trial counts per condition) as CSV alongside the ERP file
-    summary_file = os.path.join(erp_out_path, f"CDmem_{sub_id}-erp-summary.csv")
-    pd.DataFrame([summary]).to_csv(summary_file, index=False)
-    print(f"  ✓ Saved summary:  {summary_file}")
-
-    print(f"  DONE! Conditions: {cond_name}  |  Trial counts: "
-          f"{ {k: summary[f'num_{k}'] for k in cond_name} }")
-
-    # Append this participant's summary to the cross-participant list
-    # FieldTrip: behavSummary = [behavSummary summary];
-    all_summaries.append(summary)
-
-    # ── 8. Detection-split ERP analysis NOT PREREGISTERED!!!!! ───────────────────
-    # 4 conditions: control (high/low) × detection accuracy (detected/nondetected)
-    # Saved separately from the main 2-condition ERPs.
-    print(f"\n  --- Detection-split ERP analysis ---")
-
-    eeg_dat_det   = {}
-    cond_name_det = []
-    summary_det   = {'sub': sub}
-
-    for control in ['high', 'low']:
-        for detected in [1, 0]:
-            det_label = 'detected' if detected == 1 else 'nondetected'
-            label = f"{control}_control_{det_label}"
-            cond_name_det.append(label)
-
-            mask = ((logdat_reset['control_condition'] == control) &
-                    (logdat_reset['detection_accuracy'] == detected))
+            mask = (logdat_reset['control_condition'] == control) & mode_mask
             n_trials = mask.sum()
-            summary_det[f"num_{label}"] = int(n_trials)
+            summary[f"num_{label}"] = int(n_trials)
 
             if n_trials == 0:
                 print(f"  WARNING: no trials for condition {label} — skipping.")
-                eeg_dat_det[label] = None
+                eeg_dat[label] = None
                 continue
 
             epochs_cond = epochs[mask.values]
             evoked = epochs_cond.average()
             evoked.comment = label
-            eeg_dat_det[label] = evoked
-
+            eeg_dat[label] = evoked
             print(f"  [{label}]  {n_trials} trials  →  ERP computed")
 
-    # Save detection-split Evoked objects
-    evoked_list_det = [ev for ev in eeg_dat_det.values() if ev is not None]
-    evoked_file_det = os.path.join(erp_out_path, f"CDmem_{sub_id}-erp-detection-ave.fif")
-    mne.write_evokeds(evoked_file_det, evoked_list_det, overwrite=True, verbose=False)
-    print(f"  ✓ Saved detection ERP file: {evoked_file_det}")
+        # ── 7. Save ERP results ───────────────────────────────
+        evoked_list = [ev for ev in eeg_dat.values() if ev is not None]
+        evoked_file = os.path.join(erp_out_path, f"CDmem_{sub_id}-erp-ave.fif")
+        mne.write_evokeds(evoked_file, evoked_list, overwrite=True, verbose=False)
+        print(f"  ✓ Saved ERP file: {evoked_file}")
 
-    summary_file_det = os.path.join(erp_out_path, f"CDmem_{sub_id}-erp-detection-summary.csv")
-    pd.DataFrame([summary_det]).to_csv(summary_file_det, index=False)
-    print(f"  ✓ Saved detection summary:  {summary_file_det}")
+        summary_file = os.path.join(erp_out_path, f"CDmem_{sub_id}-erp-summary.csv")
+        pd.DataFrame([summary]).to_csv(summary_file, index=False)
+        print(f"  ✓ Saved summary:  {summary_file}")
 
-    print(f"  Detection conditions: {cond_name_det}")
-    print(f"  Detection trial counts: { {k: summary_det[f'num_{k}'] for k in cond_name_det} }")
+        print(f"  DONE! Conditions: {cond_name}  |  Trial counts: "
+              f"{ {k: summary[f'num_{k}'] for k in cond_name} }")
+
+        all_summaries.append(summary)
+
+        # ── 8. Detection-split ERP analysis NOT PREREGISTERED!!!!! ───────────────────
+        print(f"\n  --- Detection-split ERP analysis ---")
+        eeg_dat_det   = {}
+        cond_name_det = []
+        summary_det   = {'sub': sub, 'filter_mode': fmode}
+
+        for control in ['high', 'low']:
+            for detected in [1, 0]:
+                det_label = 'detected' if detected == 1 else 'nondetected'
+                label = f"{control}_control_{det_label}"
+                cond_name_det.append(label)
+
+                mask = ((logdat_reset['control_condition'] == control) &
+                        (logdat_reset['detection_accuracy'] == detected) & mode_mask)
+                n_trials = mask.sum()
+                summary_det[f"num_{label}"] = int(n_trials)
+
+                if n_trials == 0:
+                    print(f"  WARNING: no trials for condition {label} — skipping.")
+                    eeg_dat_det[label] = None
+                    continue
+
+                epochs_cond = epochs[mask.values]
+                evoked = epochs_cond.average()
+                evoked.comment = label
+                eeg_dat_det[label] = evoked
+                print(f"  [{label}]  {n_trials} trials  →  ERP computed")
+
+        evoked_list_det = [ev for ev in eeg_dat_det.values() if ev is not None]
+        evoked_file_det = os.path.join(erp_out_path, f"CDmem_{sub_id}-erp-detection-ave.fif")
+        mne.write_evokeds(evoked_file_det, evoked_list_det, overwrite=True, verbose=False)
+        print(f"  ✓ Saved detection ERP file: {evoked_file_det}")
+
+        summary_file_det = os.path.join(erp_out_path, f"CDmem_{sub_id}-erp-detection-summary.csv")
+        pd.DataFrame([summary_det]).to_csv(summary_file_det, index=False)
+        print(f"  ✓ Saved detection summary:  {summary_file_det}")
+
+        print(f"  Detection conditions: {cond_name_det}")
+        print(f"  Detection trial counts: { {k: summary_det[f'num_{k}'] for k in cond_name_det} }")
 
 print("\nAll selected participants processed.")
 
@@ -303,25 +277,23 @@ if all_summaries:
     trial_counts = summary_df[cond_cols]
 
     # Flag rows where ANY condition has fewer than THRESHOLD trials
-    # FieldTrip: rows_with_less_trials = any(trialnumbers < 20, 2);
     flagged_mask = (trial_counts < THRESHOLD).any(axis=1)
-    flagged_subs = summary_df.loc[flagged_mask, 'sub'].tolist()
-    num_flagged  = len(flagged_subs)
+    flagged_rows = summary_df.loc[flagged_mask]
+    num_flagged  = len(flagged_rows)
 
     print(f"\n{'='*60}")
     print(f"  TRIAL COUNT CHECK  (threshold: < {THRESHOLD} trials per condition)")
     print(f"{'='*60}")
-    # FieldTrip: disp(['Number of rows with a value less than 20: ', num2str(num_rows)]);
-    print(f"  Participants with < {THRESHOLD} trials in >= 1 condition: {num_flagged}")
+    print(f"  Condition checks with < {THRESHOLD} trials: {num_flagged}")
 
     if num_flagged == 0:
-        print("  All participants meet the minimum trial threshold.")
+        print("  All participants/modes meet the minimum trial threshold.")
     else:
-        # FieldTrip: disp('Row indices:'); disp(row_indices);
-        print("  Flagged participant(s):")
-        for psub in flagged_subs:
+        print("  Flagged participant(s) / modes:")
+        for idx, row in flagged_rows.iterrows():
+            psub = row['sub']
+            fmode = row.get('filter_mode', 'unknown')
             psub_id = f"{psub:04d}"
-            row = summary_df.loc[summary_df['sub'] == psub, cond_cols].iloc[0]
-            low_conds = row[row < THRESHOLD].to_dict()
-            print(f"    Sub {psub_id}: {low_conds}")
+            low_conds = row[cond_cols][row[cond_cols] < THRESHOLD].to_dict()
+            print(f"    Sub {psub_id} (Mode {fmode}): {low_conds}")
     print(f"{'='*60}\n")
