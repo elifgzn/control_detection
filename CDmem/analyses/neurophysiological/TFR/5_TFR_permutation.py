@@ -28,7 +28,7 @@ input_path   = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked"
 figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_stimlocked"
 os.makedirs(figures_path, exist_ok=True)
 
-plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,25,27,29,30,31]
+plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,27, 29, 30, 31]
 # plist = [4, 6, 8, 9, 10, 12, 13, 14,16, 17,19, 20, 22, 23,25,29,30,31]
 
 # Permutation test parameters (matches FieldTrip cfg.numrandomization=1000)
@@ -36,7 +36,8 @@ N_PERMUTATIONS = 1000
 TAIL = 0           # two-sided t-test
 SEED = 2025
 
-Z_LIMITS_DIFF = [-1.5, 1.5]  # Z-limits for difference heatmap
+# Z_LIMITS_DIFF = [-1.5, 1.5]  # Z-limits for difference heatmap
+Z_LIMITS_DIFF = [-2.5, 2.5]  # Z-limits for difference heatmap (matches Wu et al)
 Z_LIMITS_STAT = [0, 25]      # FieldTrip scripts occasionally use [0 25] for F-stats/T-stats
 
 # ── Robust 2D cluster index helper ──────────────────────────────────────────
@@ -233,6 +234,7 @@ for comp_name, X_diff in contrasts.items():
             
     ax.set_xlabel('Time (s)', fontsize=14, fontname='Times New Roman')
     ax.set_ylabel('Frequency (Hz)', fontsize=14, fontname='Times New Roman')
+    ax.set_ylim(0, 20)
     ax.set_title(f"{comp_name.replace('_', ' ').upper()}", fontsize=16, fontname='Times New Roman')
     ax.axvline(0, color='black', linestyle='--', linewidth=1)
     
@@ -265,6 +267,7 @@ for comp_name, X_diff in contrasts.items():
             
     ax.set_xlabel('Time (s)', fontsize=14, fontname='Times New Roman')
     ax.set_ylabel('Frequency (Hz)', fontsize=14, fontname='Times New Roman')
+    ax.set_ylim(0, 20)
     ax.set_title(f"{comp_name.replace('_', ' ').upper()} (Stat Map)", fontsize=16, fontname='Times New Roman')
     ax.axvline(0, color='black', linestyle='--', linewidth=1)
     
@@ -360,6 +363,7 @@ if len(valid_subs_supp) >= 2:
                 ax.contour(times, freqs, mask, levels=[0.5], colors='black', linewidths=2)
         ax.set_xlabel('Time (s)', fontsize=14, fontname='Times New Roman')
         ax.set_ylabel('Frequency (Hz)', fontsize=14, fontname='Times New Roman')
+        ax.set_ylim(0, 20)
         ax.set_title(f"{comp_name.replace('_', ' ').upper()}", fontsize=16, fontname='Times New Roman')
         ax.axvline(0, color='black', linestyle='--', linewidth=1)
         plt.tight_layout()
@@ -468,6 +472,7 @@ if len(valid_subs_exp) >= 2:
                 ax.contour(times, freqs, mask, levels=[0.5], colors='black', linewidths=2)
         ax.set_xlabel('Time (s)', fontsize=14, fontname='Times New Roman')
         ax.set_ylabel('Frequency (Hz)', fontsize=14, fontname='Times New Roman')
+        ax.set_ylim(0, 20)
         ax.set_title(f"{comp_name.replace('_', ' ').upper()}", fontsize=16, fontname='Times New Roman')
         ax.axvline(0, color='black', linestyle='--', linewidth=1)
         plt.tight_layout()

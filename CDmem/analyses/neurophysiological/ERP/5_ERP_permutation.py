@@ -14,13 +14,16 @@ sys.stdout.reconfigure(encoding='utf-8')
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) do you want to process?
 # ──────────────────────────────────────────────────────────────
-plist = [4, 6, 8, 9, 10, 12, 13,14, 16,17, 19, 20, 22, 23,25,29,30,31]
+plist = [4,6,7,8,9,10,12,13,14,15,16,17,18,19,20,21,22,23,24,25,27,29,30,31]
+
 
 # ──────────────────────────────────────────────────────────────
 # Paths
 # ──────────────────────────────────────────────────────────────
 # FieldTrip: dfolder = 'D:/MCRL DATA/eeg4_ERPSummaries';
-dfolder = r"H:\PHD\control_detection\main_data\eeg\eeg4_ERPSummaries"
+# dfolder = r"H:\PHD\control_detection\main_data\eeg\eeg4_ERPSummaries"
+dfolder = r"H:\PHD\control_detection\main_data\eeg\eeg4_ERPSummaries_onlycorrect"
+
 
 # ──────────────────────────────────────────────────────────────
 # Config for Pairwise Comparison (Test 4)
