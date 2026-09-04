@@ -14,7 +14,15 @@ sys.stdout.reconfigure(encoding='utf-8')
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) do you want to process?
 # ──────────────────────────────────────────────────────────────
-plist = [4,6,7,8,9,10,12,13,14,15,16,17,18,19,20,21,22,23,24,25,27,29,30,31]
+
+# all participants, minus:
+# 1 - no triggers
+# 5 - reference elctrode appears noisy, renders data unusable
+# 28 - no triggers
+# data-based exclusions: 2, 3, 11, 24, 26, 43, 45, 46, 47
+
+plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+
 
 
 # ──────────────────────────────────────────────────────────────
@@ -22,7 +30,7 @@ plist = [4,6,7,8,9,10,12,13,14,15,16,17,18,19,20,21,22,23,24,25,27,29,30,31]
 # ──────────────────────────────────────────────────────────────
 # FieldTrip: dfolder = 'D:/MCRL DATA/eeg4_ERPSummaries';
 # dfolder = r"H:\PHD\control_detection\main_data\eeg\eeg4_ERPSummaries"
-dfolder = r"H:\PHD\control_detection\main_data\eeg\eeg4_ERPSummaries_onlycorrect"
+dfolder = r"H:\PHD\control_detection\main_data\eeg\eeg4_ERPSummaries"
 
 
 # ──────────────────────────────────────────────────────────────
@@ -363,72 +371,129 @@ run_permutation_test(
     evs_B=evs1_B
 )
 
-# # --- TEST 2: Main Effect of Detection (Detected vs. Non-detected) ---
-# # Average of high and low control within each detection level
-# X2_A = np.array([0.5 * (extracted_data[p]['high_control_detected'] + extracted_data[p]['low_control_detected']) for p in subs_det])
-# X2_B = np.array([0.5 * (extracted_data[p]['high_control_nondetected'] + extracted_data[p]['low_control_nondetected']) for p in subs_det])
-# run_permutation_test(
-#     X_condA=X2_A, 
-#     X_condB=X2_B, 
-#     label_A='Detected', 
-#     label_B='Non-detected', 
-#     title='Main Effect of Detection (Detected vs. Non-detected)', 
-#     save_filename='02_permut_main_effect_detection.svg', 
-#     colors=[(0.12, 0.53, 0.53), (0.85, 0.37, 0.00)], 
-#     linestyles=['-', '-'],
-#     p_indices=subs_det
-# )
+# ──────────────────────────────────────────────────────────────
+# EXPLORATORY: Split by Starting Condition (High-start vs Low-start)
+# ──────────────────────────────────────────────────────────────
+# Participant numbers by which condition they started the experiment with
+highstart_pnums = {4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 30, 32, 34, 36, 38, 40, 42, 44, 48, 50}
+lowstart_pnums  = {7, 9, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 49}
 
-# # --- TEST 3: Interaction (Condition x Detection) ---
-# # Difference of differences: (High_Det - High_NonDet) vs (Low_Det - Low_NonDet)
-# X3_A = np.array([extracted_data[p]['high_control_detected'] - extracted_data[p]['high_control_nondetected'] for p in subs_det])
-# X3_B = np.array([extracted_data[p]['low_control_detected'] - extracted_data[p]['low_control_nondetected'] for p in subs_det])
-# run_permutation_test(
-#     X_condA=X3_A, 
-#     X_condB=X3_B, 
-#     label_A='High Control (Det - NonDet)', 
-#     label_B='Low Control (Det - NonDet)', 
-#     title='Interaction of Condition x Detection (Difference Waves)', 
-#     save_filename='03_permut_interaction.svg', 
-#     colors=['blue', 'red'], 
-#     linestyles=['-', '-'],
-#     p_indices=subs_det
-# )
+# Map p_idx -> participant number for filtering
+highstart_pidx = [p for p in subs_test1 if plist[p] in highstart_pnums]
+lowstart_pidx  = [p for p in subs_test1 if plist[p] in lowstart_pnums]
 
-# # --- TEST 4: Pairwise Comparison (Configurable) ---
-# # Identify which participants have both conditions
-# subs_test4 = [p for p in extracted_data if pairwise_cond_A in extracted_data[p] and pairwise_cond_B in extracted_data[p]]
+print(f"\n{'='*60}")
+print(f"  EXPLORATORY: Split by Starting Condition")
+print(f"  High-start: N={len(highstart_pidx)}, participants={[plist[p] for p in highstart_pidx]}")
+print(f"  Low-start:  N={len(lowstart_pidx)}, participants={[plist[p] for p in lowstart_pidx]}")
+print(f"{'='*60}")
 
-# X4_A = np.array([extracted_data[p][pairwise_cond_A] for p in subs_test4])
-# X4_B = np.array([extracted_data[p][pairwise_cond_B] for p in subs_test4])
+# --- High-start subgroup: Main Effect of Condition ---
+X_hs_A = np.array([extracted_data[p]['high_control'] for p in highstart_pidx])
+X_hs_B = np.array([extracted_data[p]['low_control'] for p in highstart_pidx])
+evs_hs_A = [eeg_set[p]['high_control'] for p in highstart_pidx]
+evs_hs_B = [eeg_set[p]['low_control'] for p in highstart_pidx]
 
-# label_A = pairwise_cond_A.replace('_', ' ').title().replace('Nondetected', 'Non-detected')
-# label_B = pairwise_cond_B.replace('_', ' ').title().replace('Nondetected', 'Non-detected')
+run_permutation_test(
+    X_condA=X_hs_A,
+    X_condB=X_hs_B,
+    label_A='High Control',
+    label_B='Low Control',
+    title='Main Effect of Condition – High-Start Subgroup',
+    save_filename='01_permut_main_effect_condition_highstart.png',
+    colors=[(0.00, 0.44, 0.69), (0.80, 0.47, 0.65)],
+    linestyles=['-', '-'],
+    p_indices=highstart_pidx,
+    evs_A=evs_hs_A,
+    evs_B=evs_hs_B
+)
 
-# # Determine line styling dynamically
-# style_map = {
-#     'high_control': ('blue', '-'),
-#     'low_control': ('red', '-'),
-#     'high_control_detected': ((0.00, 0.44, 0.69), '-'),
-#     'high_control_nondetected': ((0.00, 0.44, 0.69), '--'),
-#     'low_control_detected': ((0.80, 0.47, 0.65), '-'),
-#     'low_control_nondetected': ((0.80, 0.47, 0.65), '--')
-# }
+# --- Low-start subgroup: Main Effect of Condition ---
+X_ls_A = np.array([extracted_data[p]['high_control'] for p in lowstart_pidx])
+X_ls_B = np.array([extracted_data[p]['low_control'] for p in lowstart_pidx])
+evs_ls_A = [eeg_set[p]['high_control'] for p in lowstart_pidx]
+evs_ls_B = [eeg_set[p]['low_control'] for p in lowstart_pidx]
 
-# color_A, style_A = style_map.get(pairwise_cond_A, ('blue', '-'))
-# color_B, style_B = style_map.get(pairwise_cond_B, ('red', '-'))
+run_permutation_test(
+    X_condA=X_ls_A,
+    X_condB=X_ls_B,
+    label_A='High Control',
+    label_B='Low Control',
+    title='Main Effect of Condition – Low-Start Subgroup',
+    save_filename='01_permut_main_effect_condition_lowstart.png',
+    colors=[(0.00, 0.44, 0.69), (0.80, 0.47, 0.65)],
+    linestyles=['-', '-'],
+    p_indices=lowstart_pidx,
+    evs_A=evs_ls_A,
+    evs_B=evs_ls_B
+)
 
-# run_permutation_test(
-#     X_condA=X4_A, 
-#     X_condB=X4_B, 
-#     label_A=label_A, 
-#     label_B=label_B, 
-#     title=f"Pairwise Comparison ({label_A} vs. {label_B})", 
-#     save_filename=f"04_permut_pairwise_{pairwise_cond_A}_vs_{pairwise_cond_B}.svg", 
-#     colors=[color_A, color_B], 
-#     linestyles=[style_A, style_B],
-#     p_indices=subs_test4
-# )
+# --- TEST 2: Main Effect of Detection (Detected vs. Non-detected) ---
+# Average of high and low control within each detection level
+X2_A = np.array([0.5 * (extracted_data[p]['high_control_detected'] + extracted_data[p]['low_control_detected']) for p in subs_det])
+X2_B = np.array([0.5 * (extracted_data[p]['high_control_nondetected'] + extracted_data[p]['low_control_nondetected']) for p in subs_det])
+run_permutation_test(
+    X_condA=X2_A, 
+    X_condB=X2_B, 
+    label_A='Detected', 
+    label_B='Non-detected', 
+    title='Main Effect of Detection (Detected vs. Non-detected)', 
+    save_filename='02_permut_main_effect_detection.svg', 
+    colors=[(0.12, 0.53, 0.53), (0.85, 0.37, 0.00)], 
+    linestyles=['-', '-'],
+    p_indices=subs_det
+)
+
+# --- TEST 3: Interaction (Condition x Detection) ---
+# Difference of differences: (High_Det - High_NonDet) vs (Low_Det - Low_NonDet)
+X3_A = np.array([extracted_data[p]['high_control_detected'] - extracted_data[p]['high_control_nondetected'] for p in subs_det])
+X3_B = np.array([extracted_data[p]['low_control_detected'] - extracted_data[p]['low_control_nondetected'] for p in subs_det])
+run_permutation_test(
+    X_condA=X3_A, 
+    X_condB=X3_B, 
+    label_A='High Control (Det - NonDet)', 
+    label_B='Low Control (Det - NonDet)', 
+    title='Interaction of Condition x Detection (Difference Waves)', 
+    save_filename='03_permut_interaction.svg', 
+    colors=['blue', 'red'], 
+    linestyles=['-', '-'],
+    p_indices=subs_det
+)
+
+# --- TEST 4: Pairwise Comparison (Configurable) ---
+# Identify which participants have both conditions
+subs_test4 = [p for p in extracted_data if pairwise_cond_A in extracted_data[p] and pairwise_cond_B in extracted_data[p]]
+
+X4_A = np.array([extracted_data[p][pairwise_cond_A] for p in subs_test4])
+X4_B = np.array([extracted_data[p][pairwise_cond_B] for p in subs_test4])
+
+label_A = pairwise_cond_A.replace('_', ' ').title().replace('Nondetected', 'Non-detected')
+label_B = pairwise_cond_B.replace('_', ' ').title().replace('Nondetected', 'Non-detected')
+
+# Determine line styling dynamically
+style_map = {
+    'high_control': ('blue', '-'),
+    'low_control': ('red', '-'),
+    'high_control_detected': ((0.00, 0.44, 0.69), '-'),
+    'high_control_nondetected': ((0.00, 0.44, 0.69), '--'),
+    'low_control_detected': ((0.80, 0.47, 0.65), '-'),
+    'low_control_nondetected': ((0.80, 0.47, 0.65), '--')
+}
+
+color_A, style_A = style_map.get(pairwise_cond_A, ('blue', '-'))
+color_B, style_B = style_map.get(pairwise_cond_B, ('red', '-'))
+
+run_permutation_test(
+    X_condA=X4_A, 
+    X_condB=X4_B, 
+    label_A=label_A, 
+    label_B=label_B, 
+    title=f"Pairwise Comparison ({label_A} vs. {label_B})", 
+    save_filename=f"04_permut_pairwise_{pairwise_cond_A}_vs_{pairwise_cond_B}.svg", 
+    colors=[color_A, color_B], 
+    linestyles=[style_A, style_B],
+    p_indices=subs_test4
+)
 
 print("\nALL PERMUTATION TESTS COMPLETED SUCCESSFULLY!")
 plt.show()

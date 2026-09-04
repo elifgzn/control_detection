@@ -9,18 +9,25 @@ sys.stdout.reconfigure(encoding='utf-8')
 
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) do you want to process?
-# ──────────────────────────────────────────────────────────────
-plist = [4, 6, 7, 8, 9, 10, 12, 14, 15, 16, 17, 19, 20, 21,22,23,24]
+# ────────────────────────────────────────────────────────────── 
+
+# all participants, minus:
+# 1 - no triggers
+# 5 - reference elctrode appears noisy, renders data unusable
+# 28 - no triggers
+# data-based exclusions: 2, 3, 11, 24, 26, 43, 45, 46, 47
+
+plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
 
 # ──────────────────────────────────────────────────────────────
 # Paths
 # ──────────────────────────────────────────────────────────────
 # FieldTrip: dfolder = 'D:/MCRL DATA/eeg4_ERPSummaries';
-dfolder = r"H:\PHD\control_detection\main_data\eeg\eeg4_ERPSummaries"
+dfolder = r"H:\PHD\control_detection\main_data\eeg\eeg4_ERPSummaries_onlycorrect"
 
 # Path for saving figures
 # FieldTrip: save_to = 'D:/MCRL DATA/eeg5_figures'; dpi = '-r600';
-save_to = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures"
+save_to = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_onlycorrect"
 os.makedirs(save_to, exist_ok=True)
 
 # ──────────────────────────────────────────────────────────────
