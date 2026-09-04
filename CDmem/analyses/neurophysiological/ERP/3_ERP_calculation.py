@@ -16,11 +16,12 @@ sys.stdout.reconfigure(encoding='utf-8')
 #   1: compute without filter (all trials)
 #   2: compute with filter (only correct detection trials)
 #   [1, 2]: compute both
-filter_modes = [2]
+filter_modes = [1,2]
 
 # plist = [4,6,7,8,9,10,12,13,14,15,16,17,18,19,20,21,22,23,24,25,27,29,30,31]
 # 
-plist = [24]
+plist = list(range(32, 51))
+
 
 
 # Paths

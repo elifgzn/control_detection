@@ -46,11 +46,15 @@ def write_report(text):
     with open(REPORT_FILE, "a", encoding="utf-8") as f:
         f.write(text + "\n")
 
-PARTICIPANT_FILTER = [2,3,4,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,29,30,31,32,33,34,35] + list(range(36, 46))
 
-# PARTICIPANT_FILTER = [4, 6, 8, 9, 10, 12, 13, 14, 16, 19, 20, 22, 23,25,26,27,29,30,31]
+# all participants, minus:
+# 1 - no triggers
+# 5 - reference elctrode appears noisy, renders data unusable
+# 28 - no triggers
+# other, data-based exclusions will be imposed by code
 
-# PARTICIPANT_FILTER = [30]
+PARTICIPANT_FILTER = sorted(set(range(1, 51)) - {1, 5, 28})
+
 
 TIMEOUT_THRESHOLD = 0.50
 ACCURACY_SD_THRESHOLD = 2.5
@@ -422,6 +426,39 @@ def fit_print_lmm(formula, df, family="binomial", is_glmer=True):
         if result_fit is not None and len(result_fit) > 0:
             write_report("**Fixed Effects:**")
             write_report(str(result_fit) + "\n")
+
+            # Generate reporting lines for each predictor (skip intercept)
+            write_report("**Reporting:**")
+            for row in result_fit.iter_rows(named=True):
+                term = row["term"]
+                if term == "(Intercept)":
+                    continue
+                b = row["estimate"]
+                se = row["std_error"]
+                ci_lo = row["conf_low"]
+                ci_hi = row["conf_high"]
+                p = row["p_value"]
+
+                # Determine significance wording
+                sig = "a significant" if p < 0.05 else "no significant"
+
+                # Determine effect type wording
+                if ":" in term:
+                    parts = term.split(":")
+                    effect_label = f"interaction between {parts[0]} and {parts[1]}"
+                else:
+                    effect_label = f"main effect of {term}"
+
+                # Format p value
+                p_str = "*p* < .001" if p < 0.001 else f"*p* = {p:.3f}"
+
+                line = (
+                    f"- There was {sig} {effect_label}, "
+                    f"*b* = {b:.3f}, *SE* = {se:.3f}, "
+                    f"95% CI [{ci_lo:.3f}, {ci_hi:.3f}], {p_str}."
+                )
+                write_report(line)
+            write_report("")
         else:
             write_report("Model fitted but no coefficients returned.\n")
             return None
