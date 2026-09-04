@@ -58,7 +58,14 @@ def write_report(text):
     with open(REPORT_FILE, "a", encoding="utf-8") as f:
         f.write(text + "\n")
 
-PARTICIPANT_FILTER = [2,3,4,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,29,30,31,32,33,34,35] + list(range(36, 46))
+# all participants, minus:
+# 1 - no triggers
+# 5 - reference elctrode appears noisy, renders data unusable
+# 28 - no triggers
+# other, data-based exclusions will be imposed by code
+
+PARTICIPANT_FILTER = sorted(set(range(1, 51)) - {1, 5, 28})
+
 
 TIMEOUT_THRESHOLD = 0.50
 ACCURACY_SD_THRESHOLD = 2.5
@@ -350,24 +357,75 @@ def fit_print_lmm(formula, df, family="binomial", is_glmer=True):
 # PLOTTING HELPERS  (following CDmem_analyses_final.py style)
 # ============================================================================
 
+def get_subtype(row):
+    if row['item_type'] == 'controlled':
+        return 'ctrl_detected' if row['detection_accuracy'] == 1 else 'ctrl_not_detected'
+    return 'uncontrolled'
+
+def _make_bd_results(tgt_df, fa_df):
+    bd = tgt_df.dropna(subset=['item_type', 'detection_accuracy']).copy()
+    bd['item_subtype'] = bd.apply(get_subtype, axis=1)
+    res = bd.groupby(['participant', 'control_level', 'item_subtype'])['said_old'].mean().reset_index().rename(columns={'said_old': 'Hit_rate'})
+    res = res.merge(fa_df, on='participant', how='left')
+    res['d_prime'] = res.apply(lambda r: calc_dprime(r['Hit_rate'], r['FA_rate']), axis=1)
+    return res
+
+def draw_bd_bars(ax, bd, y_col='Hit_rate', annotate_stats=False):
+    colors = {'ctrl_detected': '#2e8b57', 'ctrl_not_detected': '#90ee90', 'uncontrolled': '#fc8d62'}
+    labels = {'ctrl_detected': 'Controlled (Detected)', 'ctrl_not_detected': 'Controlled (Not Detected)', 'uncontrolled': 'Uncontrolled'}
+    subtypes = ['ctrl_detected', 'ctrl_not_detected', 'uncontrolled']
+    bar_w = 0.22
+    offsets = [-bar_w - 0.02, 0.0 - 0.02, bar_w + 0.12]
+
+    for ci, cond in enumerate(['high', 'low']):
+        cx = ci * 1.5
+        for si, sub in enumerate(subtypes):
+            subset = bd[(bd['control_level'] == cond) & (bd['item_subtype'] == sub)]
+            val = subset[y_col].mean() if len(subset) > 0 else 0
+            sd_val = subset[y_col].std() if len(subset) > 1 else 0
+            bar = ax.bar(cx + offsets[si], val, width=bar_w, color=colors[sub], edgecolor='white', linewidth=0.5, label=labels[sub] if ci == 0 else None)
+            if annotate_stats:
+                bx = cx + offsets[si]
+                ax.text(bx, val * 0.5, f"M={val:.2f}", ha='center', va='center', fontsize=8, color='black', fontweight='bold')
+                ax.text(bx, val + 0.03, f"SD={sd_val:.2f}", ha='center', va='bottom', fontsize=8, color='black', fontweight='bold')
+
+    ax.set_xticks([0, 1.5])
+    ax.set_xticklabels(['High', 'Low'])
+    handles, lbls = ax.get_legend_handles_labels()
+    by_label = dict(zip(lbls, handles))
+    ax.legend(by_label.values(), by_label.keys(), title='Item Subtype', frameon=True, loc='upper right')
+
+
 def make_hitrate_2x2_plot(tgt_df, fa_df, out_path, title_suffix=""):
-    """Generate a 2x2 hit-rate bar plot (control_level x item_type), following
-    the Row 1 style from CDmem_analyses_final.py."""
+    """Generate a 2-panel hit-rate plot:
+      Left  – 2x2 factorial (control_level x item_type)
+      Right – Detection breakdown (detected / not-detected / uncontrolled)
+    """
     m2x2 = tgt_df.groupby(['participant', 'control_level', 'item_type'])['said_old'].mean().reset_index().rename(columns={'said_old': 'Hit_rate'})
+    bd = _make_bd_results(tgt_df, fa_df)
 
     plt.style.use('seaborn-v0_8-whitegrid')
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
 
+    # --- Left panel: 2x2 Factorial ---
     sns.barplot(data=m2x2, x='control_level', y='Hit_rate', hue='item_type',
-                errorbar='se', palette='Set2', capsize=0.1, ax=ax,
+                errorbar='se', palette='Set2', capsize=0.1, ax=axes[0],
                 order=['high', 'low'], hue_order=['controlled', 'uncontrolled'])
 
-    ax.axhline(0.5, color='gray', linestyle='--', alpha=0.5)
-    ax.set_ylim(0, 1)
-    ax.set_xlabel('Control Task Level', fontsize=12)
-    ax.set_ylabel('Hit Rate', fontsize=12)
-    ax.set_title(f'Hit Rate: 2x2 Factorial{title_suffix}', fontsize=14, fontweight='bold')
-    ax.legend(title='Item Type', frameon=True)
+    axes[0].axhline(0.5, color='gray', linestyle='--', alpha=0.5)
+    axes[0].set_ylim(0, 1)
+    axes[0].set_xlabel('Control Task Level', fontsize=12)
+    axes[0].set_ylabel('Hit Rate', fontsize=12)
+    axes[0].set_title(f'Hit Rate: 2x2 Factorial{title_suffix}', fontsize=14, fontweight='bold')
+    axes[0].legend(title='Item Type', frameon=True)
+
+    # --- Right panel: Detection Breakdown ---
+    draw_bd_bars(axes[1], bd, y_col='Hit_rate')
+    axes[1].axhline(0.5, color='gray', linestyle='--', alpha=0.5)
+    axes[1].set_ylim(0, 1)
+    axes[1].set_xlabel('Control Task Level', fontsize=12)
+    axes[1].set_ylabel('Hit Rate', fontsize=12)
+    axes[1].set_title(f'Hit Rate: Detection Breakdown{title_suffix}', fontsize=14, fontweight='bold')
 
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
