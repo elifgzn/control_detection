@@ -86,7 +86,7 @@ def load_behavioral_data(sub):
         rec_uncontrolled, left_on='uncontrolled_img', right_on='mem_filename', how='left'
     ).drop(columns=['mem_filename'], errors='ignore')
 
-    return trial_info[['control_condition', 'controlled_img', 'uncontrolled_img', 'ctrl_mem_response', 'unctrl_mem_response', 'trigger_stim_onset']].copy()
+    return trial_info[['control_condition', 'controlled_img', 'uncontrolled_img', 'ctrl_mem_response', 'unctrl_mem_response', 'detection_accuracy', 'trigger_stim_onset']].copy()
 
 def balance_trials(tfr_A, tfr_B, n_iterations=100, rng=None):
     """
@@ -194,6 +194,7 @@ for sub in plist:
     cond_arr = trial_info['control_condition'].values
     ctrl_rec = trial_info['ctrl_mem_response'].values
     unctrl_rec = trial_info['unctrl_mem_response'].values
+    detected = trial_info['detection_accuracy'].values
     
     # ── PREREGISTERED: Controlled items only ──
     conditions_dict = {
@@ -226,6 +227,16 @@ for sub in plist:
         'high_uncontrolled_not_recalled': (cond_arr == 'high') & (unctrl_rec == 'no')
     }
 
+    # ── DETECTION X MEMORY ──
+    # Tests whether SME exists across correctly detected and non-detected trials
+    # Collapsed across low/high control condition. Uses "All items" memory definition.
+    conditions_dict_detection = {
+        'detected_recalled': (detected == 1) & any_recalled,
+        'detected_not_recalled': (detected == 1) & both_not_recalled,
+        'not_detected_recalled': (detected == 0) & any_recalled,
+        'not_detected_not_recalled': (detected == 0) & both_not_recalled
+    }
+
     # 3. Compute TFR (Morlet Wavelets) for ALL trials
     # Equivalent to ft_freqanalysis(keeptrials='yes')
     print("  Step 2: Computing TFR (Morlet wavelets) for all trials...")
@@ -256,7 +267,11 @@ for sub in plist:
          [('low_controlled_recalled', 'low_controlled_not_recalled'), 
           ('low_uncontrolled_recalled', 'low_uncontrolled_not_recalled'),
           ('high_controlled_recalled', 'high_controlled_not_recalled'),
-          ('high_uncontrolled_recalled', 'high_uncontrolled_not_recalled')])
+          ('high_uncontrolled_recalled', 'high_uncontrolled_not_recalled')]),
+          
+        (conditions_dict_detection, f"CDmem_{sub_id}_TFR_DetectionAverages.npz", "Detection x Memory",
+         [('detected_recalled', 'detected_not_recalled'), 
+          ('not_detected_recalled', 'not_detected_not_recalled')])
     ]
 
     roi_channels = [ch for ch in tfr.ch_names if ch.startswith('P') or ch.startswith('O')]

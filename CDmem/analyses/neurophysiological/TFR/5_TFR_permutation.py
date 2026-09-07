@@ -42,41 +42,42 @@ PLOT_FREQ = (2.0, 40.0)
 print("Loading per-subject condition averages (All Items)...")
 
 conditions = ['low_recalled', 'low_not_recalled', 'high_recalled', 'high_not_recalled']
+conditions_det = ['detected_recalled', 'detected_not_recalled', 'not_detected_recalled', 'not_detected_not_recalled']
 subject_data = {f"{sub:04d}": {} for sub in plist}
 times, freqs_plot, freqs_test, test_f_inds, ch_names = None, None, None, None, None
 
 for sub in plist:
     sub_id = f"{sub:04d}"
-    data_file = os.path.join(input_path, f"CDmem_{sub_id}_TFR_ConditionAverages_AllItems.npz")
+    data_file_all = os.path.join(input_path, f"CDmem_{sub_id}_TFR_ConditionAverages_AllItems.npz")
+    data_file_det = os.path.join(input_path, f"CDmem_{sub_id}_TFR_DetectionAverages.npz")
     
-    if not os.path.exists(data_file):
-        continue
+    for df_path, cond_list in [(data_file_all, conditions), (data_file_det, conditions_det)]:
+        if not os.path.exists(df_path):
+            continue
+            
+        saved = np.load(df_path, allow_pickle=True)
         
-    saved = np.load(data_file, allow_pickle=True)
-    
-    if times is None:
-        times_all = saved['times']
-        freqs_all = saved['freqs']
-        ch_names = saved['ch_names'].tolist()
-        
-        time_mask = (times_all >= TEST_TIME[0]) & (times_all <= TEST_TIME[1])
-        times = times_all[time_mask]
-        
-        freq_mask_plot = (freqs_all >= PLOT_FREQ[0]) & (freqs_all <= PLOT_FREQ[1])
-        freqs_plot = freqs_all[freq_mask_plot]
-        
-        # Identify indices within the PLOT array that correspond to the TEST range
-        test_f_inds = np.where((freqs_plot >= TEST_FREQ[0]) & (freqs_plot <= TEST_FREQ[1]))[0]
-        freqs_test = freqs_plot[test_f_inds]
-        
-    for cond in conditions:
-        if cond in saved:
-            # Extract data and slice it for plot frequencies and test times
-            # Shape: (n_channels, n_freqs_plot, n_times)
-            subject_data[sub_id][cond] = saved[cond][:, freq_mask_plot, :][:, :, time_mask]
+        if times is None:
+            times_all = saved['times']
+            freqs_all = saved['freqs']
+            ch_names = saved['ch_names'].tolist()
+            
+            time_mask = (times_all >= TEST_TIME[0]) & (times_all <= TEST_TIME[1])
+            times = times_all[time_mask]
+            
+            freq_mask_plot = (freqs_all >= PLOT_FREQ[0]) & (freqs_all <= PLOT_FREQ[1])
+            freqs_plot = freqs_all[freq_mask_plot]
+            
+            test_f_inds = np.where((freqs_plot >= TEST_FREQ[0]) & (freqs_plot <= TEST_FREQ[1]))[0]
+            freqs_test = freqs_plot[test_f_inds]
+            
+        for cond in cond_list:
+            if cond in saved:
+                subject_data[sub_id][cond] = saved[cond][:, freq_mask_plot, :][:, :, time_mask]
 
-valid_subs = [sub for sub in subject_data if len(subject_data[sub]) == 4]
-print(f"Found {len(valid_subs)} subjects with all 4 conditions.")
+# Valid subjects must have all 8 conditions for the full analysis
+valid_subs = [sub for sub in subject_data if len(subject_data[sub]) >= 4]
+print(f"Found {len(valid_subs)} subjects with valid data.")
 
 if len(valid_subs) < 2:
     print("Not enough complete subjects to run paired contrasts. Exiting.")
@@ -90,27 +91,59 @@ print(f"\nAveraging over ROI channels ({len(roi_channels)}): {roi_channels}\n")
 roi_idx = [ch_names.index(ch) for ch in roi_channels]
 
 # Shape of resulting arrays: (n_subjects, n_freqs_plot, n_times)
-low_rec = np.array([subject_data[sub]['low_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
-low_not = np.array([subject_data[sub]['low_not_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
-high_rec = np.array([subject_data[sub]['high_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
-high_not = np.array([subject_data[sub]['high_not_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
+# All Items memory
+has_all = all('low_recalled' in subject_data[sub] for sub in valid_subs)
+if has_all:
+    low_rec = np.array([subject_data[sub]['low_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
+    low_not = np.array([subject_data[sub]['low_not_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
+    high_rec = np.array([subject_data[sub]['high_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
+    high_not = np.array([subject_data[sub]['high_not_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
+
+# Detection x Memory
+has_det = all('detected_recalled' in subject_data[sub] for sub in valid_subs)
+if has_det:
+    det_rec = np.array([subject_data[sub]['detected_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
+    det_not = np.array([subject_data[sub]['detected_not_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
+    ndet_rec = np.array([subject_data[sub]['not_detected_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
+    ndet_not = np.array([subject_data[sub]['not_detected_not_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
 
 contrasts = {}
+descriptions = {}
 
-# 1. Main Effect of Memory
-main_rec = (low_rec + high_rec) / 2
-main_not = (low_not + high_not) / 2
-contrasts['Main_Effect_Memory'] = main_rec - main_not
+if has_all:
+    # 1. Main Effect of Memory
+    main_rec = (low_rec + high_rec) / 2
+    main_not = (low_not + high_not) / 2
+    contrasts['Main_Effect_Memory'] = main_rec - main_not
+    
+    # 2. Interaction Memory x Control
+    low_diff = low_rec - low_not
+    high_diff = high_rec - high_not
+    contrasts['Interaction_Memory_x_Control'] = low_diff - high_diff
+    
+    descriptions['Main_Effect_Memory'] = '(Recalled vs Not Recalled, collapsed across control conditions)'
+    descriptions['Interaction_Memory_x_Control'] = '(Difference in Memory Effect between Low and High Control)'
 
-# 2. Interaction Memory x Control
-low_diff = low_rec - low_not
-high_diff = high_rec - high_not
-contrasts['Interaction_Memory_x_Control'] = low_diff - high_diff
-
-descriptions = {
-    'Main_Effect_Memory': '(Recalled vs Not Recalled, collapsed across control conditions)',
-    'Interaction_Memory_x_Control': '(Difference in Memory Effect between Low and High Control)'
-}
+if has_det:
+    # 1. Main Effect of Detection
+    main_det = (det_rec + det_not) / 2
+    main_ndet = (ndet_rec + ndet_not) / 2
+    contrasts['Main_Effect_Detection'] = main_det - main_ndet
+    descriptions['Main_Effect_Detection'] = '(Detected vs Not Detected)'
+    
+    # 2. SME within Detected
+    sme_det = det_rec - det_not
+    contrasts['SME_Detected_Trials'] = sme_det
+    descriptions['SME_Detected_Trials'] = '(Recalled vs Not Recalled within Detected trials)'
+    
+    # 3. SME within Not Detected
+    sme_ndet = ndet_rec - ndet_not
+    contrasts['SME_Not_Detected_Trials'] = sme_ndet
+    descriptions['SME_Not_Detected_Trials'] = '(Recalled vs Not Recalled within Not Detected trials)'
+    
+    # 4. Interaction Memory x Detection
+    contrasts['Interaction_Memory_x_Detection'] = sme_det - sme_ndet
+    descriptions['Interaction_Memory_x_Detection'] = '(Difference in Memory Effect between Detected and Not Detected)'
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 3. RUN CLUSTER PERMUTATION TEST (permutation_cluster_1samp_test)
