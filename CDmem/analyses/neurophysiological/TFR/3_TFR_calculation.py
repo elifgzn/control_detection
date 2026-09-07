@@ -41,6 +41,7 @@ BASELINE = (-0.5, -0.2)      # Baseline correction window (-500 to -200 ms)
 
 # plist = [4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
 plist = list(range(40,51))
+
 # ══════════════════════════════════════════════════════════════════════════════
 # HELPER FUNCTIONS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -87,6 +88,46 @@ def load_behavioral_data(sub):
 
     return trial_info[['control_condition', 'controlled_img', 'uncontrolled_img', 'ctrl_mem_response', 'unctrl_mem_response', 'trigger_stim_onset']].copy()
 
+def balance_trials(tfr_A, tfr_B, n_iterations=100, rng=None):
+    """
+    Balance trial counts between two conditions by random subsampling.
+    The condition with MORE trials is randomly subsampled (without replacement)
+    to match the trial count of the condition with FEWER trials. This is
+    repeated n_iterations times, and the result is averaged across all
+    iterations. This produces a stable estimate that is not biased by
+    different trial counts.
+    """
+    n_A, n_B = len(tfr_A), len(tfr_B)
+    n_min = min(n_A, n_B)
+
+    if rng is None:
+        rng = np.random.default_rng()
+
+    # Accumulate averages across iterations
+    sum_A = np.zeros(tfr_A.shape[1:], dtype=np.float64)
+    sum_B = np.zeros(tfr_B.shape[1:], dtype=np.float64)
+
+    for _ in range(n_iterations):
+        idx_A = rng.choice(n_A, size=n_min, replace=False)
+        idx_B = rng.choice(n_B, size=n_min, replace=False)
+        sum_A += tfr_A[idx_A].mean(axis=0)
+        sum_B += tfr_B[idx_B].mean(axis=0)
+
+    # Average across all iterations
+    avg_A = sum_A / n_iterations
+    avg_B = sum_B / n_iterations
+
+    return avg_A, avg_B, n_min
+
+def baseline_correct_db(power, times, baseline):
+    """Apply decibel (dB) baseline correction to TFR power."""
+    bl_mask = (times >= baseline[0]) & (times <= baseline[1])
+    # Mean power during baseline, per channel and frequency
+    bl_mean = power[:, :, bl_mask].mean(axis=-1, keepdims=True)
+    bl_mean = np.maximum(bl_mean, 1e-30)
+    # dB conversion
+    return 10 * np.log10(np.maximum(power, 1e-30) / bl_mean)
+
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN ANALYSIS LOOP
 # ══════════════════════════════════════════════════════════════════════════════
@@ -109,9 +150,14 @@ for sub in plist:
     # 1. Load Epochs
     epochs = mne.read_epochs(epo_file, preload=True, verbose=False)
     
+    # Save the info file for adjacency matrix reconstruction in permutation tests
+    info_file = os.path.join(output_path, f"CDmem_{sub_id}_info.fif")
+    if not os.path.exists(info_file):
+        epochs.info.save(info_file, overwrite=True)
+    
     # Apply Spatial Laplacian (matches FieldTrip ft_scalpcurrentdensity)
-    print("  Step 1: Applying Surface Laplacian (CSD)...")
-    epochs = mne.preprocessing.compute_current_source_density(epochs)
+    # print("  Step 1: Applying Surface Laplacian (CSD)...")
+    # epochs = mne.preprocessing.compute_current_source_density(epochs)
     
     # 2. Load Behavioral Data
     trial_info = load_behavioral_data(sub)
@@ -196,64 +242,64 @@ for sub in plist:
     
     # Data shape is (n_epochs, n_channels, n_freqs, n_times)
     
-    # 4. Calculate Grand-Average Baseline Power
-    # FieldTrip Step 15: average power during baseline time window per trial,
-    # then compute grand average of baseline over all trials.
-    print(f"  Step 3: Calculating grand-average baseline ({BASELINE[0]} to {BASELINE[1]} s) across all trials...")
-    baseline_mask = (tfr.times >= BASELINE[0]) & (tfr.times <= BASELINE[1])
-    
-    # Average across time (axis=3) and trials (axis=0)
-    # This gives a single baseline power value per channel and frequency
-    grand_baseline = np.nanmean(tfr.data[:, :, :, baseline_mask], axis=(0, 3))
-    
-    # 5. Average Trials Per Condition and Apply Baseline Correction
-    # FieldTrip Step 16: ft_freqanalysis(keeptrials='no') -> condition average
-    # Then: 10 * log10(bsxfun(@rdivide,powavg.powspctrm,ga_base))
-    print("  Step 4 & 5: Calculating condition averages, baseline correction, and saving...")
+    # 4 & 5. Trial balancing and Baseline Correction
+    print("  Step 3 & 4: Trial balancing (100 iterations), condition averaging, and baseline correction...")
     
     file_configs = [
-        (conditions_dict, f"CDmem_{sub_id}_TFR_ConditionAverages.npz", "Preregistered (Controlled only)"),
-        (conditions_dict_all_items, f"CDmem_{sub_id}_TFR_ConditionAverages_AllItems.npz", "Supplementary (All items)"),
-        (conditions_dict_itemtype, f"CDmem_{sub_id}_TFR_ItemTypeAverages.npz", "EXPLORATORY - NOT PREREGISTERED (Item Type)")
+        (conditions_dict, f"CDmem_{sub_id}_TFR_ConditionAverages.npz", "Preregistered (Controlled only)", 
+         [('low_recalled', 'low_not_recalled'), ('high_recalled', 'high_not_recalled')]),
+         
+        (conditions_dict_all_items, f"CDmem_{sub_id}_TFR_ConditionAverages_AllItems.npz", "Supplementary (All items)", 
+         [('low_recalled', 'low_not_recalled'), ('high_recalled', 'high_not_recalled')]),
+         
+        (conditions_dict_itemtype, f"CDmem_{sub_id}_TFR_ItemTypeAverages.npz", "EXPLORATORY - NOT PREREGISTERED (Item Type)", 
+         [('low_controlled_recalled', 'low_controlled_not_recalled'), 
+          ('low_uncontrolled_recalled', 'low_uncontrolled_not_recalled'),
+          ('high_controlled_recalled', 'high_controlled_not_recalled'),
+          ('high_uncontrolled_recalled', 'high_uncontrolled_not_recalled')])
     ]
 
-    epsilon = 1e-15 # small constant to avoid divide by zero or log of zero
     roi_channels = [ch for ch in tfr.ch_names if ch.startswith('P') or ch.startswith('O')]
+    rng = np.random.default_rng(2026)
     
-    for conds, filename, desc in file_configs:
+    for conds, filename, desc, balance_pairs in file_configs:
         print(f"    Processing: {desc}")
         out_data = {}
         
-        for cond_name, mask in conds.items():
-            if mask.sum() < 2:
-                print(f"      Warning: Not enough trials for {cond_name}. Skipping condition.")
+        for pair_A, pair_B in balance_pairs:
+            mask_A = conds[pair_A]
+            mask_B = conds[pair_B]
+            
+            if mask_A.sum() < 2 or mask_B.sum() < 2:
+                print(f"      Warning: Not enough trials for {pair_A}/{pair_B}. Skipping.")
                 continue
                 
-            # Get raw power for trials in this condition
-            cond_trials_power = tfr.data[mask]
+            # Get raw power for trials
+            power_A = tfr.data[mask_A]
+            power_B = tfr.data[mask_B]
             
-            # Average across trials (axis=0) -> shape: (n_channels, n_freqs, n_times)
-            cond_avg_power = np.nanmean(cond_trials_power, axis=0)
+            # Balance trials and average
+            avg_A, avg_B, n_min = balance_trials(power_A, power_B, n_iterations=100, rng=rng)
             
-            # Apply baseline correction (dB = 10 * log10(signal / baseline))
-            cond_db = 10 * np.log10(
-                np.maximum(cond_avg_power, epsilon) / 
-                np.maximum(grand_baseline[:, :, np.newaxis], epsilon)
-            )
+            # Apply baseline correction (condition-specific)
+            db_A = baseline_correct_db(avg_A, tfr.times, BASELINE)
+            db_B = baseline_correct_db(avg_B, tfr.times, BASELINE)
             
-            out_data[cond_name] = cond_db
+            out_data[pair_A] = db_A
+            out_data[pair_B] = db_B
 
         # 6. Save Data
-        out_path_file = os.path.join(output_path, filename)
-        np.savez(
-            out_path_file,
-            ch_names=tfr.ch_names,
-            times=tfr.times,
-            freqs=FREQS,
-            roi_channels=roi_channels,
-            **out_data
-        )
-        print(f"      ✓ Saved to {filename}")
+        if out_data:
+            out_path_file = os.path.join(output_path, filename)
+            np.savez(
+                out_path_file,
+                ch_names=tfr.ch_names,
+                times=tfr.times,
+                freqs=FREQS,
+                roi_channels=roi_channels,
+                **out_data
+            )
+            print(f"      ✓ Saved to {filename}")
 
 print("\n" + "=" * 70)
 print("  TFR CALCULATION COMPLETE")
