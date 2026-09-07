@@ -1,29 +1,20 @@
 """
 5_TFR_permutation.py
 ====================
-Alpha-Band Whole-Scalp Time-Frequency Permutation & Stat Maps
+Alpha-Band Time-Frequency Permutation & Stat Maps (ROI-based)
 -------------------------------------------------------------
 
 PURPOSE:
-    Loads the condition-averaged TFR data (all channels), runs a 3D cluster-based 
-    permutation test (Time × Frequency × Channel) on a predefined TEST frequency 
-    range (e.g. 2-20 Hz). Generates TFR heatmaps (averaged over significant channels)
-    and topographic maps of significant clusters.
-    
-DEVIATION NOTE (minnbchan):
-    MNE does not have a direct equivalent of FieldTrip's `minnbchan=3`. Clusters 
-    are formed purely based on adjacency without a minimum neighbor constraint 
-    for initial candidate selection. With a reasonable cluster-forming threshold 
-    (p < 0.05) and whole-scalp adjacency, isolated single-channel clusters are 
-    unlikely to survive permutation correction.
+    Loads the condition-averaged TFR data, averages over a Parieto-Occipital ROI, 
+    and runs a 2D cluster-based permutation test (Frequency x Time) on a predefined 
+    TEST frequency range (e.g. 2-20 Hz). Generates TFR heatmaps of the t-values.
 """
 
 import os
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
-import mne
-from mne.stats import spatio_temporal_cluster_1samp_test, combine_adjacency
+from mne.stats import permutation_cluster_1samp_test
 from scipy.stats import t as t_dist
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -54,18 +45,12 @@ conditions = ['low_recalled', 'low_not_recalled', 'high_recalled', 'high_not_rec
 subject_data = {f"{sub:04d}": {} for sub in plist}
 times, freqs_plot, freqs_test, test_f_inds, ch_names = None, None, None, None, None
 
-info_epochs = None
-
 for sub in plist:
     sub_id = f"{sub:04d}"
     data_file = os.path.join(input_path, f"CDmem_{sub_id}_TFR_ConditionAverages_AllItems.npz")
-    info_file = os.path.join(input_path, f"CDmem_{sub_id}_info.fif")
     
     if not os.path.exists(data_file):
         continue
-        
-    if info_epochs is None and os.path.exists(info_file):
-        info_epochs = mne.io.read_info(info_file, verbose=False)
         
     saved = np.load(data_file, allow_pickle=True)
     
@@ -86,7 +71,8 @@ for sub in plist:
         
     for cond in conditions:
         if cond in saved:
-            # We keep all channels now
+            # Extract data and slice it for plot frequencies and test times
+            # Shape: (n_channels, n_freqs_plot, n_times)
             subject_data[sub_id][cond] = saved[cond][:, freq_mask_plot, :][:, :, time_mask]
 
 valid_subs = [sub for sub in subject_data if len(subject_data[sub]) == 4]
@@ -96,10 +82,18 @@ if len(valid_subs) < 2:
     print("Not enough complete subjects to run paired contrasts. Exiting.")
     sys.exit(0)
 
-low_rec = np.array([subject_data[sub]['low_recalled'] for sub in valid_subs])
-low_not = np.array([subject_data[sub]['low_not_recalled'] for sub in valid_subs])
-high_rec = np.array([subject_data[sub]['high_recalled'] for sub in valid_subs])
-high_not = np.array([subject_data[sub]['high_not_recalled'] for sub in valid_subs])
+# ══════════════════════════════════════════════════════════════════════════════
+# 2. EXTRACT ROI DATA
+# ══════════════════════════════════════════════════════════════════════════════
+roi_channels = [ch for ch in ch_names if ch.startswith('P') or ch.startswith('O')]
+print(f"\nAveraging over ROI channels ({len(roi_channels)}): {roi_channels}\n")
+roi_idx = [ch_names.index(ch) for ch in roi_channels]
+
+# Shape of resulting arrays: (n_subjects, n_freqs_plot, n_times)
+low_rec = np.array([subject_data[sub]['low_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
+low_not = np.array([subject_data[sub]['low_not_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
+high_rec = np.array([subject_data[sub]['high_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
+high_not = np.array([subject_data[sub]['high_not_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
 
 contrasts = {}
 
@@ -119,33 +113,9 @@ descriptions = {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 2. BUILD ADJACENCY MATRIX
+# 3. RUN CLUSTER PERMUTATION TEST (permutation_cluster_1samp_test)
 # ══════════════════════════════════════════════════════════════════════════════
-print("\nBuilding 3D adjacency matrix (channel x frequency)...")
-
-if info_epochs is None:
-    print("ERROR: Could not find any _info.fif file to build adjacency matrix. Exiting.")
-    sys.exit(1)
-
-# Montage file to ensure exact spatial layout
-bvef_path = r"H:\PHD\control_detection\CDmem\analyses\neurophysiological\CACS-64_REF_new.bvef"
-if os.path.exists(bvef_path):
-    montage = mne.channels.read_custom_montage(bvef_path)
-    montage.rename_channels({'REF': 'FCz'})
-    info_epochs.set_montage(montage, on_missing='ignore')
-
-ch_adjacency, ch_adj_names = mne.channels.find_ch_adjacency(info_epochs, ch_type='eeg')
-n_channels = len(ch_names)
-n_freqs_test = len(freqs_test)
-n_times = len(times)
-
-# Combined adjacency: Kronecker product of channel adjacency and frequency grid
-tfr_adjacency = combine_adjacency(ch_adjacency, n_freqs_test)
-
-# ══════════════════════════════════════════════════════════════════════════════
-# 3. RUN CLUSTER PERMUTATION TEST (spatio_temporal_cluster_1samp_test)
-# ══════════════════════════════════════════════════════════════════════════════
-print(f"\nRunning 3D (Time x Freq x Channel) cluster permutation tests ({N_PERMUTATIONS} permutations)...")
+print(f"Running 2D (Freq x Time) cluster permutation tests ({N_PERMUTATIONS} permutations)...")
 
 df = len(valid_subs) - 1
 t_threshold = t_dist.ppf(1 - CLUSTER_ALPHA / 2, df)
@@ -160,23 +130,16 @@ report_lines.append(f"Test Frequency window: {TEST_FREQ[0]} - {TEST_FREQ[1]} Hz"
 report_lines.append(f"Cluster threshold: t = ±{t_threshold:.3f}")
 report_lines.append("=" * 70)
 
-for comp_name, X_diff in contrasts.items():
-    # X_diff shape: (n_subjects, n_channels, n_freqs_plot, n_times)
-    X_diff_clean_plot = np.nan_to_num(X_diff, nan=0.0)
+for comp_name, X_diff_plot in contrasts.items():
+    # Replace NaNs with 0 to prevent issues with permutation test
+    X_diff_plot = np.nan_to_num(X_diff_plot, nan=0.0)
     
-    # Subset data specifically for the statistical test (frequencies)
-    X_diff_clean_test = X_diff_clean_plot[:, :, test_f_inds, :]
+    # Extract only the test frequencies for statistics
+    X_diff_test = X_diff_plot[:, test_f_inds, :]
     
-    # Reshape for spatio_temporal_cluster_1samp_test:
-    # Requires (n_observations, n_times, n_vertices)
-    # where n_vertices = n_channels * n_freqs
-    X_for_test = X_diff_clean_test.transpose(0, 3, 1, 2).reshape(
-        len(valid_subs), n_times, n_channels * n_freqs_test
-    )
-    
-    T_obs, clusters, cluster_p, H0 = spatio_temporal_cluster_1samp_test(
-        X_for_test,
-        adjacency=tfr_adjacency,
+    # Run test
+    T_obs, clusters, cluster_p, H0 = permutation_cluster_1samp_test(
+        X_diff_test,
         n_permutations=N_PERMUTATIONS,
         threshold=t_threshold,
         tail=TAIL,
@@ -186,14 +149,6 @@ for comp_name, X_diff in contrasts.items():
         verbose=True
     )
     
-    # Reshape T_obs back to 3D: (n_times, n_ch*n_freq) -> (n_ch, n_freq, n_times)
-    T_obs_3d = T_obs.reshape(n_times, n_channels, n_freqs_test).transpose(1, 2, 0)
-    
-    cluster_masks_3d = []
-    for clust_mask in clusters:
-        mask_3d = clust_mask.reshape(n_times, n_channels, n_freqs_test).transpose(1, 2, 0)
-        cluster_masks_3d.append(mask_3d)
-        
     sig_clusters = [i for i, p in enumerate(cluster_p) if p < 0.05]
     n_sig = len(sig_clusters)
     
@@ -204,55 +159,41 @@ for comp_name, X_diff in contrasts.items():
     report_lines.append("-" * 70)
     
     # Combined mask for plotting
-    combined_mask = np.zeros((n_channels, n_freqs_test, n_times), dtype=bool)
+    mask_tf = np.zeros(T_obs.shape, dtype=bool)
     
-    for i, (mask, pval) in enumerate(zip(cluster_masks_3d, cluster_p)):
-        ch_in = np.any(mask, axis=(1, 2))
-        freq_in = np.any(mask, axis=(0, 2))
-        time_in = np.any(mask, axis=(0, 1))
+    for i, (mask, pval) in enumerate(zip(clusters, cluster_p)):
+        freq_in = np.any(mask, axis=1)
+        time_in = np.any(mask, axis=0)
         
-        n_ch = ch_in.sum()
         t_start, t_end = times[np.where(time_in)[0][0]], times[np.where(time_in)[0][-1]]
         f_low, f_high = freqs_test[np.where(freq_in)[0][0]], freqs_test[np.where(freq_in)[0][-1]]
         
         if pval < 0.05:
-            combined_mask |= mask
+            mask_tf |= mask
             sig_marker = " ★ SIGNIFICANT"
         else:
             sig_marker = ""
             
-        mean_t = T_obs_3d[mask].mean()
-        ch_list = [ch_names[j] for j in np.where(ch_in)[0]]
+        mean_t = T_obs[mask].mean()
         
         msg = (f"  Cluster {i+1}: {t_start:.3f}-{t_end:.3f}s, {f_low:.1f}-{f_high:.1f}Hz, "
-               f"Channels: {n_ch}, p={pval:.4f}{sig_marker} | Mean T: {mean_t:.2f}")
+               f"p={pval:.4f}{sig_marker} | Mean T: {mean_t:.2f}")
         print(msg)
         report_lines.append(msg)
 
     # ══════════════════════════════════════════════════════════════════════════════
-    # 4. PLOTTING (TFR Heatmap & Topoplot)
+    # 4. PLOTTING (TFR Heatmap)
     # ══════════════════════════════════════════════════════════════════════════════
     print(f"Creating plots for {comp_name}...")
     
-    sig_channel_mask = np.any(combined_mask, axis=(1, 2))
-    n_sig_ch = sig_channel_mask.sum()
-    
-    # -- TFR Heatmap (Averaged over significant channels) --
-    if n_sig_ch > 0:
-        T_avg = T_obs_3d[sig_channel_mask].mean(axis=0)
-        mask_tf = np.any(combined_mask, axis=0) # collapse over channels
-    else:
-        T_avg = T_obs_3d.mean(axis=0)
-        mask_tf = np.zeros((n_freqs_test, n_times), dtype=bool)
-        
     fig_tfr, ax_tfr = plt.subplots(figsize=(10, 6))
     vmin, vmax = -2.5, 2.5
     
-    # pcolormesh needs edges
+    # pcolormesh edges
     time_edges = np.concatenate([times - np.diff(times[:2])[0]/2, [times[-1] + np.diff(times[:2])[0]/2]])
     freq_edges = np.concatenate([freqs_test - np.diff(freqs_test[:2])[0]/2, [freqs_test[-1] + np.diff(freqs_test[:2])[0]/2]])
     
-    im = ax_tfr.pcolormesh(time_edges, freq_edges, T_avg, cmap='RdBu_r', vmin=vmin, vmax=vmax, shading='flat')
+    im = ax_tfr.pcolormesh(time_edges, freq_edges, T_obs, cmap='RdBu_r', vmin=vmin, vmax=vmax, shading='flat')
     
     if mask_tf.any():
         ax_tfr.contour(times, freqs_test, mask_tf.astype(float), levels=[0.5], colors='black', linewidths=2)
@@ -260,39 +201,12 @@ for comp_name, X_diff in contrasts.items():
     cb = fig_tfr.colorbar(im, ax=ax_tfr, label='t value')
     ax_tfr.set_xlabel('Time (s)', fontsize=14, fontname='Times New Roman')
     ax_tfr.set_ylabel('Frequency (Hz)', fontsize=14, fontname='Times New Roman')
-    ax_tfr.set_title(f"{comp_name.replace('_', ' ').upper()}", fontsize=16, fontname='Times New Roman')
+    ax_tfr.set_title(f"{comp_name.replace('_', ' ').upper()}\n(ROI: Parieto-Occipital)", fontsize=16, fontname='Times New Roman')
     ax_tfr.axvline(0, color='black', linestyle='--', linewidth=1)
     
     plt.tight_layout()
     fig_tfr.savefig(os.path.join(figures_path, f'01_tf_permut_{comp_name}_TFR.png'), dpi=300)
     plt.close(fig_tfr)
-    
-    # -- Topoplot --
-    if mask_tf.any():
-        topo_data = np.zeros(n_channels)
-        for ch_idx in range(n_channels):
-            topo_data[ch_idx] = T_obs_3d[ch_idx][mask_tf].mean()
-    else:
-        topo_data = T_obs_3d.mean(axis=(1, 2))
-        
-    fig_topo, ax_topo = plt.subplots(figsize=(6, 6))
-    im_topo, _ = mne.viz.plot_topomap(
-        topo_data, info_epochs,
-        axes=ax_topo,
-        cmap='RdBu_r',
-        vlim=(vmin, vmax),
-        show=False,
-        contours=6,
-        mask=sig_channel_mask if n_sig_ch > 0 else None,
-        mask_params=dict(marker='o', markerfacecolor='black', markeredgecolor='black', markersize=8) if n_sig_ch > 0 else None
-    )
-    
-    cb_topo = fig_topo.colorbar(im_topo, ax=ax_topo, label='t value', shrink=0.8)
-    ax_topo.set_title(f'{comp_name.replace("_", " ")}\n(mean t at sig. TF points)', fontsize=12, fontweight='bold')
-    
-    plt.tight_layout()
-    fig_topo.savefig(os.path.join(figures_path, f'02_tf_permut_{comp_name}_topo.png'), dpi=300)
-    plt.close(fig_topo)
 
 report_file = os.path.join(figures_path, 'TFR_permutation_statistics_report.txt')
 with open(report_file, 'w', encoding='utf-8') as f:
