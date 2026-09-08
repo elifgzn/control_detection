@@ -285,7 +285,7 @@ for sub in plist:
             mask_A = conds[pair_A]
             mask_B = conds[pair_B]
             
-            if mask_A.sum() < 2 or mask_B.sum() < 2:
+            if mask_A.sum() < 15 or mask_B.sum() < 15:
                 print(f"      Warning: Not enough trials for {pair_A}/{pair_B}. Skipping.")
                 continue
                 
@@ -302,6 +302,8 @@ for sub in plist:
             
             out_data[pair_A] = db_A
             out_data[pair_B] = db_B
+            out_data[f'n_trials_{pair_A}'] = int(mask_A.sum())
+            out_data[f'n_trials_{pair_B}'] = int(mask_B.sum())
 
         # 6. Save Data
         if out_data:
