@@ -121,8 +121,16 @@ if has_all:
     high_diff = high_rec - high_not
     contrasts['Interaction_Memory_x_Control'] = low_diff - high_diff
     
+    # 3. OLD ANALYSIS: Simple Effect of Memory in Low Control
+    contrasts['OLD_ANALYSIS__Low_Control_Memory_Effect'] = low_diff
+    
+    # 4. OLD ANALYSIS: Simple Effect of Memory in High Control
+    contrasts['OLD_ANALYSIS__High_Control_Memory_Effect'] = high_diff
+    
     descriptions['Main_Effect_Memory'] = '(Recalled vs Not Recalled, collapsed across control conditions)'
     descriptions['Interaction_Memory_x_Control'] = '(Difference in Memory Effect between Low and High Control)'
+    descriptions['OLD_ANALYSIS__Low_Control_Memory_Effect'] = '(Recalled vs Not Recalled WITHIN Low Control only)'
+    descriptions['OLD_ANALYSIS__High_Control_Memory_Effect'] = '(Recalled vs Not Recalled WITHIN High Control only)'
 
 if has_det:
     # 1. Main Effect of Detection
