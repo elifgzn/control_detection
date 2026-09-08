@@ -215,6 +215,19 @@ for sub in plist:
         'high_not_recalled': (cond_arr == 'high') & both_not_recalled
     }
 
+    # ── MAIN EFFECT: Recalled vs. Not Recalled (collapsed across control) ──
+    # Controlled items only: trial is "recalled" if the controlled item was recalled
+    conditions_dict_collapsed_ctrl = {
+        'recalled': (ctrl_rec == 'yes'),
+        'not_recalled': (ctrl_rec == 'no')
+    }
+
+    # All items: trial is "recalled" if either item was recalled
+    conditions_dict_collapsed_all = {
+        'recalled': any_recalled,
+        'not_recalled': both_not_recalled
+    }
+
     # ── EXPLORATORY (NOT PREREGISTERED): Item Type split ──
     conditions_dict_itemtype = {
         'low_controlled_recalled': (cond_arr == 'low') & (ctrl_rec == 'yes'),
@@ -262,6 +275,12 @@ for sub in plist:
          
         (conditions_dict_all_items, f"CDmem_{sub_id}_TFR_ConditionAverages_AllItems.npz", "Supplementary (All items)", 
          [('low_recalled', 'low_not_recalled'), ('high_recalled', 'high_not_recalled')]),
+
+        (conditions_dict_collapsed_ctrl, f"CDmem_{sub_id}_TFR_MainEffect_ControlledOnly.npz", "Main Effect SME (Controlled items only, collapsed across control)",
+         [('recalled', 'not_recalled')]),
+
+        (conditions_dict_collapsed_all, f"CDmem_{sub_id}_TFR_MainEffect_AllItems.npz", "Main Effect SME (All items, collapsed across control)",
+         [('recalled', 'not_recalled')]),
          
         (conditions_dict_itemtype, f"CDmem_{sub_id}_TFR_ItemTypeAverages.npz", "EXPLORATORY - NOT PREREGISTERED (Item Type)", 
          [('low_controlled_recalled', 'low_controlled_not_recalled'), 
