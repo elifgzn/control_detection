@@ -33,7 +33,7 @@ SEED = 2025
 CLUSTER_ALPHA = 0.05
 
 TEST_TIME = (0.0, 3.0)
-TEST_FREQ = (2.0, 40.0)
+TEST_FREQ = (2.0, 20.0)
 PLOT_FREQ = (2.0, 40.0)
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -44,7 +44,6 @@ print("Loading per-subject condition averages (All Items)...")
 conditions = ['low_recalled', 'low_not_recalled', 'high_recalled', 'high_not_recalled']
 conditions_det = ['detected_recalled', 'detected_not_recalled', 'not_detected_recalled', 'not_detected_not_recalled']
 subject_data = {f"{sub:04d}": {} for sub in plist}
-subject_trials = {f"{sub:04d}": {} for sub in plist}   # per-subject trial counts
 times, freqs_plot, freqs_test, test_f_inds, ch_names = None, None, None, None, None
 
 for sub in plist:
@@ -75,28 +74,14 @@ for sub in plist:
         for cond in cond_list:
             if cond in saved:
                 subject_data[sub_id][cond] = saved[cond][:, freq_mask_plot, :][:, :, time_mask]
-            # Load trial counts if available
-            tc_key = f'n_trials_{cond}'
-            if tc_key in saved:
-                subject_trials[sub_id][cond] = int(saved[tc_key])
 
-# Valid subjects for All Items memory analysis (need all 4 memory conditions)
-valid_subs = [sub for sub in subject_data if all(c in subject_data[sub] for c in conditions)]
-print(f"Found {len(valid_subs)} subjects with all 4 memory conditions.")
+# Valid subjects must have all 8 conditions for the full analysis
+valid_subs = [sub for sub in subject_data if len(subject_data[sub]) >= 4]
+print(f"Found {len(valid_subs)} subjects with valid data.")
 
 if len(valid_subs) < 2:
     print("Not enough complete subjects to run paired contrasts. Exiting.")
     sys.exit(0)
-
-# Valid subjects for Detection x Memory analysis (need all 4 detection conditions)
-# Subjects with too few not-detected (or detected) trials will be missing conditions
-# because 3_TFR_calculation.py skips conditions with < 2 trials per cell.
-valid_subs_det = [sub for sub in subject_data if all(c in subject_data[sub] for c in conditions_det)]
-excluded_det = sorted(set(valid_subs) - set(valid_subs_det))
-if excluded_det:
-    print(f"  ⚠ {len(excluded_det)} subject(s) excluded from Detection analyses "
-          f"(missing ≥1 detection condition): {excluded_det}")
-print(f"Found {len(valid_subs_det)} subjects with all 4 detection conditions.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 2. EXTRACT ROI DATA
@@ -114,17 +99,16 @@ if has_all:
     high_rec = np.array([subject_data[sub]['high_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
     high_not = np.array([subject_data[sub]['high_not_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
 
-# Detection x Memory (uses valid_subs_det — may have fewer subjects)
-has_det = len(valid_subs_det) >= 2
+# Detection x Memory
+has_det = all('detected_recalled' in subject_data[sub] for sub in valid_subs)
 if has_det:
-    det_rec = np.array([subject_data[sub]['detected_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs_det])
-    det_not = np.array([subject_data[sub]['detected_not_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs_det])
-    ndet_rec = np.array([subject_data[sub]['not_detected_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs_det])
-    ndet_not = np.array([subject_data[sub]['not_detected_not_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs_det])
+    det_rec = np.array([subject_data[sub]['detected_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
+    det_not = np.array([subject_data[sub]['detected_not_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
+    ndet_rec = np.array([subject_data[sub]['not_detected_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
+    ndet_not = np.array([subject_data[sub]['not_detected_not_recalled'][roi_idx, :, :].mean(axis=0) for sub in valid_subs])
 
 contrasts = {}
 descriptions = {}
-contrast_trials = {}  # maps contrast name -> dict of {label: [per-subject trial counts]}
 
 if has_all:
     # 1. Main Effect of Memory
@@ -139,17 +123,6 @@ if has_all:
     
     descriptions['Main_Effect_Memory'] = '(Recalled vs Not Recalled, collapsed across control conditions)'
     descriptions['Interaction_Memory_x_Control'] = '(Difference in Memory Effect between Low and High Control)'
-    
-    # Trial counts for memory contrasts
-    rec_trials = [subject_trials[s].get('low_recalled', 0) + subject_trials[s].get('high_recalled', 0) for s in valid_subs]
-    not_trials = [subject_trials[s].get('low_not_recalled', 0) + subject_trials[s].get('high_not_recalled', 0) for s in valid_subs]
-    contrast_trials['Main_Effect_Memory'] = {'Recalled': rec_trials, 'Not Recalled': not_trials}
-    contrast_trials['Interaction_Memory_x_Control'] = {
-        'Low Recalled': [subject_trials[s].get('low_recalled', 0) for s in valid_subs],
-        'Low Not Recalled': [subject_trials[s].get('low_not_recalled', 0) for s in valid_subs],
-        'High Recalled': [subject_trials[s].get('high_recalled', 0) for s in valid_subs],
-        'High Not Recalled': [subject_trials[s].get('high_not_recalled', 0) for s in valid_subs]
-    }
 
 if has_det:
     # 1. Main Effect of Detection
@@ -171,59 +144,28 @@ if has_det:
     # 4. Interaction Memory x Detection
     contrasts['Interaction_Memory_x_Detection'] = sme_det - sme_ndet
     descriptions['Interaction_Memory_x_Detection'] = '(Difference in Memory Effect between Detected and Not Detected)'
-    
-    # Trial counts for detection contrasts
-    det_trials_all = [subject_trials[s].get('detected_recalled', 0) + subject_trials[s].get('detected_not_recalled', 0) for s in valid_subs_det]
-    ndet_trials_all = [subject_trials[s].get('not_detected_recalled', 0) + subject_trials[s].get('not_detected_not_recalled', 0) for s in valid_subs_det]
-    contrast_trials['Main_Effect_Detection'] = {'Detected': det_trials_all, 'Not Detected': ndet_trials_all}
-    contrast_trials['SME_Detected_Trials'] = {
-        'Detected Recalled': [subject_trials[s].get('detected_recalled', 0) for s in valid_subs_det],
-        'Detected Not Recalled': [subject_trials[s].get('detected_not_recalled', 0) for s in valid_subs_det]
-    }
-    contrast_trials['SME_Not_Detected_Trials'] = {
-        'Not Detected Recalled': [subject_trials[s].get('not_detected_recalled', 0) for s in valid_subs_det],
-        'Not Detected Not Recalled': [subject_trials[s].get('not_detected_not_recalled', 0) for s in valid_subs_det]
-    }
-    contrast_trials['Interaction_Memory_x_Detection'] = {
-        'Detected Recalled': [subject_trials[s].get('detected_recalled', 0) for s in valid_subs_det],
-        'Detected Not Recalled': [subject_trials[s].get('detected_not_recalled', 0) for s in valid_subs_det],
-        'Not Detected Recalled': [subject_trials[s].get('not_detected_recalled', 0) for s in valid_subs_det],
-        'Not Detected Not Recalled': [subject_trials[s].get('not_detected_not_recalled', 0) for s in valid_subs_det]
-    }
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 3. RUN CLUSTER PERMUTATION TEST (permutation_cluster_1samp_test)
 # ══════════════════════════════════════════════════════════════════════════════
 print(f"Running 2D (Freq x Time) cluster permutation tests ({N_PERMUTATIONS} permutations)...")
 
+df = len(valid_subs) - 1
+t_threshold = t_dist.ppf(1 - CLUSTER_ALPHA / 2, df)
+print(f"Cluster-forming threshold: t = ±{t_threshold:.3f} (p < {CLUSTER_ALPHA})")
+
 report_lines = []
 report_lines.append("TFR PERMUTATION TEST RESULTS")
 report_lines.append("=" * 70)
 report_lines.append(f"Number of permutations: {N_PERMUTATIONS}")
-report_lines.append(f"N (memory contrasts): {len(valid_subs)}")
-report_lines.append(f"N (detection contrasts): {len(valid_subs_det)}")
-if excluded_det:
-    report_lines.append(f"Subjects excluded from detection analyses: {excluded_det}")
 report_lines.append(f"Time window: {TEST_TIME[0]} - {TEST_TIME[1]} s")
 report_lines.append(f"Test Frequency window: {TEST_FREQ[0]} - {TEST_FREQ[1]} Hz")
+report_lines.append(f"Cluster threshold: t = ±{t_threshold:.3f}")
 report_lines.append("=" * 70)
 
 for comp_name, X_diff_plot in contrasts.items():
     # Replace NaNs with 0 to prevent issues with permutation test
     X_diff_plot = np.nan_to_num(X_diff_plot, nan=0.0)
-    
-    # Compute per-contrast threshold (N may differ for detection contrasts)
-    n_subs = X_diff_plot.shape[0]
-    df = n_subs - 1
-    t_threshold = t_dist.ppf(1 - CLUSTER_ALPHA / 2, df)
-    print(f"\n  {comp_name}: N={n_subs}, df={df}, cluster threshold t = ±{t_threshold:.3f}")
-    
-    # Report trial counts per condition
-    if comp_name in contrast_trials:
-        for label, counts in contrast_trials[comp_name].items():
-            arr = np.array(counts)
-            print(f"    {label}: mean={arr.mean():.1f}, min={arr.min()}, max={arr.max()} trials")
-            report_lines.append(f"  {label}: mean={arr.mean():.1f}, min={arr.min()}, max={arr.max()} trials")
     
     # Extract only the test frequencies for statistics
     X_diff_test = X_diff_plot[:, test_f_inds, :]
@@ -244,9 +186,7 @@ for comp_name, X_diff_plot in contrasts.items():
     n_sig = len(sig_clusters)
     
     desc = descriptions.get(comp_name, '')
-    msg_header = (f"\n{comp_name.replace('_', ' ').upper()} {desc}"
-                  f"\nN={n_subs}, df={df}, cluster threshold=±{t_threshold:.3f}"
-                  f"\n{len(clusters)} clusters found, {n_sig} significant (p < 0.05)")
+    msg_header = f"\n{comp_name.replace('_', ' ').upper()} {desc}\n{len(clusters)} clusters found, {n_sig} significant (p < 0.05)"
     print(msg_header)
     report_lines.append(msg_header)
     report_lines.append("-" * 70)
@@ -294,15 +234,7 @@ for comp_name, X_diff_plot in contrasts.items():
     cb = fig_tfr.colorbar(im, ax=ax_tfr, label='t value')
     ax_tfr.set_xlabel('Time (s)', fontsize=14, fontname='Times New Roman')
     ax_tfr.set_ylabel('Frequency (Hz)', fontsize=14, fontname='Times New Roman')
-    # Build trial count subtitle
-    trial_subtitle = ""
-    if comp_name in contrast_trials:
-        parts = []
-        for label, counts in contrast_trials[comp_name].items():
-            arr = np.array(counts)
-            parts.append(f"{label}: M={arr.mean():.0f}")
-        trial_subtitle = f"\nN={n_subs} | " + ", ".join(parts) + " trials"
-    ax_tfr.set_title(f"{comp_name.replace('_', ' ').upper()}\n(ROI: Parieto-Occipital){trial_subtitle}", fontsize=14, fontname='Times New Roman')
+    ax_tfr.set_title(f"{comp_name.replace('_', ' ').upper()}\n(ROI: Parieto-Occipital)", fontsize=16, fontname='Times New Roman')
     ax_tfr.axvline(0, color='black', linestyle='--', linewidth=1)
     
     plt.tight_layout()
