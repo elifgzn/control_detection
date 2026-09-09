@@ -31,6 +31,7 @@ import os
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+import mne
 from mne.stats import permutation_cluster_1samp_test
 from scipy.stats import t as t_dist
 
@@ -38,10 +39,33 @@ from scipy.stats import t as t_dist
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════
 input_path   = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked"
-figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_stimlocked"
+eeg_path     = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_stimlocked"
+figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_stimlocked_MF"
 os.makedirs(figures_path, exist_ok=True)
 
 plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+
+# Load canonical sensor layout for whole-brain topoplots
+ref_sub = 4
+ref_file = os.path.join(eeg_path, f"CDmem_{ref_sub:04d}-epo.fif")
+if not os.path.exists(ref_file):
+    for s in plist:
+        candidate = os.path.join(eeg_path, f"CDmem_{s:04d}-epo.fif")
+        if os.path.exists(candidate):
+            ref_file = candidate
+            break
+
+info = mne.read_epochs(ref_file, preload=False, verbose=False).info
+canonical_ch_names = info.ch_names
+
+def align_channels(sub_data, sub_ch_names, canonical_ch_names):
+    """Align individual subject channels to canonical 65-channel layout."""
+    aligned = np.full((len(canonical_ch_names), sub_data.shape[1], sub_data.shape[2]), np.nan, dtype=np.float64)
+    for i, ch in enumerate(canonical_ch_names):
+        if ch in sub_ch_names:
+            orig_idx = sub_ch_names.index(ch)
+            aligned[i] = sub_data[orig_idx]
+    return aligned
 
 # Permutation test parameters
 N_PERMUTATIONS = 1000
@@ -164,11 +188,11 @@ if all(len(v) < 2 for v in valid_subs_collapsed.values()) and len(valid_subs_4ce
 # 2. EXTRACT ROI DATA & BUILD CONTRASTS
 # ══════════════════════════════════════════════════════════════════
 # ROI Option 1: all channels starting with 'P' or 'O' (Parieto-Occipital)
-sample_chs = next(iter(subject_ch_names.values()))
-roi_channels = [ch for ch in sample_chs if ch.startswith(('P', 'O'))]
+# sample_chs = next(iter(subject_ch_names.values()))
+# roi_channels = [ch for ch in sample_chs if ch.startswith(('P', 'O'))]
 
 # # ROI Option 2: Frontocentral
-# roi_channels = ['Fz', 'FCz', 'FC1', 'FC2']
+roi_channels = ['Fz', 'FCz', 'FC1', 'FC2']
 
 print(f"\nAveraging over ROI channels ({len(roi_channels)}): {roi_channels}\n")
 
@@ -180,6 +204,8 @@ def extract_roi(data_arr, sub_id):
     return data_arr[idx, :, :].mean(axis=0)
 
 contrasts = {}
+contrasts_all_chs = {}
+contrast_conditions_all_chs = {}
 descriptions = {}
 contrast_n_subs = {}
 condition_grand_averages = {}
@@ -196,6 +222,18 @@ for ft_key in main_effect_files:
     name = f"Main_Effect_Memory_{ft_key}"
     contrasts[name] = rec - not_rec
     descriptions[name] = f"(Recalled vs Not Recalled, collapsed across control - {ft_key})"
+
+    rec_all = np.array([align_channels(subject_data_collapsed[ft_key][sub]['recalled'], subject_ch_names[sub], canonical_ch_names) for sub in subs])
+    not_rec_all = np.array([align_channels(subject_data_collapsed[ft_key][sub]['not_recalled'], subject_ch_names[sub], canonical_ch_names) for sub in subs])
+    ga_rec_all = np.nanmean(rec_all, axis=0)
+    ga_not_all = np.nanmean(not_rec_all, axis=0)
+    contrasts_all_chs[name] = ga_rec_all - ga_not_all
+    contrast_conditions_all_chs[name] = {
+        'cond1_name': 'Recalled',
+        'cond2_name': 'Not_Recalled',
+        'cond1_data': ga_rec_all,
+        'cond2_data': ga_not_all
+    }
     
     condition_grand_averages[f"MainEffect_{ft_key}_Recalled"] = {
         'data': np.nanmean(rec, axis=0),
@@ -227,6 +265,43 @@ if len(valid_subs_4cell) >= 2:
     
     contrasts['Interaction_Memory_x_Control_AllItems'] = low_diff - high_diff
     descriptions['Interaction_Memory_x_Control_AllItems'] = '(Difference in Memory Effect between Low and High Control - All Items)'
+
+    low_rec_all = np.array([align_channels(subject_data_4cell[sub]['low_recalled'], subject_ch_names[sub], canonical_ch_names) for sub in subs])
+    low_not_all = np.array([align_channels(subject_data_4cell[sub]['low_not_recalled'], subject_ch_names[sub], canonical_ch_names) for sub in subs])
+    high_rec_all = np.array([align_channels(subject_data_4cell[sub]['high_recalled'], subject_ch_names[sub], canonical_ch_names) for sub in subs])
+    high_not_all = np.array([align_channels(subject_data_4cell[sub]['high_not_recalled'], subject_ch_names[sub], canonical_ch_names) for sub in subs])
+
+    ga_low_rec_all = np.nanmean(low_rec_all, axis=0)
+    ga_low_not_all = np.nanmean(low_not_all, axis=0)
+    ga_high_rec_all = np.nanmean(high_rec_all, axis=0)
+    ga_high_not_all = np.nanmean(high_not_all, axis=0)
+
+    low_diff_all = ga_low_rec_all - ga_low_not_all
+    high_diff_all = ga_high_rec_all - ga_high_not_all
+
+    contrasts_all_chs['Simple_Effect_Low_Control_AllItems'] = low_diff_all
+    contrast_conditions_all_chs['Simple_Effect_Low_Control_AllItems'] = {
+        'cond1_name': 'Low_Control_Recalled',
+        'cond2_name': 'Low_Control_Not_Recalled',
+        'cond1_data': ga_low_rec_all,
+        'cond2_data': ga_low_not_all
+    }
+
+    contrasts_all_chs['Simple_Effect_High_Control_AllItems'] = high_diff_all
+    contrast_conditions_all_chs['Simple_Effect_High_Control_AllItems'] = {
+        'cond1_name': 'High_Control_Recalled',
+        'cond2_name': 'High_Control_Not_Recalled',
+        'cond1_data': ga_high_rec_all,
+        'cond2_data': ga_high_not_all
+    }
+
+    contrasts_all_chs['Interaction_Memory_x_Control_AllItems'] = low_diff_all - high_diff_all
+    contrast_conditions_all_chs['Interaction_Memory_x_Control_AllItems'] = {
+        'cond1_name': 'Memory_Effect_Low_Control',
+        'cond2_name': 'Memory_Effect_High_Control',
+        'cond1_data': low_diff_all,
+        'cond2_data': high_diff_all
+    }
     
     for cond_name, arr in [('Low_Control_Recalled', low_rec),
                            ('Low_Control_Not_Recalled', low_not),
@@ -257,6 +332,43 @@ if len(valid_subs_4cell_ctrl) >= 2:
     
     contrasts['Interaction_Memory_x_Control_CtrlOnly'] = low_diff_c - high_diff_c
     descriptions['Interaction_Memory_x_Control_CtrlOnly'] = '(Difference in Memory Effect between Low and High Control - Controlled items only)'
+
+    low_rec_all_c = np.array([align_channels(subject_data_4cell_ctrl[sub]['low_recalled'], subject_ch_names[sub], canonical_ch_names) for sub in subs])
+    low_not_all_c = np.array([align_channels(subject_data_4cell_ctrl[sub]['low_not_recalled'], subject_ch_names[sub], canonical_ch_names) for sub in subs])
+    high_rec_all_c = np.array([align_channels(subject_data_4cell_ctrl[sub]['high_recalled'], subject_ch_names[sub], canonical_ch_names) for sub in subs])
+    high_not_all_c = np.array([align_channels(subject_data_4cell_ctrl[sub]['high_not_recalled'], subject_ch_names[sub], canonical_ch_names) for sub in subs])
+
+    ga_low_rec_all_c = np.nanmean(low_rec_all_c, axis=0)
+    ga_low_not_all_c = np.nanmean(low_not_all_c, axis=0)
+    ga_high_rec_all_c = np.nanmean(high_rec_all_c, axis=0)
+    ga_high_not_all_c = np.nanmean(high_not_all_c, axis=0)
+
+    low_diff_all_c = ga_low_rec_all_c - ga_low_not_all_c
+    high_diff_all_c = ga_high_rec_all_c - ga_high_not_all_c
+
+    contrasts_all_chs['Simple_Effect_Low_Control_CtrlOnly'] = low_diff_all_c
+    contrast_conditions_all_chs['Simple_Effect_Low_Control_CtrlOnly'] = {
+        'cond1_name': 'Low_Control_Recalled',
+        'cond2_name': 'Low_Control_Not_Recalled',
+        'cond1_data': ga_low_rec_all_c,
+        'cond2_data': ga_low_not_all_c
+    }
+
+    contrasts_all_chs['Simple_Effect_High_Control_CtrlOnly'] = high_diff_all_c
+    contrast_conditions_all_chs['Simple_Effect_High_Control_CtrlOnly'] = {
+        'cond1_name': 'High_Control_Recalled',
+        'cond2_name': 'High_Control_Not_Recalled',
+        'cond1_data': ga_high_rec_all_c,
+        'cond2_data': ga_high_not_all_c
+    }
+
+    contrasts_all_chs['Interaction_Memory_x_Control_CtrlOnly'] = low_diff_all_c - high_diff_all_c
+    contrast_conditions_all_chs['Interaction_Memory_x_Control_CtrlOnly'] = {
+        'cond1_name': 'Memory_Effect_Low_Control',
+        'cond2_name': 'Memory_Effect_High_Control',
+        'cond1_data': low_diff_all_c,
+        'cond2_data': high_diff_all_c
+    }
     
     for cond_name, arr in [('Low_Control_Recalled', low_rec_c),
                            ('Low_Control_Not_Recalled', low_not_c),
@@ -357,6 +469,98 @@ for comp_name, X_diff_plot in contrasts.items():
         if pval < 0.05:
             mask_tf |= mask
             sig_marker = " ** SIGNIFICANT"
+
+            # --- Generate Whole-Brain Topoplots for Significant Cluster Period ---
+            if comp_name in contrasts_all_chs and comp_name in contrast_conditions_all_chs:
+                c_time_mask = (times >= t_start) & (times <= t_end)
+                c_freq_mask = (freqs_plot >= f_low) & (freqs_plot <= f_high)
+
+                c_info = contrast_conditions_all_chs[comp_name]
+                cond1_label = c_info['cond1_name']
+                cond2_label = c_info['cond2_name']
+                topo_cond1 = np.nanmean(c_info['cond1_data'][:, c_freq_mask, :][:, :, c_time_mask], axis=(1, 2))
+                topo_cond2 = np.nanmean(c_info['cond2_data'][:, c_freq_mask, :][:, :, c_time_mask], axis=(1, 2))
+                topo_diff  = np.nanmean(contrasts_all_chs[comp_name][:, c_freq_mask, :][:, :, c_time_mask], axis=(1, 2))
+
+                roi_mask = np.array([ch in roi_channels for ch in canonical_ch_names])
+                roi_label = "/".join(roi_channels) if len(roi_channels) <= 6 else f"{len(roi_channels)} ROI channels"
+
+                v_cond = max(0.5, float(np.nanpercentile(np.abs(np.concatenate([topo_cond1, topo_cond2])), 99)))
+                v_cond = round(v_cond, 2)
+                v_diff = max(0.5, float(np.nanpercentile(np.abs(topo_diff), 99)))
+                v_diff = round(v_diff, 2)
+
+                star_kwargs = dict(marker='*', markerfacecolor='yellow', markeredgecolor='black', markersize=14)
+
+                # 1) Topoplot: Condition 1
+                fig_c1, ax_c1 = plt.subplots(figsize=(6, 6))
+                im_c1, _ = mne.viz.plot_topomap(topo_cond1, info, axes=ax_c1, mask=roi_mask, mask_params=star_kwargs,
+                                                cmap='RdBu_r', sphere='eeglab', vlim=(-v_cond, v_cond), show=False)
+                cb_c1 = plt.colorbar(im_c1, ax=ax_c1, orientation='horizontal', pad=0.08, shrink=0.7)
+                cb_c1.set_label('Power (dB)', fontname='Times New Roman', fontsize=12)
+                ax_c1.set_title(f"{cond1_label.replace('_', ' ')}\nCluster {i+1}: {f_low:.1f}-{f_high:.1f} Hz, {t_start:.3f}-{t_end:.3f} s\n(* = ROI: {roi_label})",
+                                fontsize=13, fontname='Times New Roman', pad=12)
+                plt.tight_layout()
+                fname_c1 = f"03_TFR_topo_{comp_name}_cluster_{i+1}_{cond1_label.lower()}.png"
+                fig_c1.savefig(os.path.join(figures_path, fname_c1), dpi=300)
+                plt.close(fig_c1)
+                print(f"  [OK] Saved condition topoplot: {fname_c1}")
+
+                # 2) Topoplot: Condition 2
+                fig_c2, ax_c2 = plt.subplots(figsize=(6, 6))
+                im_c2, _ = mne.viz.plot_topomap(topo_cond2, info, axes=ax_c2, mask=roi_mask, mask_params=star_kwargs,
+                                                cmap='RdBu_r', sphere='eeglab', vlim=(-v_cond, v_cond), show=False)
+                cb_c2 = plt.colorbar(im_c2, ax=ax_c2, orientation='horizontal', pad=0.08, shrink=0.7)
+                cb_c2.set_label('Power (dB)', fontname='Times New Roman', fontsize=12)
+                ax_c2.set_title(f"{cond2_label.replace('_', ' ')}\nCluster {i+1}: {f_low:.1f}-{f_high:.1f} Hz, {t_start:.3f}-{t_end:.3f} s\n(* = ROI: {roi_label})",
+                                fontsize=13, fontname='Times New Roman', pad=12)
+                plt.tight_layout()
+                fname_c2 = f"03_TFR_topo_{comp_name}_cluster_{i+1}_{cond2_label.lower()}.png"
+                fig_c2.savefig(os.path.join(figures_path, fname_c2), dpi=300)
+                plt.close(fig_c2)
+                print(f"  [OK] Saved condition topoplot: {fname_c2}")
+
+                # 3) Topoplot: Difference
+                fig_d, ax_d = plt.subplots(figsize=(6, 6))
+                im_d, _ = mne.viz.plot_topomap(topo_diff, info, axes=ax_d, mask=roi_mask, mask_params=star_kwargs,
+                                               cmap='RdBu_r', sphere='eeglab', vlim=(-v_diff, v_diff), show=False)
+                cb_d = plt.colorbar(im_d, ax=ax_d, orientation='horizontal', pad=0.08, shrink=0.7)
+                cb_d.set_label('Power Difference (dB)', fontname='Times New Roman', fontsize=12)
+                ax_d.set_title(f"Difference ({cond1_label.replace('_', ' ')} - {cond2_label.replace('_', ' ')})\nCluster {i+1}: {f_low:.1f}-{f_high:.1f} Hz, {t_start:.3f}-{t_end:.3f} s\np = {pval:.4f} (* = ROI: {roi_label})",
+                               fontsize=13, fontname='Times New Roman', pad=12)
+                plt.tight_layout()
+                fname_d = f"03_TFR_topo_{comp_name}_cluster_{i+1}_diff.png"
+                fig_d.savefig(os.path.join(figures_path, fname_d), dpi=300)
+                plt.close(fig_d)
+                print(f"  [OK] Saved difference topoplot: {fname_d}")
+
+                # 4) Combined 3-Panel Figure
+                fig_p, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
+                im1, _ = mne.viz.plot_topomap(topo_cond1, info, axes=ax1, mask=roi_mask, mask_params=star_kwargs,
+                                              cmap='RdBu_r', sphere='eeglab', vlim=(-v_cond, v_cond), show=False)
+                cb1 = plt.colorbar(im1, ax=ax1, orientation='horizontal', pad=0.08, shrink=0.7)
+                cb1.set_label('Power (dB)', fontname='Times New Roman', fontsize=11)
+                ax1.set_title(cond1_label.replace('_', ' '), fontsize=14, fontname='Times New Roman')
+
+                im2, _ = mne.viz.plot_topomap(topo_cond2, info, axes=ax2, mask=roi_mask, mask_params=star_kwargs,
+                                              cmap='RdBu_r', sphere='eeglab', vlim=(-v_cond, v_cond), show=False)
+                cb2 = plt.colorbar(im2, ax=ax2, orientation='horizontal', pad=0.08, shrink=0.7)
+                cb2.set_label('Power (dB)', fontname='Times New Roman', fontsize=11)
+                ax2.set_title(cond2_label.replace('_', ' '), fontsize=14, fontname='Times New Roman')
+
+                im3, _ = mne.viz.plot_topomap(topo_diff, info, axes=ax3, mask=roi_mask, mask_params=star_kwargs,
+                                              cmap='RdBu_r', sphere='eeglab', vlim=(-v_diff, v_diff), show=False)
+                cb3 = plt.colorbar(im3, ax=ax3, orientation='horizontal', pad=0.08, shrink=0.7)
+                cb3.set_label('Power Difference (dB)', fontname='Times New Roman', fontsize=11)
+                ax3.set_title(f"Difference\np = {pval:.4f}", fontsize=14, fontname='Times New Roman')
+
+                fig_p.suptitle(f"{comp_name.replace('_', ' ')} - Cluster {i+1}: {f_low:.1f}-{f_high:.1f} Hz, {t_start:.3f}-{t_end:.3f} s (* = ROI: {roi_label})",
+                               fontsize=15, fontname='Times New Roman', y=0.98)
+                plt.tight_layout()
+                fname_p = f"03_TFR_topo_{comp_name}_cluster_{i+1}_panel.png"
+                fig_p.savefig(os.path.join(figures_path, fname_p), dpi=300)
+                plt.close(fig_p)
+                print(f"  [OK] Saved 3-panel comparison topoplot: {fname_p}")
         else:
             sig_marker = ""
             

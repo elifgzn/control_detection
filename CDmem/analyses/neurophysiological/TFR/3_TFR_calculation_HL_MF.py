@@ -25,7 +25,7 @@ from mne.time_frequency import tfr_morlet
 # ══════════════════════════════════════════════════════════════════════════════
 eeg_path        = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_stimlocked"
 behavioral_path = r"H:\PHD\control_detection\main_data\behavioral"
-output_path     = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked"
+output_path     = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked_HL_MF"
 
 os.makedirs(output_path, exist_ok=True)
 

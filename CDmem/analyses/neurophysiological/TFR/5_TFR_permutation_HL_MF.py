@@ -19,17 +19,41 @@ import os
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+import mne
 from mne.stats import permutation_cluster_1samp_test
 from scipy.stats import t as t_dist
 
 # ══════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════
-input_path   = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked"
-figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_stimlocked"
+input_path   = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked_HL_MF"
+eeg_path     = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_stimlocked"
+figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_stimlocked_HL_PO"
 os.makedirs(figures_path, exist_ok=True)
 
 plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+
+# Load canonical sensor layout for whole-brain topoplots
+ref_sub = 4
+ref_file = os.path.join(eeg_path, f"CDmem_{ref_sub:04d}-epo.fif")
+if not os.path.exists(ref_file):
+    for s in plist:
+        candidate = os.path.join(eeg_path, f"CDmem_{s:04d}-epo.fif")
+        if os.path.exists(candidate):
+            ref_file = candidate
+            break
+
+info = mne.read_epochs(ref_file, preload=False, verbose=False).info
+canonical_ch_names = info.ch_names
+
+def align_channels(sub_data, sub_ch_names, canonical_ch_names):
+    """Align individual subject channels to canonical 65-channel layout."""
+    aligned = np.full((len(canonical_ch_names), sub_data.shape[1], sub_data.shape[2]), np.nan, dtype=np.float64)
+    for i, ch in enumerate(canonical_ch_names):
+        if ch in sub_ch_names:
+            orig_idx = sub_ch_names.index(ch)
+            aligned[i] = sub_data[orig_idx]
+    return aligned
 
 # Permutation test parameters
 N_PERMUTATIONS = 1000
@@ -38,7 +62,20 @@ SEED = 2025
 CLUSTER_ALPHA = 0.05
 
 TEST_TIME = (0.0, 3.0)
+
+# Broadband
 TEST_FREQ = (2.0, 40.0)
+
+# # Theta
+# TEST_FREQ = (4.0, 8.0)
+
+# # directly following maren
+# TEST_FREQ = (2.0, 20.0)
+
+
+# #alpha / beta
+# TEST_FREQ = (8.0, 30.0)
+
 PLOT_FREQ = (2.0, 40.0)
 
 # Colorbar limits
@@ -98,8 +135,10 @@ if len(valid_subs) < 2:
 sample_chs = next(iter(subject_ch_names.values()))
 roi_channels = [ch for ch in sample_chs if ch.startswith(('P', 'O'))]
 
-# ROI Option 2: Frontocentral
-# roi_channels = ['Fz', 'FCz', 'FC1', 'FC2']
+# # ROI Option 2: Frontocentral
+# # roi_channels = ['Fz', 'FCz', 'FC1', 'FC2']
+# roi_channels = ['Fz']
+
 
 print(f"\nAveraging over ROI channels ({len(roi_channels)}): {roi_channels}\n")
 
@@ -116,6 +155,19 @@ low_arr  = np.array([extract_roi(subject_data[sub]['low_control'], sub) for sub 
 contrast_name = "Main_Effect_Control"
 contrast_desc = "(High Control vs Low Control, all trials)"
 X_diff_plot = high_arr - low_arr
+
+# Align all channels for whole-brain condition & difference topoplots
+high_all_chs = np.array([
+    align_channels(subject_data[sub]['high_control'], subject_ch_names[sub], canonical_ch_names)
+    for sub in valid_subs
+])
+low_all_chs = np.array([
+    align_channels(subject_data[sub]['low_control'], subject_ch_names[sub], canonical_ch_names)
+    for sub in valid_subs
+])
+ga_high_all_chs = np.nanmean(high_all_chs, axis=0)  # Shape: (65, n_freqs, n_times)
+ga_low_all_chs  = np.nanmean(low_all_chs, axis=0)   # Shape: (65, n_freqs, n_times)
+ga_diff_all_chs = ga_high_all_chs - ga_low_all_chs
 
 condition_grand_averages = {
     "High_Control": {
@@ -210,6 +262,94 @@ for i, (mask, pval) in enumerate(zip(clusters, cluster_p)):
     if pval < 0.05:
         mask_tf |= mask
         sig_marker = " ** SIGNIFICANT"
+
+        # --- Generate Whole-Brain Topoplots for Significant Cluster Period ---
+        c_time_mask = (times >= t_start) & (times <= t_end)
+        c_freq_mask = (freqs_plot >= f_low) & (freqs_plot <= f_high)
+
+        topo_high = np.nanmean(ga_high_all_chs[:, c_freq_mask, :][:, :, c_time_mask], axis=(1, 2))
+        topo_low  = np.nanmean(ga_low_all_chs[:, c_freq_mask, :][:, :, c_time_mask], axis=(1, 2))
+        topo_diff = np.nanmean(ga_diff_all_chs[:, c_freq_mask, :][:, :, c_time_mask], axis=(1, 2))
+        roi_mask  = np.array([ch in roi_channels for ch in canonical_ch_names])
+        roi_label = "/".join(roi_channels) if len(roi_channels) <= 6 else f"{len(roi_channels)} ROI channels"
+
+        # Shared color scale for conditions; separate scale for difference
+        v_cond = max(0.5, float(np.nanpercentile(np.abs(np.concatenate([topo_high, topo_low])), 99)))
+        v_cond = round(v_cond, 2)
+        v_diff = max(0.5, float(np.nanpercentile(np.abs(topo_diff), 99)))
+        v_diff = round(v_diff, 2)
+
+        star_kwargs = dict(marker='*', markerfacecolor='yellow', markeredgecolor='black', markersize=14)
+
+        # 1) Condition: High Control
+        fig_h, ax_h = plt.subplots(figsize=(6, 6))
+        im_h, _ = mne.viz.plot_topomap(topo_high, info, axes=ax_h, mask=roi_mask, mask_params=star_kwargs,
+                                       cmap='RdBu_r', sphere='eeglab', vlim=(-v_cond, v_cond), show=False)
+        cb_h = plt.colorbar(im_h, ax=ax_h, orientation='horizontal', pad=0.08, shrink=0.7)
+        cb_h.set_label('Power (dB)', fontname='Times New Roman', fontsize=12)
+        ax_h.set_title(f"High Control\nCluster {i+1}: {f_low:.1f}-{f_high:.1f} Hz, {t_start:.3f}-{t_end:.3f} s\n(* = ROI: {roi_label})",
+                       fontsize=13, fontname='Times New Roman', pad=12)
+        plt.tight_layout()
+        fname_h = f"03_TFR_topo_{contrast_name}_cluster_{i+1}_high_control.png"
+        fig_h.savefig(os.path.join(figures_path, fname_h), dpi=300)
+        plt.close(fig_h)
+        print(f"  [OK] Saved condition topoplot: {fname_h}")
+
+        # 2) Condition: Low Control
+        fig_l, ax_l = plt.subplots(figsize=(6, 6))
+        im_l, _ = mne.viz.plot_topomap(topo_low, info, axes=ax_l, mask=roi_mask, mask_params=star_kwargs,
+                                       cmap='RdBu_r', sphere='eeglab', vlim=(-v_cond, v_cond), show=False)
+        cb_l = plt.colorbar(im_l, ax=ax_l, orientation='horizontal', pad=0.08, shrink=0.7)
+        cb_l.set_label('Power (dB)', fontname='Times New Roman', fontsize=12)
+        ax_l.set_title(f"Low Control\nCluster {i+1}: {f_low:.1f}-{f_high:.1f} Hz, {t_start:.3f}-{t_end:.3f} s\n(* = ROI: {roi_label})",
+                       fontsize=13, fontname='Times New Roman', pad=12)
+        plt.tight_layout()
+        fname_l = f"03_TFR_topo_{contrast_name}_cluster_{i+1}_low_control.png"
+        fig_l.savefig(os.path.join(figures_path, fname_l), dpi=300)
+        plt.close(fig_l)
+        print(f"  [OK] Saved condition topoplot: {fname_l}")
+
+        # 3) Difference: High Control - Low Control
+        fig_d, ax_d = plt.subplots(figsize=(6, 6))
+        im_d, _ = mne.viz.plot_topomap(topo_diff, info, axes=ax_d, mask=roi_mask, mask_params=star_kwargs,
+                                       cmap='RdBu_r', sphere='eeglab', vlim=(-v_diff, v_diff), show=False)
+        cb_d = plt.colorbar(im_d, ax=ax_d, orientation='horizontal', pad=0.08, shrink=0.7)
+        cb_d.set_label('Power Difference (dB)', fontname='Times New Roman', fontsize=12)
+        ax_d.set_title(f"Difference (High - Low Control)\nCluster {i+1}: {f_low:.1f}-{f_high:.1f} Hz, {t_start:.3f}-{t_end:.3f} s\np = {pval:.4f} (* = ROI: {roi_label})",
+                       fontsize=13, fontname='Times New Roman', pad=12)
+        plt.tight_layout()
+        fname_d = f"03_TFR_topo_{contrast_name}_cluster_{i+1}_diff.png"
+        fig_d.savefig(os.path.join(figures_path, fname_d), dpi=300)
+        plt.close(fig_d)
+        print(f"  [OK] Saved difference topoplot: {fname_d}")
+
+        # 4) Combined 3-Panel Figure
+        fig_p, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
+        im1, _ = mne.viz.plot_topomap(topo_high, info, axes=ax1, mask=roi_mask, mask_params=star_kwargs,
+                                      cmap='RdBu_r', sphere='eeglab', vlim=(-v_cond, v_cond), show=False)
+        cb1 = plt.colorbar(im1, ax=ax1, orientation='horizontal', pad=0.08, shrink=0.7)
+        cb1.set_label('Power (dB)', fontname='Times New Roman', fontsize=11)
+        ax1.set_title("High Control", fontsize=14, fontname='Times New Roman')
+
+        im2, _ = mne.viz.plot_topomap(topo_low, info, axes=ax2, mask=roi_mask, mask_params=star_kwargs,
+                                      cmap='RdBu_r', sphere='eeglab', vlim=(-v_cond, v_cond), show=False)
+        cb2 = plt.colorbar(im2, ax=ax2, orientation='horizontal', pad=0.08, shrink=0.7)
+        cb2.set_label('Power (dB)', fontname='Times New Roman', fontsize=11)
+        ax2.set_title("Low Control", fontsize=14, fontname='Times New Roman')
+
+        im3, _ = mne.viz.plot_topomap(topo_diff, info, axes=ax3, mask=roi_mask, mask_params=star_kwargs,
+                                      cmap='RdBu_r', sphere='eeglab', vlim=(-v_diff, v_diff), show=False)
+        cb3 = plt.colorbar(im3, ax=ax3, orientation='horizontal', pad=0.08, shrink=0.7)
+        cb3.set_label('Power Difference (dB)', fontname='Times New Roman', fontsize=11)
+        ax3.set_title(f"Difference (High - Low)\np = {pval:.4f}", fontsize=14, fontname='Times New Roman')
+
+        fig_p.suptitle(f"Cluster {i+1}: {f_low:.1f}-{f_high:.1f} Hz, {t_start:.3f}-{t_end:.3f} s (* = ROI: {roi_label})",
+                       fontsize=15, fontname='Times New Roman', y=0.98)
+        plt.tight_layout()
+        fname_p = f"03_TFR_topo_{contrast_name}_cluster_{i+1}_panel.png"
+        fig_p.savefig(os.path.join(figures_path, fname_p), dpi=300)
+        plt.close(fig_p)
+        print(f"  [OK] Saved 3-panel comparison topoplot: {fname_p}")
     else:
         sig_marker = ""
 
