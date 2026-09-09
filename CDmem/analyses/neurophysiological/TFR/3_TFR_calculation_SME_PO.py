@@ -39,7 +39,8 @@ N_CYCLES = FREQS * 0.5       # Fixed 0.5s effective window (matches FieldTrip t_
 DECIM = 10                   # Downsample TFR to 25 Hz to save memory/disk space
 BASELINE = (-0.5, -0.2)      # Baseline correction window (-500 to -200 ms)
 
-plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+# plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+plist = [18,23]
 
 
 # ══════════════════════════════════════════════════════════════════════════════

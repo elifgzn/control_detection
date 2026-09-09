@@ -1,4 +1,4 @@
-﻿"""
+"""
 5_TFR_permutation.py
 ====================
 Alpha-Band Time-Frequency Permutation & Stat Maps (ROI-based)
@@ -69,7 +69,8 @@ main_effect_files = {
 
 collapsed_conditions = ['recalled', 'not_recalled']
 subject_data_collapsed = {ft: {f"{sub:04d}": {} for sub in plist} for ft in main_effect_files}
-times, freqs_plot, freqs_test, test_f_inds, ch_names = None, None, None, None, None
+subject_ch_names = {}
+times, freqs_plot, freqs_test, test_f_inds = None, None, None, None
 
 for sub in plist:
     sub_id = f"{sub:04d}"
@@ -81,10 +82,12 @@ for sub in plist:
             
         saved = np.load(data_file, allow_pickle=True)
         
+        if sub_id not in subject_ch_names and 'ch_names' in saved:
+            subject_ch_names[sub_id] = saved['ch_names'].tolist()
+            
         if times is None:
             times_all = saved['times']
             freqs_all = saved['freqs']
-            ch_names = saved['ch_names'].tolist()
             
             time_mask = (times_all >= TEST_TIME[0]) & (times_all <= TEST_TIME[1])
             times = times_all[time_mask]
@@ -113,6 +116,9 @@ for sub in plist:
         
     saved = np.load(data_file, allow_pickle=True)
     
+    if sub_id not in subject_ch_names and 'ch_names' in saved:
+        subject_ch_names[sub_id] = saved['ch_names'].tolist()
+        
     for cond in four_cell_conditions:
         if cond in saved:
             subject_data_4cell[sub_id][cond] = saved[cond][:, freq_mask_plot, :][:, :, time_mask]
@@ -130,6 +136,9 @@ for sub in plist:
         
     saved = np.load(data_file, allow_pickle=True)
     
+    if sub_id not in subject_ch_names and 'ch_names' in saved:
+        subject_ch_names[sub_id] = saved['ch_names'].tolist()
+        
     for cond in four_cell_conditions:
         if cond in saved:
             subject_data_4cell_ctrl[sub_id][cond] = saved[cond][:, freq_mask_plot, :][:, :, time_mask]
@@ -154,9 +163,21 @@ if all(len(v) < 2 for v in valid_subs_collapsed.values()) and len(valid_subs_4ce
 # ══════════════════════════════════════════════════════════════════
 # 2. EXTRACT ROI DATA & BUILD CONTRASTS
 # ══════════════════════════════════════════════════════════════════
-roi_channels = [ch for ch in ch_names if ch.startswith('P') or ch.startswith('O')]
+# ROI Option 1: all channels starting with 'P' or 'O' (Parieto-Occipital)
+sample_chs = next(iter(subject_ch_names.values()))
+roi_channels = [ch for ch in sample_chs if ch.startswith(('P', 'O'))]
+
+# # ROI Option 2: Frontocentral
+# roi_channels = ['Fz', 'FCz', 'FC1', 'FC2']
+
 print(f"\nAveraging over ROI channels ({len(roi_channels)}): {roi_channels}\n")
-roi_idx = [ch_names.index(ch) for ch in roi_channels]
+
+def extract_roi(data_arr, sub_id):
+    chs = subject_ch_names[sub_id]
+    idx = [chs.index(ch) for ch in roi_channels if ch in chs]
+    if len(idx) == 0:
+        raise ValueError(f"Participant {sub_id} has none of the requested ROI channels {roi_channels}!")
+    return data_arr[idx, :, :].mean(axis=0)
 
 contrasts = {}
 descriptions = {}
@@ -169,8 +190,8 @@ for ft_key in main_effect_files:
     if len(subs) < 2:
         continue
     
-    rec = np.array([subject_data_collapsed[ft_key][sub]['recalled'][roi_idx, :, :].mean(axis=0) for sub in subs])
-    not_rec = np.array([subject_data_collapsed[ft_key][sub]['not_recalled'][roi_idx, :, :].mean(axis=0) for sub in subs])
+    rec = np.array([extract_roi(subject_data_collapsed[ft_key][sub]['recalled'], sub) for sub in subs])
+    not_rec = np.array([extract_roi(subject_data_collapsed[ft_key][sub]['not_recalled'], sub) for sub in subs])
     
     name = f"Main_Effect_Memory_{ft_key}"
     contrasts[name] = rec - not_rec
@@ -190,10 +211,10 @@ for ft_key in main_effect_files:
 # B. Within-control simple effects + interaction (from 4-cell AllItems)
 if len(valid_subs_4cell) >= 2:
     subs = valid_subs_4cell
-    low_rec = np.array([subject_data_4cell[sub]['low_recalled'][roi_idx, :, :].mean(axis=0) for sub in subs])
-    low_not = np.array([subject_data_4cell[sub]['low_not_recalled'][roi_idx, :, :].mean(axis=0) for sub in subs])
-    high_rec = np.array([subject_data_4cell[sub]['high_recalled'][roi_idx, :, :].mean(axis=0) for sub in subs])
-    high_not = np.array([subject_data_4cell[sub]['high_not_recalled'][roi_idx, :, :].mean(axis=0) for sub in subs])
+    low_rec = np.array([extract_roi(subject_data_4cell[sub]['low_recalled'], sub) for sub in subs])
+    low_not = np.array([extract_roi(subject_data_4cell[sub]['low_not_recalled'], sub) for sub in subs])
+    high_rec = np.array([extract_roi(subject_data_4cell[sub]['high_recalled'], sub) for sub in subs])
+    high_not = np.array([extract_roi(subject_data_4cell[sub]['high_not_recalled'], sub) for sub in subs])
     
     low_diff = low_rec - low_not
     high_diff = high_rec - high_not
@@ -220,10 +241,10 @@ if len(valid_subs_4cell) >= 2:
 # C. Within-control simple effects + interaction (from 4-cell Controlled Only)
 if len(valid_subs_4cell_ctrl) >= 2:
     subs = valid_subs_4cell_ctrl
-    low_rec_c = np.array([subject_data_4cell_ctrl[sub]['low_recalled'][roi_idx, :, :].mean(axis=0) for sub in subs])
-    low_not_c = np.array([subject_data_4cell_ctrl[sub]['low_not_recalled'][roi_idx, :, :].mean(axis=0) for sub in subs])
-    high_rec_c = np.array([subject_data_4cell_ctrl[sub]['high_recalled'][roi_idx, :, :].mean(axis=0) for sub in subs])
-    high_not_c = np.array([subject_data_4cell_ctrl[sub]['high_not_recalled'][roi_idx, :, :].mean(axis=0) for sub in subs])
+    low_rec_c = np.array([extract_roi(subject_data_4cell_ctrl[sub]['low_recalled'], sub) for sub in subs])
+    low_not_c = np.array([extract_roi(subject_data_4cell_ctrl[sub]['low_not_recalled'], sub) for sub in subs])
+    high_rec_c = np.array([extract_roi(subject_data_4cell_ctrl[sub]['high_recalled'], sub) for sub in subs])
+    high_not_c = np.array([extract_roi(subject_data_4cell_ctrl[sub]['high_not_recalled'], sub) for sub in subs])
     
     low_diff_c = low_rec_c - low_not_c
     high_diff_c = high_rec_c - high_not_c
@@ -351,6 +372,7 @@ for comp_name, X_diff_plot in contrasts.items():
     # -------------------------------------------------------------
     print(f"Creating standalone TFR plots for {comp_name}...")
     
+    roi_str = "/".join(roi_channels) if len(roi_channels) <= 6 else f"Parieto-Occipital ({len(roi_channels)} channels)"
     # 1) Standalone Difference TFR (Power in dB)
     ga_diff = np.nanmean(X_diff_plot, axis=0)
     fig_diff, ax_diff = plt.subplots(figsize=(10, 6))
@@ -361,7 +383,7 @@ for comp_name, X_diff_plot in contrasts.items():
     cb_diff = fig_diff.colorbar(im_diff, ax=ax_diff, label='Power Difference (dB)')
     ax_diff.set_xlabel('Time (s)', fontsize=14, fontname='Times New Roman')
     ax_diff.set_ylabel('Frequency (Hz)', fontsize=14, fontname='Times New Roman')
-    ax_diff.set_title(f"DIFFERENCE TFR: {comp_name.replace('_', ' ').upper()}\n(ROI: Parieto-Occipital, N={n_subs})", 
+    ax_diff.set_title(f"DIFFERENCE TFR: {comp_name.replace('_', ' ').upper()}\n(ROI: {roi_str}, N={n_subs})", 
                       fontsize=15, fontname='Times New Roman')
     ax_diff.axvline(0, color='black', linestyle='--', linewidth=1)
     plt.tight_layout()
@@ -378,7 +400,7 @@ for comp_name, X_diff_plot in contrasts.items():
     cb_stat = fig_stat.colorbar(im_stat, ax=ax_stat, label='t value')
     ax_stat.set_xlabel('Time (s)', fontsize=14, fontname='Times New Roman')
     ax_stat.set_ylabel('Frequency (Hz)', fontsize=14, fontname='Times New Roman')
-    ax_stat.set_title(f"STAT MAP: {comp_name.replace('_', ' ').upper()}\n(ROI: Parieto-Occipital, N={n_subs})", 
+    ax_stat.set_title(f"STAT MAP: {comp_name.replace('_', ' ').upper()}\n(ROI: {roi_str}, N={n_subs})", 
                       fontsize=15, fontname='Times New Roman')
     ax_stat.axvline(0, color='black', linestyle='--', linewidth=1)
     plt.tight_layout()
