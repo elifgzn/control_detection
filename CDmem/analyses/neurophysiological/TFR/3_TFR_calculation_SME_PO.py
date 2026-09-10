@@ -34,13 +34,13 @@ output_path    = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked"
 os.makedirs(output_path, exist_ok=True)
 
 # TFR Parameters
-FREQS = np.arange(2, 41, 1)  # 2 to 40 Hz (broadband, so we have all data available)
+FREQS = np.arange(2, 61, 1)  # 2 to 60 Hz broadband (includes Gamma up to 60 Hz)
 N_CYCLES = FREQS * 0.5       # Fixed 0.5s effective window (matches FieldTrip t_ftimwin=0.5)
 DECIM = 10                   # Downsample TFR to 25 Hz to save memory/disk space
 BASELINE = (-0.5, -0.2)      # Baseline correction window (-500 to -200 ms)
 
-# plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
-plist = [18,23]
+plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+# plist = [18,23]
 
 
 # ══════════════════════════════════════════════════════════════════════════════

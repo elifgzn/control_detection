@@ -30,7 +30,7 @@ output_path     = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked_H
 os.makedirs(output_path, exist_ok=True)
 
 # TFR Parameters
-FREQS = np.arange(2, 41, 1)  # 2 to 40 Hz broadband
+FREQS = np.arange(2, 61, 1)  # 2 to 60 Hz broadband (includes Gamma up to 60 Hz)
 N_CYCLES = FREQS * 0.5       # 0.5s effective window
 DECIM = 10                   # Downsample TFR to 25 Hz
 BASELINE = (-0.5, -0.2)      # Baseline window (-500 to -200 ms)

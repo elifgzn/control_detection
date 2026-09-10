@@ -11,7 +11,7 @@ PURPOSE:
       - Theta (4 - 8 Hz)
       - Alpha (8 - 12 Hz)
       - Beta (13 - 30 Hz)
-      - Gamma (30 - 40 Hz)
+      - Gamma (30 - 60 Hz)
       - (Also includes the significant cluster band: 28 - 40 Hz)
 
     Contrasts & Conditions plotted:
@@ -44,7 +44,7 @@ BANDS = {
     'Theta': (4.0, 8.0),
     'Alpha': (8.0, 12.0),
     'Beta':  (13.0, 30.0),
-    'Gamma': (30.0, 40.0),
+    'Gamma': (30.0, 60.0),
     'HighBeta_Gamma_Cluster': (28.0, 40.0)
 }
 
