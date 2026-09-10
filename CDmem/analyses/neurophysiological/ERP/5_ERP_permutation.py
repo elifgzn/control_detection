@@ -22,7 +22,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 # data-based exclusions: 2, 3, 11, 24, 26, 43, 45, 46, 47
 # participants with 100% accuracy: 7,18, 21, 44
 
-plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 17, 24, 26, 43, 45, 46, 47})
 
 
 
@@ -45,9 +45,21 @@ dfolder = r"H:\PHD\control_detection\main_data\eeg\eeg4_ERPSummaries"
 pairwise_cond_A = 'high_control_nondetected'
 pairwise_cond_B = 'low_control_detected'
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ──────────────────────────────────────────────────────────────
+# Test Execution Selection
+# ──────────────────────────────────────────────────────────────
+run_test1_condition          = True   # Test 1: Main Effect of Condition (High vs. Low)
+run_exploratory_order_splits = True   # Exploratory: Condition split by Starting Order (High-start vs Low-start)
+run_test5_order_interaction  = True   # Test 5: Order x Condition Interaction
+run_test2_detection          = True   # Test 2: Main Effect of Detection (Detected vs Non-detected)
+run_detection_order_splits   = True   # Exploratory: Detection split by Starting Order (High-start vs Low-start)
+run_test6_order_x_detection  = True   # Test 6: Order x Detection Interaction (Between-Subjects)
+run_test3_interaction        = False  # Test 3: Condition x Detection Interaction
+run_test4_pairwise           = False  # Test 4: Pairwise Comparison
+
+# ──────────────────────────────────────────────────────────────
 # Load data for all participants
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ──────────────────────────────────────────────────────────────
 # We load both the main ERP fif files and the detection-split ERP fif files.
 eeg_set = {}
 trial_counts = {}  # per-participant trial counts from summary CSVs
@@ -103,7 +115,15 @@ for p_idx, pnum in enumerate(plist):
 # Electrode and time window selection (matches 4_ERP_graphs.py)
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # elec_include = ['FCz', 'Cz', 'CPz', 'Pz']  # (Wen et al., 2017)
-elec_include = ['Fz', 'FCz', 'FC1', 'FC2']  # (following Giersiepen et al., 2024, 2025)
+# elec_include = ['Fz', 'FCz', 'FC1', 'FC2']  # (following Giersiepen et al., 2024, 2025)
+
+# parieto-occipital roi 
+first_evoked = next(iter(next(iter(eeg_set.values())).values()))
+elec_include = [ch for ch in first_evoked.ch_names if ch.startswith(('P','O'))]
+print(f"Parieto-occipital ROI channels ({len(elec_include)}): {elec_include}")
+
+
+
 plot_time = [-0.3, 1.2]    # Full time window for the line graphs (matches 4_ERP_graphs.py)
 test_time = [0.0, 1.0]     # Time window restricted for the permutation test
 
@@ -136,37 +156,36 @@ for p_idx in eeg_set:
 # Test 1 needs: 'high_control', 'low_control'
 subs_test1 = [p for p in extracted_data if 'high_control' in extracted_data[p] and 'low_control' in extracted_data[p]]
 
-# Tests 2, 3, and 4 need the four detection-split conditions
-det_conds = ['high_control_detected', 'high_control_nondetected', 'low_control_detected', 'low_control_nondetected']
-MIN_DET_TRIALS = 15
+# Tests 2, 3, and 4 need detection data
+# For the main effect of detection, we check total Detected >= MIN_DET_TRIALS
+# and total Non-detected >= MIN_DET_TRIALS.
+MIN_DET_TRIALS = 25
 
 def _has_enough_det_trials(p_idx):
-    """Check if participant has all detection conditions with >= MIN_DET_TRIALS trials each."""
-    if not all(c in extracted_data[p_idx] for c in det_conds):
-        return False
+    """Check if participant has >= MIN_DET_TRIALS in both Detected and Non-detected marginally."""
     tc = trial_counts.get(p_idx, {})
-    for c in det_conds:
-        if tc.get(c, 0) < MIN_DET_TRIALS:
-            return False
-    return True
+    tot_det = tc.get('high_control_detected', 0) + tc.get('low_control_detected', 0)
+    tot_nondet = tc.get('high_control_nondetected', 0) + tc.get('low_control_nondetected', 0)
+    return (tot_det >= MIN_DET_TRIALS) and (tot_nondet >= MIN_DET_TRIALS)
 
 subs_det = [p for p in extracted_data if _has_enough_det_trials(p)]
 
 # Report excluded participants
 excluded_det = [plist[p] for p in extracted_data if p not in subs_det]
 if excluded_det:
-    print(f"\n  âš  {len(excluded_det)} participant(s) excluded from Detection analyses ")
-    print(f"    (missing condition or <15 trials per cell): {excluded_det}")
+    print(f"\n  ⚠ {len(excluded_det)} participant(s) excluded from Detection analyses ")
+    print(f"    (<{MIN_DET_TRIALS} trials in Detected or Non-detected): {excluded_det}")
     # Print reason for each
     for p in extracted_data:
         if p not in subs_det:
             tc = trial_counts.get(p, {})
-            det_tc = {c: tc.get(c, 'MISSING') for c in det_conds}
-            print(f"    Sub {plist[p]:04d}: {det_tc}")
-print(f"Found {len(subs_det)} subjects with all 4 detection conditions (>= 15 trials each).")
+            tot_det = tc.get('high_control_detected', 0) + tc.get('low_control_detected', 0)
+            tot_nondet = tc.get('high_control_nondetected', 0) + tc.get('low_control_nondetected', 0)
+            print(f"    Sub {plist[p]:04d}: Detected={tot_det}, Non-detected={tot_nondet}")
+print(f"Found {len(subs_det)} subjects with >= {MIN_DET_TRIALS} trials in both detection levels.")
 
 # Output folder for figures
-save_to = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures"
+save_to = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_PO_ERP"
 os.makedirs(save_to, exist_ok=True)
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -402,400 +421,670 @@ def run_permutation_test(X_condA, X_condB, label_A, label_B, title, save_filenam
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 # --- TEST 1: Main Effect of Condition (High vs. Low Control) ---
-X1_A = np.array([extracted_data[p]['high_control'] for p in subs_test1])
-X1_B = np.array([extracted_data[p]['low_control'] for p in subs_test1])
-evs1_A = [eeg_set[p]['high_control'] for p in subs_test1]
-evs1_B = [eeg_set[p]['low_control'] for p in subs_test1]
+if run_test1_condition:
+    X1_A = np.array([extracted_data[p]['high_control'] for p in subs_test1])
+    X1_B = np.array([extracted_data[p]['low_control'] for p in subs_test1])
+    evs1_A = [eeg_set[p]['high_control'] for p in subs_test1]
+    evs1_B = [eeg_set[p]['low_control'] for p in subs_test1]
 
-run_permutation_test(
-    X_condA=X1_A, 
-    X_condB=X1_B, 
-    label_A='High Control', 
-    label_B='Low Control', 
-    title='Main Effect of Condition (High vs. Low Control)', 
-    save_filename='01_permut_main_effect_condition.png', 
-    colors=[(0.00, 0.44, 0.69), (0.80, 0.47, 0.65)], 
-    linestyles=['-', '-'],
-    p_indices=subs_test1,
-    evs_A=evs1_A,
-    evs_B=evs1_B,
-    trials_A=[trial_counts.get(p, {}).get('high_control', 0) for p in subs_test1],
-    trials_B=[trial_counts.get(p, {}).get('low_control', 0) for p in subs_test1]
-)
-
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# EXPLORATORY: Split by Starting Condition (High-start vs Low-start)
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Participant numbers by which condition they started the experiment with
-highstart_pnums = {4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 30, 32, 34, 36, 38, 40, 42, 44, 48, 50}
-lowstart_pnums  = {7, 9, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 49}
-
-# Map p_idx -> participant number for filtering
-highstart_pidx = [p for p in subs_test1 if plist[p] in highstart_pnums]
-lowstart_pidx  = [p for p in subs_test1 if plist[p] in lowstart_pnums]
-
-print(f"\n{'='*60}")
-print(f"  EXPLORATORY: Split by Starting Condition")
-print(f"  High-start: N={len(highstart_pidx)}, participants={[plist[p] for p in highstart_pidx]}")
-print(f"  Low-start:  N={len(lowstart_pidx)}, participants={[plist[p] for p in lowstart_pidx]}")
-print(f"{'='*60}")
-
-# --- High-start subgroup: Main Effect of Condition ---
-X_hs_A = np.array([extracted_data[p]['high_control'] for p in highstart_pidx])
-X_hs_B = np.array([extracted_data[p]['low_control'] for p in highstart_pidx])
-evs_hs_A = [eeg_set[p]['high_control'] for p in highstart_pidx]
-evs_hs_B = [eeg_set[p]['low_control'] for p in highstart_pidx]
-
-run_permutation_test(
-    X_condA=X_hs_A,
-    X_condB=X_hs_B,
-    label_A='High Control',
-    label_B='Low Control',
-    title='Main Effect of Condition â€“ High-Start Subgroup',
-    save_filename='01_permut_main_effect_condition_highstart.png',
-    colors=[(0.00, 0.44, 0.69), (0.80, 0.47, 0.65)],
-    linestyles=['-', '-'],
-    p_indices=highstart_pidx,
-    evs_A=evs_hs_A,
-    evs_B=evs_hs_B
-)
-
-# --- Low-start subgroup: Main Effect of Condition ---
-X_ls_A = np.array([extracted_data[p]['high_control'] for p in lowstart_pidx])
-X_ls_B = np.array([extracted_data[p]['low_control'] for p in lowstart_pidx])
-evs_ls_A = [eeg_set[p]['high_control'] for p in lowstart_pidx]
-evs_ls_B = [eeg_set[p]['low_control'] for p in lowstart_pidx]
-
-run_permutation_test(
-    X_condA=X_ls_A,
-    X_condB=X_ls_B,
-    label_A='High Control',
-    label_B='Low Control',
-    title='Main Effect of Condition â€“ Low-Start Subgroup',
-    save_filename='01_permut_main_effect_condition_lowstart.png',
-    colors=[(0.00, 0.44, 0.69), (0.80, 0.47, 0.65)],
-    linestyles=['-', '-'],
-    p_indices=lowstart_pidx,
-    evs_A=evs_ls_A,
-    evs_B=evs_ls_B
-)
-
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# TEST 5: Interaction of Order Ã— Condition (Between-Subjects)
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Tests whether the (High âˆ’ Low) control difference wave differs
-# between participants who started with High vs Low control.
-# This is a between-subjects test â†’ permutation_cluster_test.
-
-diff_hs = np.array([extracted_data[p]['high_control'] - extracted_data[p]['low_control'] for p in highstart_pidx])
-diff_ls = np.array([extracted_data[p]['high_control'] - extracted_data[p]['low_control'] for p in lowstart_pidx])
-
-test_inds_5 = np.where((t_axis_full >= test_time[0] - 1e-5) & (t_axis_full <= test_time[1] + 1e-5))[0]
-diff_hs_test = diff_hs[:, test_inds_5]
-diff_ls_test = diff_ls[:, test_inds_5]
-
-n_perm_5 = 1000
-alpha_5 = 0.05
-
-print(f"\n{'='*60}")
-print(f"  RUNNING TEST 5: Interaction of Order Ã— Condition (Between-Subjects)")
-print(f"  High-start: N={len(highstart_pidx)}, participants={[plist[p] for p in highstart_pidx]}")
-print(f"  Low-start:  N={len(lowstart_pidx)}, participants={[plist[p] for p in lowstart_pidx]}")
-print(f"{'='*60}")
-
-T_obs_5, clusters_5, cluster_pv_5, H0_5 = permutation_cluster_test(
-    [diff_hs_test, diff_ls_test],
-    n_permutations=n_perm_5,
-    tail=0,
-    n_jobs=-1,
-    seed=42
-)
-
-if clusters_5 is None:
-    clusters_5 = []
-    cluster_pv_5 = np.array([])
-
-good_5 = np.where(cluster_pv_5 < alpha_5)[0]
-
-txt_5 = []
-txt_5.append("RESULTS FOR: Interaction of Order Ã— Condition (Between-Subjects)")
-txt_5.append("----------------------------------------")
-txt_5.append(f"Total clusters found: {len(clusters_5)}")
-txt_5.append(f"Significant clusters (p < {alpha_5}): {len(good_5)}")
-txt_5.append("----------------------------------------\n")
-
-for i_clu in range(len(clusters_5)):
-    clu_inds = _get_cluster_inds(clusters_5[i_clu])
-    real_time_inds = test_inds_5[clu_inds]
-    c_tmin = t_axis_full[real_time_inds[0]]
-    c_tmax = t_axis_full[real_time_inds[-1]]
-    p_val = cluster_pv_5[i_clu]
-    avg_stat = np.mean(T_obs_5[clu_inds])
-    sum_stat = np.sum(T_obs_5[clu_inds])
-    sig_marker = " â˜… SIGNIFICANT" if p_val < alpha_5 else ""
-
-    cluster_mean_hs = np.mean(np.mean(diff_hs[:, real_time_inds], axis=1))
-    cluster_mean_ls = np.mean(np.mean(diff_ls[:, real_time_inds], axis=1))
-
-    txt_5.append(f"  Cluster {i_clu+1}: {c_tmin:.3f} s to {c_tmax:.3f} s  (p = {p_val:.4f}){sig_marker}")
-    txt_5.append(f"    n_timepoints:         {len(clu_inds)}")
-    txt_5.append(f"    Mean stat (F):        {avg_stat:8.4f}")
-    txt_5.append(f"    Sum stat (F):         {sum_stat:8.4f}")
-    txt_5.append(f"    High-start mean(H-L): {cluster_mean_hs:8.4f} ÂµV")
-    txt_5.append(f"    Low-start mean(H-L):  {cluster_mean_ls:8.4f} ÂµV\n")
-
-if len(clusters_5) == 0:
-    txt_5.append("  No clusters found at all.\n")
-
-final_txt_5 = "\n".join(txt_5)
-print(f"\n{final_txt_5}")
-
-txt_path_5 = os.path.join(save_to, '05_permut_interaction_order_x_condition.txt')
-with open(txt_path_5, 'w', encoding='utf-8') as f:
-    f.write(final_txt_5)
-
-# --- Plot: Difference waves by order group ---
-fontsz_5 = 20
-fig_w5, fig_h5 = 30 / 2.54, 20 / 2.54
-fig5, ax5 = plt.subplots(figsize=(fig_w5, fig_h5))
-ax5.set_title('Interaction: Order Ã— Condition\n(Difference Waves: High âˆ’ Low Control)', fontsize=fontsz_5)
-
-ylimits_5 = [-3, 3]
-ax5.set_ylim(ylimits_5)
-ax5.invert_yaxis()
-ax5.set_ylabel('Activity (ÂµV)', fontsize=fontsz_5)
-ax5.set_xlim([plot_time[0], plot_time[1]])
-ax5.set_xlabel('Time (s)', fontsize=fontsz_5)
-ax5.axhline(0, color='black', linestyle='--', linewidth=0.5)
-if plot_time[0] <= 0 <= plot_time[1]:
-    ax5.axvline(0, color='black', linestyle='--', linewidth=0.5)
-
-for i_clu, clu_idx in enumerate(good_5):
-    clu_inds = _get_cluster_inds(clusters_5[clu_idx])
-    real_time_inds = test_inds_5[clu_inds]
-    c_tmin = t_axis_full[real_time_inds[0]]
-    c_tmax = t_axis_full[real_time_inds[-1]]
-    ax5.fill_between([c_tmin, c_tmax], ylimits_5[0], ylimits_5[1],
-                     color=[0.7, 0.7, 0.7], alpha=0.5, edgecolor='none')
-    ax5.axvline(c_tmin, color='black', linestyle='--', linewidth=0.5)
-    ax5.axvline(c_tmax, color='black', linestyle='--', linewidth=0.5)
-
-gm_diff_hs = np.mean(diff_hs, axis=0)
-gm_diff_ls = np.mean(diff_ls, axis=0)
-h_hs, = ax5.plot(t_axis_full, gm_diff_hs, color=(0.20, 0.63, 0.17), linestyle='-', linewidth=2)
-h_ls, = ax5.plot(t_axis_full, gm_diff_ls, color=(0.89, 0.10, 0.11), linestyle='-', linewidth=2)
-ax5.legend([h_hs, h_ls], ['High-Start (High âˆ’ Low)', 'Low-Start (High âˆ’ Low)'],
-           loc='upper left', fontsize=fontsz_5)
-ax5.tick_params(labelsize=fontsz_5)
-ax5.set_xticks(np.arange(-0.3, 1.2 + 0.01, 0.1))
-fig5.patch.set_facecolor('white')
-ax5.set_facecolor('white')
-for spine in ax5.spines.values():
-    spine.set_linewidth(1)
-plt.tight_layout()
-
-save_p5 = os.path.join(save_to, '05_permut_interaction_order_x_condition.png')
-fig5.savefig(save_p5, format='png', dpi=600, bbox_inches='tight', facecolor='white')
-fig5.savefig(save_p5.replace('.png', '.svg'), format='svg', bbox_inches='tight', facecolor='white')
-print(f"Figure saved to: {save_p5}")
-
-# --- Plot: Four-cell view (all ERPs by order Ã— condition) ---
-fig6, ax6 = plt.subplots(figsize=(fig_w5, fig_h5))
-ax6.set_title('Order Ã— Condition: Four-Cell View', fontsize=fontsz_5)
-ax6.set_ylim(ylimits_5)
-ax6.invert_yaxis()
-ax6.set_ylabel('Activity (ÂµV)', fontsize=fontsz_5)
-ax6.set_xlim([plot_time[0], plot_time[1]])
-ax6.set_xlabel('Time (s)', fontsize=fontsz_5)
-ax6.axhline(0, color='black', linestyle='--', linewidth=0.5)
-if plot_time[0] <= 0 <= plot_time[1]:
-    ax6.axvline(0, color='black', linestyle='--', linewidth=0.5)
-
-for i_clu, clu_idx in enumerate(good_5):
-    clu_inds = _get_cluster_inds(clusters_5[clu_idx])
-    real_time_inds = test_inds_5[clu_inds]
-    c_tmin = t_axis_full[real_time_inds[0]]
-    c_tmax = t_axis_full[real_time_inds[-1]]
-    ax6.fill_between([c_tmin, c_tmax], ylimits_5[0], ylimits_5[1],
-                     color=[0.7, 0.7, 0.7], alpha=0.5, edgecolor='none')
-    ax6.axvline(c_tmin, color='black', linestyle='--', linewidth=0.5)
-    ax6.axvline(c_tmax, color='black', linestyle='--', linewidth=0.5)
-
-gm_hs_high = np.mean(X_hs_A, axis=0)
-gm_hs_low  = np.mean(X_hs_B, axis=0)
-gm_ls_high = np.mean(X_ls_A, axis=0)
-gm_ls_low  = np.mean(X_ls_B, axis=0)
-
-h1, = ax6.plot(t_axis_full, gm_hs_high, color=(0.00, 0.44, 0.69), linestyle='-',  linewidth=2)
-h2, = ax6.plot(t_axis_full, gm_hs_low,  color=(0.80, 0.47, 0.65), linestyle='-',  linewidth=2)
-h3, = ax6.plot(t_axis_full, gm_ls_high, color=(0.00, 0.44, 0.69), linestyle='--', linewidth=2)
-h4, = ax6.plot(t_axis_full, gm_ls_low,  color=(0.80, 0.47, 0.65), linestyle='--', linewidth=2)
-_hs_h = np.mean([trial_counts.get(p, {}).get('high_control', 0) for p in highstart_pidx])
-_hs_l = np.mean([trial_counts.get(p, {}).get('low_control', 0) for p in highstart_pidx])
-_ls_h = np.mean([trial_counts.get(p, {}).get('high_control', 0) for p in lowstart_pidx])
-_ls_l = np.mean([trial_counts.get(p, {}).get('low_control', 0) for p in lowstart_pidx])
-ax6.legend([h1, h2, h3, h4],
-           [f'High-Start / High Control (M={_hs_h:.0f})', f'High-Start / Low Control (M={_hs_l:.0f})',
-            f'Low-Start / High Control (M={_ls_h:.0f})', f'Low-Start / Low Control (M={_ls_l:.0f})'],
-           loc='upper left', fontsize=fontsz_5 * 0.6)
-ax6.tick_params(labelsize=fontsz_5)
-ax6.set_xticks(np.arange(-0.3, 1.2 + 0.01, 0.1))
-fig6.patch.set_facecolor('white')
-ax6.set_facecolor('white')
-for spine in ax6.spines.values():
-    spine.set_linewidth(1)
-plt.tight_layout()
-
-save_p6 = os.path.join(save_to, '05_permut_interaction_order_x_condition_4cell.png')
-fig6.savefig(save_p6, format='png', dpi=600, bbox_inches='tight', facecolor='white')
-fig6.savefig(save_p6.replace('.png', '.svg'), format='svg', bbox_inches='tight', facecolor='white')
-print(f"Four-cell figure saved to: {save_p6}")
-
-# --- TEST 2: Main Effect of Detection (Detected vs. Non-detected) ---
-if len(subs_det) >= 2:
-    # Average of high and low control within each detection level
-    X2_A = np.array([0.5 * (extracted_data[p]['high_control_detected'] + extracted_data[p]['low_control_detected']) for p in subs_det])
-    X2_B = np.array([0.5 * (extracted_data[p]['high_control_nondetected'] + extracted_data[p]['low_control_nondetected']) for p in subs_det])
     run_permutation_test(
-        X_condA=X2_A, 
-        X_condB=X2_B, 
-        label_A='Detected', 
-        label_B='Non-detected', 
-        title='Main Effect of Detection (Detected vs. Non-detected)', 
-        save_filename='02_permut_main_effect_detection.png', 
-        colors=[(0.12, 0.53, 0.53), (0.85, 0.37, 0.00)], 
+        X_condA=X1_A, 
+        X_condB=X1_B, 
+        label_A='High Control', 
+        label_B='Low Control', 
+        title='Main Effect of Condition (High vs. Low Control)', 
+        save_filename='01_permut_main_effect_condition.png', 
+        colors=[(0.00, 0.44, 0.69), (0.80, 0.47, 0.65)], 
         linestyles=['-', '-'],
-        p_indices=subs_det,
-        trials_A=[trial_counts.get(p, {}).get('high_control_detected', 0) + trial_counts.get(p, {}).get('low_control_detected', 0) for p in subs_det],
-        trials_B=[trial_counts.get(p, {}).get('high_control_nondetected', 0) + trial_counts.get(p, {}).get('low_control_nondetected', 0) for p in subs_det]
-    )
-else:
-    print(f"\n  SKIPPING TEST 2 (Detection): only {len(subs_det)} participant(s) have all detection conditions (need >= 2).")
-
-# --- TEST 3: Interaction (Condition x Detection) ---
-if len(subs_det) >= 2:
-    # Difference of differences: (High_Det - High_NonDet) vs (Low_Det - Low_NonDet)
-    X3_A = np.array([extracted_data[p]['high_control_detected'] - extracted_data[p]['high_control_nondetected'] for p in subs_det])
-    X3_B = np.array([extracted_data[p]['low_control_detected'] - extracted_data[p]['low_control_nondetected'] for p in subs_det])
-    t3_test_inds, t3_clusters, t3_pvals, t3_good = run_permutation_test(
-        X_condA=X3_A, 
-        X_condB=X3_B, 
-        label_A='High Control (Det - NonDet)', 
-        label_B='Low Control (Det - NonDet)', 
-        title='Interaction of Condition x Detection (Difference Waves)', 
-        save_filename='03_permut_interaction.png', 
-        colors=['blue', 'red'], 
-        linestyles=['-', '-'],
-        p_indices=subs_det,
-        trials_A=[trial_counts.get(p, {}).get('high_control_detected', 0) + trial_counts.get(p, {}).get('high_control_nondetected', 0) for p in subs_det],
-        trials_B=[trial_counts.get(p, {}).get('low_control_detected', 0) + trial_counts.get(p, {}).get('low_control_nondetected', 0) for p in subs_det]
+        p_indices=subs_test1,
+        evs_A=evs1_A,
+        evs_B=evs1_B,
+        trials_A=[trial_counts.get(p, {}).get('high_control', 0) for p in subs_test1],
+        trials_B=[trial_counts.get(p, {}).get('low_control', 0) for p in subs_test1]
     )
 
-    # --- Four-cell decomposition plot for the interaction ---
-    X_hd = np.array([extracted_data[p]['high_control_detected'] for p in subs_det])
-    X_hn = np.array([extracted_data[p]['high_control_nondetected'] for p in subs_det])
-    X_ld = np.array([extracted_data[p]['low_control_detected'] for p in subs_det])
-    X_ln = np.array([extracted_data[p]['low_control_nondetected'] for p in subs_det])
+# ──────────────────────────────────────────────────────────────
+# EXPLORATORY: Split by Starting Condition (High-start vs Low-start)
+# ──────────────────────────────────────────────────────────────
+if run_exploratory_order_splits:
+    # Participant numbers by which condition they started the experiment with
+    highstart_pnums = {4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 30, 32, 34, 36, 38, 40, 42, 44, 48, 50}
+    lowstart_pnums  = {7, 9, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 49}
 
-    fontsz_4c = 20
-    fig_w4c, fig_h4c = 30 / 2.54, 20 / 2.54
-    fig4c, ax4c = plt.subplots(figsize=(fig_w4c, fig_h4c))
-    ax4c.set_title('Condition Ã— Detection: Four-Cell Decomposition', fontsize=fontsz_4c)
+    # Map p_idx -> participant number for filtering
+    highstart_pidx = [p for p in subs_test1 if plist[p] in highstart_pnums]
+    lowstart_pidx  = [p for p in subs_test1 if plist[p] in lowstart_pnums]
 
-    ylimits_4c = [-3, 3]
-    ax4c.set_ylim(ylimits_4c)
-    ax4c.invert_yaxis()
-    ax4c.set_ylabel('Activity (ÂµV)', fontsize=fontsz_4c)
-    ax4c.set_xlim([plot_time[0], plot_time[1]])
-    ax4c.set_xlabel('Time (s)', fontsize=fontsz_4c)
-    ax4c.axhline(0, color='black', linestyle='--', linewidth=0.5)
-    if plot_time[0] <= 0 <= plot_time[1]:
-        ax4c.axvline(0, color='black', linestyle='--', linewidth=0.5)
+    print(f"\n{'='*60}")
+    print(f"  EXPLORATORY: Split by Starting Condition")
+    print(f"  High-start: N={len(highstart_pidx)}, participants={[plist[p] for p in highstart_pidx]}")
+    print(f"  Low-start:  N={len(lowstart_pidx)}, participants={[plist[p] for p in lowstart_pidx]}")
+    print(f"{'='*60}")
 
-    # Shade significant clusters from the interaction test
-    for i_clu, clu_idx in enumerate(t3_good):
-        clu_inds = _get_cluster_inds(t3_clusters[clu_idx])
-        real_time_inds = t3_test_inds[clu_inds]
+    # --- High-start subgroup: Main Effect of Condition ---
+    X_hs_A = np.array([extracted_data[p]['high_control'] for p in highstart_pidx])
+    X_hs_B = np.array([extracted_data[p]['low_control'] for p in highstart_pidx])
+    evs_hs_A = [eeg_set[p]['high_control'] for p in highstart_pidx]
+    evs_hs_B = [eeg_set[p]['low_control'] for p in highstart_pidx]
+
+    run_permutation_test(
+        X_condA=X_hs_A,
+        X_condB=X_hs_B,
+        label_A='High Control',
+        label_B='Low Control',
+        title='Main Effect of Condition – High-Start Subgroup',
+        save_filename='01_permut_main_effect_condition_highstart.png',
+        colors=[(0.00, 0.44, 0.69), (0.80, 0.47, 0.65)],
+        linestyles=['-', '-'],
+        p_indices=highstart_pidx,
+        evs_A=evs_hs_A,
+        evs_B=evs_hs_B
+    )
+
+    # --- Low-start subgroup: Main Effect of Condition ---
+    X_ls_A = np.array([extracted_data[p]['high_control'] for p in lowstart_pidx])
+    X_ls_B = np.array([extracted_data[p]['low_control'] for p in lowstart_pidx])
+    evs_ls_A = [eeg_set[p]['high_control'] for p in lowstart_pidx]
+    evs_ls_B = [eeg_set[p]['low_control'] for p in lowstart_pidx]
+
+    run_permutation_test(
+        X_condA=X_ls_A,
+        X_condB=X_ls_B,
+        label_A='High Control',
+        label_B='Low Control',
+        title='Main Effect of Condition – Low-Start Subgroup',
+        save_filename='01_permut_main_effect_condition_lowstart.png',
+        colors=[(0.00, 0.44, 0.69), (0.80, 0.47, 0.65)],
+        linestyles=['-', '-'],
+        p_indices=lowstart_pidx,
+        evs_A=evs_ls_A,
+        evs_B=evs_ls_B
+    )
+
+# ──────────────────────────────────────────────────────────────
+# TEST 5: Interaction of Order × Condition (Between-Subjects)
+# ──────────────────────────────────────────────────────────────
+# Tests whether the (High − Low) control difference wave differs
+# between participants who started with High vs Low control.
+# This is a between-subjects test → permutation_cluster_test.
+if run_test5_order_interaction:
+    diff_hs = np.array([extracted_data[p]['high_control'] - extracted_data[p]['low_control'] for p in highstart_pidx])
+    diff_ls = np.array([extracted_data[p]['high_control'] - extracted_data[p]['low_control'] for p in lowstart_pidx])
+
+    test_inds_5 = np.where((t_axis_full >= test_time[0] - 1e-5) & (t_axis_full <= test_time[1] + 1e-5))[0]
+    diff_hs_test = diff_hs[:, test_inds_5]
+    diff_ls_test = diff_ls[:, test_inds_5]
+
+    n_perm_5 = 1000
+    alpha_5 = 0.05
+
+    print(f"\n{'='*60}")
+    print(f"  RUNNING TEST 5: Interaction of Order × Condition (Between-Subjects)")
+    print(f"  High-start: N={len(highstart_pidx)}, participants={[plist[p] for p in highstart_pidx]}")
+    print(f"  Low-start:  N={len(lowstart_pidx)}, participants={[plist[p] for p in lowstart_pidx]}")
+    print(f"{'='*60}")
+
+    T_obs_5, clusters_5, cluster_pv_5, H0_5 = permutation_cluster_test(
+        [diff_hs_test, diff_ls_test],
+        n_permutations=n_perm_5,
+        tail=0,
+        n_jobs=-1,
+        seed=42
+    )
+
+    if clusters_5 is None:
+        clusters_5 = []
+        cluster_pv_5 = np.array([])
+
+    good_5 = np.where(cluster_pv_5 < alpha_5)[0]
+
+    txt_5 = []
+    txt_5.append("RESULTS FOR: Interaction of Order × Condition (Between-Subjects)")
+    txt_5.append("----------------------------------------")
+    txt_5.append(f"Total clusters found: {len(clusters_5)}")
+    txt_5.append(f"Significant clusters (p < {alpha_5}): {len(good_5)}")
+    txt_5.append("----------------------------------------\n")
+
+    for i_clu in range(len(clusters_5)):
+        clu_inds = _get_cluster_inds(clusters_5[i_clu])
+        real_time_inds = test_inds_5[clu_inds]
         c_tmin = t_axis_full[real_time_inds[0]]
         c_tmax = t_axis_full[real_time_inds[-1]]
-        ax4c.fill_between([c_tmin, c_tmax], ylimits_4c[0], ylimits_4c[1],
+        p_val = cluster_pv_5[i_clu]
+        avg_stat = np.mean(T_obs_5[clu_inds])
+        sum_stat = np.sum(T_obs_5[clu_inds])
+        sig_marker = " ★ SIGNIFICANT" if p_val < alpha_5 else ""
+
+        cluster_mean_hs = np.mean(np.mean(diff_hs[:, real_time_inds], axis=1))
+        cluster_mean_ls = np.mean(np.mean(diff_ls[:, real_time_inds], axis=1))
+
+        txt_5.append(f"  Cluster {i_clu+1}: {c_tmin:.3f} s to {c_tmax:.3f} s  (p = {p_val:.4f}){sig_marker}")
+        txt_5.append(f"    n_timepoints:         {len(clu_inds)}")
+        txt_5.append(f"    Mean stat (F):        {avg_stat:8.4f}")
+        txt_5.append(f"    Sum stat (F):         {sum_stat:8.4f}")
+        txt_5.append(f"    High-start mean(H-L): {cluster_mean_hs:8.4f} µV")
+        txt_5.append(f"    Low-start mean(H-L):  {cluster_mean_ls:8.4f} µV\n")
+
+    if len(clusters_5) == 0:
+        txt_5.append("  No clusters found at all.\n")
+
+    final_txt_5 = "\n".join(txt_5)
+    print(f"\n{final_txt_5}")
+
+    txt_path_5 = os.path.join(save_to, '05_permut_interaction_order_x_condition.txt')
+    with open(txt_path_5, 'w', encoding='utf-8') as f:
+        f.write(final_txt_5)
+
+    # --- Plot: Difference waves by order group ---
+    fontsz_5 = 20
+    fig_w5, fig_h5 = 30 / 2.54, 20 / 2.54
+    fig5, ax5 = plt.subplots(figsize=(fig_w5, fig_h5))
+    ax5.set_title('Interaction: Order × Condition\n(Difference Waves: High − Low Control)', fontsize=fontsz_5)
+
+    ylimits_5 = [-3, 3]
+    ax5.set_ylim(ylimits_5)
+    ax5.invert_yaxis()
+    ax5.set_ylabel('Activity (µV)', fontsize=fontsz_5)
+    ax5.set_xlim([plot_time[0], plot_time[1]])
+    ax5.set_xlabel('Time (s)', fontsize=fontsz_5)
+    ax5.axhline(0, color='black', linestyle='--', linewidth=0.5)
+    if plot_time[0] <= 0 <= plot_time[1]:
+        ax5.axvline(0, color='black', linestyle='--', linewidth=0.5)
+
+    for i_clu, clu_idx in enumerate(good_5):
+        clu_inds = _get_cluster_inds(clusters_5[clu_idx])
+        real_time_inds = test_inds_5[clu_inds]
+        c_tmin = t_axis_full[real_time_inds[0]]
+        c_tmax = t_axis_full[real_time_inds[-1]]
+        ax5.fill_between([c_tmin, c_tmax], ylimits_5[0], ylimits_5[1],
                          color=[0.7, 0.7, 0.7], alpha=0.5, edgecolor='none')
-        ax4c.axvline(c_tmin, color='black', linestyle='--', linewidth=0.5)
-        ax4c.axvline(c_tmax, color='black', linestyle='--', linewidth=0.5)
+        ax5.axvline(c_tmin, color='black', linestyle='--', linewidth=0.5)
+        ax5.axvline(c_tmax, color='black', linestyle='--', linewidth=0.5)
 
-    gm_hd = np.mean(X_hd, axis=0)
-    gm_hn = np.mean(X_hn, axis=0)
-    gm_ld = np.mean(X_ld, axis=0)
-    gm_ln = np.mean(X_ln, axis=0)
-
-    h_hd, = ax4c.plot(t_axis_full, gm_hd, color=(0.00, 0.44, 0.69), linestyle='-',  linewidth=2)
-    h_hn, = ax4c.plot(t_axis_full, gm_hn, color=(0.00, 0.44, 0.69), linestyle='--', linewidth=2)
-    h_ld, = ax4c.plot(t_axis_full, gm_ld, color=(0.80, 0.47, 0.65), linestyle='-',  linewidth=2)
-    h_ln, = ax4c.plot(t_axis_full, gm_ln, color=(0.80, 0.47, 0.65), linestyle='--', linewidth=2)
-    # Build legend labels with mean trial counts
-    _tc_hd = np.mean([trial_counts.get(p, {}).get('high_control_detected', 0) for p in subs_det])
-    _tc_hn = np.mean([trial_counts.get(p, {}).get('high_control_nondetected', 0) for p in subs_det])
-    _tc_ld = np.mean([trial_counts.get(p, {}).get('low_control_detected', 0) for p in subs_det])
-    _tc_ln = np.mean([trial_counts.get(p, {}).get('low_control_nondetected', 0) for p in subs_det])
-    ax4c.legend([h_hd, h_hn, h_ld, h_ln],
-               [f'High Control Detected (M={_tc_hd:.0f})', f'High Control Non-detected (M={_tc_hn:.0f})',
-                f'Low Control Detected (M={_tc_ld:.0f})', f'Low Control Non-detected (M={_tc_ln:.0f})'],
-               loc='upper left', fontsize=fontsz_4c * 0.6)
-    ax4c.tick_params(labelsize=fontsz_4c)
-    ax4c.set_xticks(np.arange(-0.3, 1.2 + 0.01, 0.1))
-    fig4c.patch.set_facecolor('white')
-    ax4c.set_facecolor('white')
-    for spine in ax4c.spines.values():
+    gm_diff_hs = np.mean(diff_hs, axis=0)
+    gm_diff_ls = np.mean(diff_ls, axis=0)
+    h_hs, = ax5.plot(t_axis_full, gm_diff_hs, color=(0.20, 0.63, 0.17), linestyle='-', linewidth=2)
+    h_ls, = ax5.plot(t_axis_full, gm_diff_ls, color=(0.89, 0.10, 0.11), linestyle='-', linewidth=2)
+    ax5.legend([h_hs, h_ls], ['High-Start (High − Low)', 'Low-Start (High − Low)'],
+               loc='upper left', fontsize=fontsz_5)
+    ax5.tick_params(labelsize=fontsz_5)
+    ax5.set_xticks(np.arange(-0.3, 1.2 + 0.01, 0.1))
+    fig5.patch.set_facecolor('white')
+    ax5.set_facecolor('white')
+    for spine in ax5.spines.values():
         spine.set_linewidth(1)
     plt.tight_layout()
 
-    save_4c = os.path.join(save_to, '03_permut_interaction_4cell.png')
-    fig4c.savefig(save_4c, format='png', dpi=600, bbox_inches='tight', facecolor='white')
-    fig4c.savefig(save_4c.replace('.png', '.svg'), format='svg', bbox_inches='tight', facecolor='white')
-    print(f"Four-cell interaction figure saved to: {save_4c}")
+    save_p5 = os.path.join(save_to, '05_permut_interaction_order_x_condition.png')
+    fig5.savefig(save_p5, format='png', dpi=600, bbox_inches='tight', facecolor='white')
+    fig5.savefig(save_p5.replace('.png', '.svg'), format='svg', bbox_inches='tight', facecolor='white')
+    print(f"Figure saved to: {save_p5}")
 
-else:
-    print(f"\n  SKIPPING TEST 3 (Interaction): only {len(subs_det)} participant(s) have all detection conditions (need >= 2).")
+    # --- Plot: Four-cell view (all ERPs by order × condition) ---
+    fig6, ax6 = plt.subplots(figsize=(fig_w5, fig_h5))
+    ax6.set_title('Order × Condition: Four-Cell View', fontsize=fontsz_5)
+    ax6.set_ylim(ylimits_5)
+    ax6.invert_yaxis()
+    ax6.set_ylabel('Activity (µV)', fontsize=fontsz_5)
+    ax6.set_xlim([plot_time[0], plot_time[1]])
+    ax6.set_xlabel('Time (s)', fontsize=fontsz_5)
+    ax6.axhline(0, color='black', linestyle='--', linewidth=0.5)
+    if plot_time[0] <= 0 <= plot_time[1]:
+        ax6.axvline(0, color='black', linestyle='--', linewidth=0.5)
 
-# --- TEST 4: Pairwise Comparison (Configurable) ---
-# Identify which participants have both conditions
-subs_test4 = [p for p in extracted_data if pairwise_cond_A in extracted_data[p] and pairwise_cond_B in extracted_data[p]]
+    for i_clu, clu_idx in enumerate(good_5):
+        clu_inds = _get_cluster_inds(clusters_5[clu_idx])
+        real_time_inds = test_inds_5[clu_inds]
+        c_tmin = t_axis_full[real_time_inds[0]]
+        c_tmax = t_axis_full[real_time_inds[-1]]
+        ax6.fill_between([c_tmin, c_tmax], ylimits_5[0], ylimits_5[1],
+                         color=[0.7, 0.7, 0.7], alpha=0.5, edgecolor='none')
+        ax6.axvline(c_tmin, color='black', linestyle='--', linewidth=0.5)
+        ax6.axvline(c_tmax, color='black', linestyle='--', linewidth=0.5)
 
-if len(subs_test4) >= 2:
-    X4_A = np.array([extracted_data[p][pairwise_cond_A] for p in subs_test4])
-    X4_B = np.array([extracted_data[p][pairwise_cond_B] for p in subs_test4])
+    gm_hs_high = np.mean(X_hs_A, axis=0)
+    gm_hs_low  = np.mean(X_hs_B, axis=0)
+    gm_ls_high = np.mean(X_ls_A, axis=0)
+    gm_ls_low  = np.mean(X_ls_B, axis=0)
 
-    label_A = pairwise_cond_A.replace('_', ' ').title().replace('Nondetected', 'Non-detected')
-    label_B = pairwise_cond_B.replace('_', ' ').title().replace('Nondetected', 'Non-detected')
+    h1, = ax6.plot(t_axis_full, gm_hs_high, color=(0.00, 0.44, 0.69), linestyle='-',  linewidth=2)
+    h2, = ax6.plot(t_axis_full, gm_hs_low,  color=(0.80, 0.47, 0.65), linestyle='-',  linewidth=2)
+    h3, = ax6.plot(t_axis_full, gm_ls_high, color=(0.00, 0.44, 0.69), linestyle='--', linewidth=2)
+    h4, = ax6.plot(t_axis_full, gm_ls_low,  color=(0.80, 0.47, 0.65), linestyle='--', linewidth=2)
+    _hs_h = np.mean([trial_counts.get(p, {}).get('high_control', 0) for p in highstart_pidx])
+    _hs_l = np.mean([trial_counts.get(p, {}).get('low_control', 0) for p in highstart_pidx])
+    _ls_h = np.mean([trial_counts.get(p, {}).get('high_control', 0) for p in lowstart_pidx])
+    _ls_l = np.mean([trial_counts.get(p, {}).get('low_control', 0) for p in lowstart_pidx])
+    ax6.legend([h1, h2, h3, h4],
+               [f'High-Start / High Control (M={_hs_h:.0f})', f'High-Start / Low Control (M={_hs_l:.0f})',
+                f'Low-Start / High Control (M={_ls_h:.0f})', f'Low-Start / Low Control (M={_ls_l:.0f})'],
+               loc='upper left', fontsize=fontsz_5 * 0.6)
+    ax6.tick_params(labelsize=fontsz_5)
+    ax6.set_xticks(np.arange(-0.3, 1.2 + 0.01, 0.1))
+    fig6.patch.set_facecolor('white')
+    ax6.set_facecolor('white')
+    for spine in ax6.spines.values():
+        spine.set_linewidth(1)
+    plt.tight_layout()
 
-    # Determine line styling dynamically
-    style_map = {
-        'high_control': ('blue', '-'),
-        'low_control': ('red', '-'),
-        'high_control_detected': ((0.00, 0.44, 0.69), '-'),
-        'high_control_nondetected': ((0.00, 0.44, 0.69), '--'),
-        'low_control_detected': ((0.80, 0.47, 0.65), '-'),
-        'low_control_nondetected': ((0.80, 0.47, 0.65), '--')
-    }
+    save_p6 = os.path.join(save_to, '05_permut_interaction_order_x_condition_4cell.png')
+    fig6.savefig(save_p6, format='png', dpi=600, bbox_inches='tight', facecolor='white')
+    fig6.savefig(save_p6.replace('.png', '.svg'), format='svg', bbox_inches='tight', facecolor='white')
+    print(f"Four-cell figure saved to: {save_p6}")
 
-    color_A, style_A = style_map.get(pairwise_cond_A, ('blue', '-'))
-    color_B, style_B = style_map.get(pairwise_cond_B, ('red', '-'))
+# --- TEST 2: Main Effect of Detection (Detected vs. Non-detected) ---
+if run_test2_detection:
+    if len(subs_det) >= 2:
+        evs2_A = []
+        evs2_B = []
+        X2_A_list = []
+        X2_B_list = []
+
+        for p in subs_det:
+            # Combine evokeds weighted by number of trials (nave) to match true grand average
+            det_evs = [eeg_set[p][c] for c in ['high_control_detected', 'low_control_detected'] if c in eeg_set[p]]
+            nondet_evs = [eeg_set[p][c] for c in ['high_control_nondetected', 'low_control_nondetected'] if c in eeg_set[p]]
+
+            ev_det = mne.combine_evoked(det_evs, weights='nave')
+            ev_nondet = mne.combine_evoked(nondet_evs, weights='nave')
+            ev_det.comment = 'Detected'
+            ev_nondet.comment = 'Non-detected'
+
+            evs2_A.append(ev_det)
+            evs2_B.append(ev_nondet)
+            X2_A_list.append(extract_p_data(ev_det, elec_include, plot_time[0], plot_time[1]))
+            X2_B_list.append(extract_p_data(ev_nondet, elec_include, plot_time[0], plot_time[1]))
+
+        X2_A = np.array(X2_A_list)
+        X2_B = np.array(X2_B_list)
+
+        run_permutation_test(
+            X_condA=X2_A, 
+            X_condB=X2_B, 
+            label_A='Detected', 
+            label_B='Non-detected', 
+            title='Main Effect of Detection (Detected vs. Non-detected)', 
+            save_filename='02_permut_main_effect_detection.png', 
+            colors=[(0.12, 0.53, 0.53), (0.85, 0.37, 0.00)], 
+            linestyles=['-', '-'],
+            p_indices=subs_det,
+            evs_A=evs2_A,
+            evs_B=evs2_B,
+            trials_A=[trial_counts.get(p, {}).get('high_control_detected', 0) + trial_counts.get(p, {}).get('low_control_detected', 0) for p in subs_det],
+            trials_B=[trial_counts.get(p, {}).get('high_control_nondetected', 0) + trial_counts.get(p, {}).get('low_control_nondetected', 0) for p in subs_det]
+        )
+    else:
+        print(f"\n  SKIPPING TEST 2 (Detection): only {len(subs_det)} participant(s) have >= {MIN_DET_TRIALS} detection trials (need >= 2).")
+
+# ──────────────────────────────────────────────────────────────
+# EXPLORATORY: Detection Split by Starting Condition (High-start vs Low-start)
+# ──────────────────────────────────────────────────────────────
+if run_detection_order_splits and len(subs_det) >= 2:
+    highstart_pnums = {4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 30, 32, 34, 36, 38, 40, 42, 44, 48, 50}
+    lowstart_pnums  = {7, 9, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 49}
+
+    hs_det_idx = [i for i, p in enumerate(subs_det) if plist[p] in highstart_pnums]
+    ls_det_idx = [i for i, p in enumerate(subs_det) if plist[p] in lowstart_pnums]
+
+    print(f"\n{'='*60}")
+    print(f"  EXPLORATORY: Detection Split by Starting Condition")
+    print(f"  High-start: N={len(hs_det_idx)}, participants={[plist[subs_det[i]] for i in hs_det_idx]}")
+    print(f"  Low-start:  N={len(ls_det_idx)}, participants={[plist[subs_det[i]] for i in ls_det_idx]}")
+    print(f"{'='*60}")
+
+    # --- High-start subgroup: Main Effect of Detection ---
+    X_hs_det_A = X2_A[hs_det_idx]
+    X_hs_det_B = X2_B[hs_det_idx]
+    evs_hs_det_A = [evs2_A[i] for i in hs_det_idx]
+    evs_hs_det_B = [evs2_B[i] for i in hs_det_idx]
+    trials_hs_det_A = [trial_counts.get(subs_det[i], {}).get('high_control_detected', 0) + trial_counts.get(subs_det[i], {}).get('low_control_detected', 0) for i in hs_det_idx]
+    trials_hs_det_B = [trial_counts.get(subs_det[i], {}).get('high_control_nondetected', 0) + trial_counts.get(subs_det[i], {}).get('low_control_nondetected', 0) for i in hs_det_idx]
 
     run_permutation_test(
-        X_condA=X4_A, 
-        X_condB=X4_B, 
-        label_A=label_A, 
-        label_B=label_B, 
-        title=f"Pairwise Comparison ({label_A} vs. {label_B})", 
-        save_filename=f"04_permut_pairwise_{pairwise_cond_A}_vs_{pairwise_cond_B}.png", 
-        colors=[color_A, color_B], 
-        linestyles=[style_A, style_B],
-        p_indices=subs_test4,
-        trials_A=[trial_counts.get(p, {}).get(pairwise_cond_A, 0) for p in subs_test4],
-        trials_B=[trial_counts.get(p, {}).get(pairwise_cond_B, 0) for p in subs_test4]
+        X_condA=X_hs_det_A,
+        X_condB=X_hs_det_B,
+        label_A='Detected',
+        label_B='Non-detected',
+        title='Main Effect of Detection – High-Start Subgroup',
+        save_filename='02_permut_main_effect_detection_highstart.png',
+        colors=[(0.12, 0.53, 0.53), (0.85, 0.37, 0.00)],
+        linestyles=['-', '-'],
+        p_indices=[subs_det[i] for i in hs_det_idx],
+        evs_A=evs_hs_det_A,
+        evs_B=evs_hs_det_B,
+        trials_A=trials_hs_det_A,
+        trials_B=trials_hs_det_B
     )
-else:
-    print(f"\n  SKIPPING TEST 4 (Pairwise): only {len(subs_test4)} participant(s) have both '{pairwise_cond_A}' and '{pairwise_cond_B}' (need >= 2).")
+
+    # --- Low-start subgroup: Main Effect of Detection ---
+    X_ls_det_A = X2_A[ls_det_idx]
+    X_ls_det_B = X2_B[ls_det_idx]
+    evs_ls_det_A = [evs2_A[i] for i in ls_det_idx]
+    evs_ls_det_B = [evs2_B[i] for i in ls_det_idx]
+    trials_ls_det_A = [trial_counts.get(subs_det[i], {}).get('high_control_detected', 0) + trial_counts.get(subs_det[i], {}).get('low_control_detected', 0) for i in ls_det_idx]
+    trials_ls_det_B = [trial_counts.get(subs_det[i], {}).get('high_control_nondetected', 0) + trial_counts.get(subs_det[i], {}).get('low_control_nondetected', 0) for i in ls_det_idx]
+
+    run_permutation_test(
+        X_condA=X_ls_det_A,
+        X_condB=X_ls_det_B,
+        label_A='Detected',
+        label_B='Non-detected',
+        title='Main Effect of Detection – Low-Start Subgroup',
+        save_filename='02_permut_main_effect_detection_lowstart.png',
+        colors=[(0.12, 0.53, 0.53), (0.85, 0.37, 0.00)],
+        linestyles=['-', '-'],
+        p_indices=[subs_det[i] for i in ls_det_idx],
+        evs_A=evs_ls_det_A,
+        evs_B=evs_ls_det_B,
+        trials_A=trials_ls_det_A,
+        trials_B=trials_ls_det_B
+    )
+
+# ──────────────────────────────────────────────────────────────
+# TEST 6: Interaction of Order × Detection (Between-Subjects)
+# ──────────────────────────────────────────────────────────────
+# Tests whether the (Detected − Non-detected) difference wave differs
+# between participants who started with High vs Low control.
+# This is a between-subjects test → permutation_cluster_test.
+if run_test6_order_x_detection and len(subs_det) >= 2:
+    highstart_pnums = {4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 30, 32, 34, 36, 38, 40, 42, 44, 48, 50}
+    lowstart_pnums  = {7, 9, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 49}
+
+    hs_det_idx = [i for i, p in enumerate(subs_det) if plist[p] in highstart_pnums]
+    ls_det_idx = [i for i, p in enumerate(subs_det) if plist[p] in lowstart_pnums]
+
+    diff_hs_det = X2_A[hs_det_idx] - X2_B[hs_det_idx]
+    diff_ls_det = X2_A[ls_det_idx] - X2_B[ls_det_idx]
+
+    test_inds_6 = np.where((t_axis_full >= test_time[0] - 1e-5) & (t_axis_full <= test_time[1] + 1e-5))[0]
+    diff_hs_test = diff_hs_det[:, test_inds_6]
+    diff_ls_test = diff_ls_det[:, test_inds_6]
+
+    n_perm_6 = 1000
+    alpha_6 = 0.05
+
+    print(f"\n{'='*60}")
+    print(f"  RUNNING TEST 6: Interaction of Order × Detection (Between-Subjects)")
+    print(f"  High-start: N={len(hs_det_idx)}, participants={[plist[subs_det[i]] for i in hs_det_idx]}")
+    print(f"  Low-start:  N={len(ls_det_idx)}, participants={[plist[subs_det[i]] for i in ls_det_idx]}")
+    print(f"{'='*60}")
+
+    T_obs_6, clusters_6, cluster_pv_6, H0_6 = permutation_cluster_test(
+        [diff_hs_test, diff_ls_test],
+        n_permutations=n_perm_6,
+        tail=0,
+        n_jobs=-1,
+        seed=42
+    )
+
+    if clusters_6 is None:
+        clusters_6 = []
+        cluster_pv_6 = np.array([])
+
+    good_6 = np.where(cluster_pv_6 < alpha_6)[0]
+
+    txt_6 = []
+    txt_6.append("RESULTS FOR: Interaction of Order × Detection (Between-Subjects)")
+    txt_6.append("----------------------------------------")
+    txt_6.append(f"Total clusters found: {len(clusters_6)}")
+    txt_6.append(f"Significant clusters (p < {alpha_6}): {len(good_6)}")
+    txt_6.append("----------------------------------------\n")
+
+    for i_clu in range(len(clusters_6)):
+        clu_inds = _get_cluster_inds(clusters_6[i_clu])
+        real_time_inds = test_inds_6[clu_inds]
+        c_tmin = t_axis_full[real_time_inds[0]]
+        c_tmax = t_axis_full[real_time_inds[-1]]
+        p_val = cluster_pv_6[i_clu]
+        avg_stat = np.mean(T_obs_6[clu_inds])
+        sum_stat = np.sum(T_obs_6[clu_inds])
+        sig_marker = " ★ SIGNIFICANT" if p_val < alpha_6 else ""
+
+        cluster_mean_hs = np.mean(np.mean(diff_hs_det[:, real_time_inds], axis=1))
+        cluster_mean_ls = np.mean(np.mean(diff_ls_det[:, real_time_inds], axis=1))
+
+        txt_6.append(f"  Cluster {i_clu+1}: {c_tmin:.3f} s to {c_tmax:.3f} s  (p = {p_val:.4f}){sig_marker}")
+        txt_6.append(f"    n_timepoints:           {len(clu_inds)}")
+        txt_6.append(f"    Mean stat (F):          {avg_stat:8.4f}")
+        txt_6.append(f"    Sum stat (F):           {sum_stat:8.4f}")
+        txt_6.append(f"    High-start mean(Det-ND): {cluster_mean_hs:8.4f} µV")
+        txt_6.append(f"    Low-start mean(Det-ND):  {cluster_mean_ls:8.4f} µV\n")
+
+    if len(clusters_6) == 0:
+        txt_6.append("  No clusters found at all.\n")
+
+    final_txt_6 = "\n".join(txt_6)
+    print(f"\n{final_txt_6}")
+
+    txt_path_6 = os.path.join(save_to, '06_permut_interaction_order_x_detection.txt')
+    with open(txt_path_6, 'w', encoding='utf-8') as f:
+        f.write(final_txt_6)
+
+    # --- Plot: Difference waves by order group ---
+    fontsz_6 = 20
+    fig_w6, fig_h6 = 30 / 2.54, 20 / 2.54
+    fig6, ax6 = plt.subplots(figsize=(fig_w6, fig_h6))
+    ax6.set_title('Interaction: Order × Detection\n(Difference Waves: Detected − Non-detected)', fontsize=fontsz_6)
+
+    ylimits_6 = [-3, 3]
+    ax6.set_ylim(ylimits_6)
+    ax6.invert_yaxis()
+    ax6.set_ylabel('Activity (µV)', fontsize=fontsz_6)
+    ax6.set_xlim([plot_time[0], plot_time[1]])
+    ax6.set_xlabel('Time (s)', fontsize=fontsz_6)
+    ax6.axhline(0, color='black', linestyle='--', linewidth=0.5)
+    if plot_time[0] <= 0 <= plot_time[1]:
+        ax6.axvline(0, color='black', linestyle='--', linewidth=0.5)
+
+    for i_clu, clu_idx in enumerate(good_6):
+        clu_inds = _get_cluster_inds(clusters_6[clu_idx])
+        real_time_inds = test_inds_6[clu_inds]
+        c_tmin = t_axis_full[real_time_inds[0]]
+        c_tmax = t_axis_full[real_time_inds[-1]]
+        ax6.fill_between([c_tmin, c_tmax], ylimits_6[0], ylimits_6[1],
+                         color=[0.7, 0.7, 0.7], alpha=0.5, edgecolor='none')
+        ax6.axvline(c_tmin, color='black', linestyle='--', linewidth=0.5)
+        ax6.axvline(c_tmax, color='black', linestyle='--', linewidth=0.5)
+
+    gm_diff_hs_det = np.mean(diff_hs_det, axis=0)
+    gm_diff_ls_det = np.mean(diff_ls_det, axis=0)
+    h_hs, = ax6.plot(t_axis_full, gm_diff_hs_det, color=(0.20, 0.63, 0.17), linestyle='-', linewidth=2)
+    h_ls, = ax6.plot(t_axis_full, gm_diff_ls_det, color=(0.89, 0.10, 0.11), linestyle='-', linewidth=2)
+    ax6.legend([h_hs, h_ls], ['High-Start (Detected − Non-detected)', 'Low-Start (Detected − Non-detected)'],
+               loc='upper left', fontsize=fontsz_6)
+    ax6.tick_params(labelsize=fontsz_6)
+    ax6.set_xticks(np.arange(-0.3, 1.2 + 0.01, 0.1))
+    fig6.patch.set_facecolor('white')
+    ax6.set_facecolor('white')
+    for spine in ax6.spines.values():
+        spine.set_linewidth(1)
+    plt.tight_layout()
+
+    save_p6 = os.path.join(save_to, '06_permut_interaction_order_x_detection.png')
+    fig6.savefig(save_p6, format='png', dpi=600, bbox_inches='tight', facecolor='white')
+    fig6.savefig(save_p6.replace('.png', '.svg'), format='svg', bbox_inches='tight', facecolor='white')
+    print(f"Figure saved to: {save_p6}")
+
+    # --- Plot: Four-cell view (Detected / Non-detected by order) ---
+    fig6_4c, ax6_4c = plt.subplots(figsize=(fig_w6, fig_h6))
+    ax6_4c.set_title('Order × Detection: Four-Cell View', fontsize=fontsz_6)
+    ax6_4c.set_ylim(ylimits_6)
+    ax6_4c.invert_yaxis()
+    ax6_4c.set_ylabel('Activity (µV)', fontsize=fontsz_6)
+    ax6_4c.set_xlim([plot_time[0], plot_time[1]])
+    ax6_4c.set_xlabel('Time (s)', fontsize=fontsz_6)
+    ax6_4c.axhline(0, color='black', linestyle='--', linewidth=0.5)
+    if plot_time[0] <= 0 <= plot_time[1]:
+        ax6_4c.axvline(0, color='black', linestyle='--', linewidth=0.5)
+
+    for i_clu, clu_idx in enumerate(good_6):
+        clu_inds = _get_cluster_inds(clusters_6[clu_idx])
+        real_time_inds = test_inds_6[clu_inds]
+        c_tmin = t_axis_full[real_time_inds[0]]
+        c_tmax = t_axis_full[real_time_inds[-1]]
+        ax6_4c.fill_between([c_tmin, c_tmax], ylimits_6[0], ylimits_6[1],
+                            color=[0.7, 0.7, 0.7], alpha=0.5, edgecolor='none')
+        ax6_4c.axvline(c_tmin, color='black', linestyle='--', linewidth=0.5)
+        ax6_4c.axvline(c_tmax, color='black', linestyle='--', linewidth=0.5)
+
+    gm_hs_det    = np.mean(X_hs_det_A, axis=0)
+    gm_hs_nondet = np.mean(X_hs_det_B, axis=0)
+    gm_ls_det    = np.mean(X_ls_det_A, axis=0)
+    gm_ls_nondet = np.mean(X_ls_det_B, axis=0)
+
+    h1, = ax6_4c.plot(t_axis_full, gm_hs_det,    color=(0.12, 0.53, 0.53), linestyle='-',  linewidth=2)
+    h2, = ax6_4c.plot(t_axis_full, gm_hs_nondet, color=(0.85, 0.37, 0.00), linestyle='-',  linewidth=2)
+    h3, = ax6_4c.plot(t_axis_full, gm_ls_det,    color=(0.12, 0.53, 0.53), linestyle='--', linewidth=2)
+    h4, = ax6_4c.plot(t_axis_full, gm_ls_nondet, color=(0.85, 0.37, 0.00), linestyle='--', linewidth=2)
+
+    _hs_det_m    = np.mean(trials_hs_det_A)
+    _hs_nondet_m = np.mean(trials_hs_det_B)
+    _ls_det_m    = np.mean(trials_ls_det_A)
+    _ls_nondet_m = np.mean(trials_ls_det_B)
+
+    ax6_4c.legend([h1, h2, h3, h4],
+                  [f'High-Start / Detected (M={_hs_det_m:.0f})', f'High-Start / Non-detected (M={_hs_nondet_m:.0f})',
+                   f'Low-Start / Detected (M={_ls_det_m:.0f})', f'Low-Start / Non-detected (M={_ls_nondet_m:.0f})'],
+                  loc='upper left', fontsize=fontsz_6 * 0.6)
+    ax6_4c.tick_params(labelsize=fontsz_6)
+    ax6_4c.set_xticks(np.arange(-0.3, 1.2 + 0.01, 0.1))
+    fig6_4c.patch.set_facecolor('white')
+    ax6_4c.set_facecolor('white')
+    for spine in ax6_4c.spines.values():
+        spine.set_linewidth(1)
+    plt.tight_layout()
+
+    save_p6_4c = os.path.join(save_to, '06_permut_interaction_order_x_detection_4cell.png')
+    fig6_4c.savefig(save_p6_4c, format='png', dpi=600, bbox_inches='tight', facecolor='white')
+    fig6_4c.savefig(save_p6_4c.replace('.png', '.svg'), format='svg', bbox_inches='tight', facecolor='white')
+    print(f"Four-cell order x detection figure saved to: {save_p6_4c}")
+
+# --- TEST 3: Interaction (Condition x Detection) ---
+if run_test3_interaction:
+    if len(subs_det) >= 2:
+        # Difference of differences: (High_Det - High_NonDet) vs (Low_Det - Low_NonDet)
+        X3_A = np.array([extracted_data[p]['high_control_detected'] - extracted_data[p]['high_control_nondetected'] for p in subs_det])
+        X3_B = np.array([extracted_data[p]['low_control_detected'] - extracted_data[p]['low_control_nondetected'] for p in subs_det])
+        t3_test_inds, t3_clusters, t3_pvals, t3_good = run_permutation_test(
+            X_condA=X3_A, 
+            X_condB=X3_B, 
+            label_A='High Control (Det - NonDet)', 
+            label_B='Low Control (Det - NonDet)', 
+            title='Interaction of Condition x Detection (Difference Waves)', 
+            save_filename='03_permut_interaction.png', 
+            colors=['blue', 'red'], 
+            linestyles=['-', '-'],
+            p_indices=subs_det,
+            trials_A=[trial_counts.get(p, {}).get('high_control_detected', 0) + trial_counts.get(p, {}).get('high_control_nondetected', 0) for p in subs_det],
+            trials_B=[trial_counts.get(p, {}).get('low_control_detected', 0) + trial_counts.get(p, {}).get('low_control_nondetected', 0) for p in subs_det]
+        )
+
+        # --- Four-cell decomposition plot for the interaction ---
+        X_hd = np.array([extracted_data[p]['high_control_detected'] for p in subs_det])
+        X_hn = np.array([extracted_data[p]['high_control_nondetected'] for p in subs_det])
+        X_ld = np.array([extracted_data[p]['low_control_detected'] for p in subs_det])
+        X_ln = np.array([extracted_data[p]['low_control_nondetected'] for p in subs_det])
+
+        fontsz_4c = 20
+        fig_w4c, fig_h4c = 30 / 2.54, 20 / 2.54
+        fig4c, ax4c = plt.subplots(figsize=(fig_w4c, fig_h4c))
+        ax4c.set_title('Condition × Detection: Four-Cell Decomposition', fontsize=fontsz_4c)
+
+        ylimits_4c = [-3, 3]
+        ax4c.set_ylim(ylimits_4c)
+        ax4c.invert_yaxis()
+        ax4c.set_ylabel('Activity (µV)', fontsize=fontsz_4c)
+        ax4c.set_xlim([plot_time[0], plot_time[1]])
+        ax4c.set_xlabel('Time (s)', fontsize=fontsz_4c)
+        ax4c.axhline(0, color='black', linestyle='--', linewidth=0.5)
+        if plot_time[0] <= 0 <= plot_time[1]:
+            ax4c.axvline(0, color='black', linestyle='--', linewidth=0.5)
+
+        # Shade significant clusters from the interaction test
+        for i_clu, clu_idx in enumerate(t3_good):
+            clu_inds = _get_cluster_inds(t3_clusters[clu_idx])
+            real_time_inds = t3_test_inds[clu_inds]
+            c_tmin = t_axis_full[real_time_inds[0]]
+            c_tmax = t_axis_full[real_time_inds[-1]]
+            ax4c.fill_between([c_tmin, c_tmax], ylimits_4c[0], ylimits_4c[1],
+                             color=[0.7, 0.7, 0.7], alpha=0.5, edgecolor='none')
+            ax4c.axvline(c_tmin, color='black', linestyle='--', linewidth=0.5)
+            ax4c.axvline(c_tmax, color='black', linestyle='--', linewidth=0.5)
+
+        gm_hd = np.mean(X_hd, axis=0)
+        gm_hn = np.mean(X_hn, axis=0)
+        gm_ld = np.mean(X_ld, axis=0)
+        gm_ln = np.mean(X_ln, axis=0)
+
+        h_hd, = ax4c.plot(t_axis_full, gm_hd, color=(0.00, 0.44, 0.69), linestyle='-',  linewidth=2)
+        h_hn, = ax4c.plot(t_axis_full, gm_hn, color=(0.00, 0.44, 0.69), linestyle='--', linewidth=2)
+        h_ld, = ax4c.plot(t_axis_full, gm_ld, color=(0.80, 0.47, 0.65), linestyle='-',  linewidth=2)
+        h_ln, = ax4c.plot(t_axis_full, gm_ln, color=(0.80, 0.47, 0.65), linestyle='--', linewidth=2)
+        # Build legend labels with mean trial counts
+        _tc_hd = np.mean([trial_counts.get(p, {}).get('high_control_detected', 0) for p in subs_det])
+        _tc_hn = np.mean([trial_counts.get(p, {}).get('high_control_nondetected', 0) for p in subs_det])
+        _tc_ld = np.mean([trial_counts.get(p, {}).get('low_control_detected', 0) for p in subs_det])
+        _tc_ln = np.mean([trial_counts.get(p, {}).get('low_control_nondetected', 0) for p in subs_det])
+        ax4c.legend([h_hd, h_hn, h_ld, h_ln],
+                   [f'High Control Detected (M={_tc_hd:.0f})', f'High Control Non-detected (M={_tc_hn:.0f})',
+                    f'Low Control Detected (M={_tc_ld:.0f})', f'Low Control Non-detected (M={_tc_ln:.0f})'],
+                   loc='upper left', fontsize=fontsz_4c * 0.6)
+        ax4c.tick_params(labelsize=fontsz_4c)
+        ax4c.set_xticks(np.arange(-0.3, 1.2 + 0.01, 0.1))
+        fig4c.patch.set_facecolor('white')
+        ax4c.set_facecolor('white')
+        for spine in ax4c.spines.values():
+            spine.set_linewidth(1)
+        plt.tight_layout()
+
+        save_4c = os.path.join(save_to, '03_permut_interaction_4cell.png')
+        fig4c.savefig(save_4c, format='png', dpi=600, bbox_inches='tight', facecolor='white')
+        fig4c.savefig(save_4c.replace('.png', '.svg'), format='svg', bbox_inches='tight', facecolor='white')
+        print(f"Four-cell interaction figure saved to: {save_4c}")
+
+    else:
+        print(f"\n  SKIPPING TEST 3 (Interaction): only {len(subs_det)} participant(s) have all detection conditions (need >= 2).")
+
+# --- TEST 4: Pairwise Comparison (Configurable) ---
+if run_test4_pairwise:
+    # Identify which participants have both conditions
+    subs_test4 = [p for p in extracted_data if pairwise_cond_A in extracted_data[p] and pairwise_cond_B in extracted_data[p]]
+
+    if len(subs_test4) >= 2:
+        X4_A = np.array([extracted_data[p][pairwise_cond_A] for p in subs_test4])
+        X4_B = np.array([extracted_data[p][pairwise_cond_B] for p in subs_test4])
+
+        label_A = pairwise_cond_A.replace('_', ' ').title().replace('Nondetected', 'Non-detected')
+        label_B = pairwise_cond_B.replace('_', ' ').title().replace('Nondetected', 'Non-detected')
+
+        # Determine line styling dynamically
+        style_map = {
+            'high_control': ('blue', '-'),
+            'low_control': ('red', '-'),
+            'high_control_detected': ((0.00, 0.44, 0.69), '-'),
+            'high_control_nondetected': ((0.00, 0.44, 0.69), '--'),
+            'low_control_detected': ((0.80, 0.47, 0.65), '-'),
+            'low_control_nondetected': ((0.80, 0.47, 0.65), '--')
+        }
+
+        color_A, style_A = style_map.get(pairwise_cond_A, ('blue', '-'))
+        color_B, style_B = style_map.get(pairwise_cond_B, ('red', '-'))
+
+        run_permutation_test(
+            X_condA=X4_A, 
+            X_condB=X4_B, 
+            label_A=label_A, 
+            label_B=label_B, 
+            title=f"Pairwise Comparison ({label_A} vs. {label_B})", 
+            save_filename=f"04_permut_pairwise_{pairwise_cond_A}_vs_{pairwise_cond_B}.png", 
+            colors=[color_A, color_B], 
+            linestyles=[style_A, style_B],
+            p_indices=subs_test4,
+            trials_A=[trial_counts.get(p, {}).get(pairwise_cond_A, 0) for p in subs_test4],
+            trials_B=[trial_counts.get(p, {}).get(pairwise_cond_B, 0) for p in subs_test4]
+        )
+    else:
+        print(f"\n  SKIPPING TEST 4 (Pairwise): only {len(subs_test4)} participant(s) have both '{pairwise_cond_A}' and '{pairwise_cond_B}' (need >= 2).")
 
 print("\nALL PERMUTATION TESTS COMPLETED SUCCESSFULLY!")
 plt.show()
