@@ -74,8 +74,8 @@ SEED = 2025
 CLUSTER_ALPHA = 0.05
 
 TEST_TIME = (0.0, 3.0)
-TEST_FREQ = (2.0, 40.0)
-PLOT_FREQ = (2.0, 40.0)
+TEST_FREQ = (30.0, 60.0)
+PLOT_FREQ = (2.0, 60.0)
 
 # Colorbar limits for standalone figures
 POWER_LIMITS = (-1.5, 1.5)  # dB limits for condition and difference spectrograms
@@ -187,12 +187,13 @@ if all(len(v) < 2 for v in valid_subs_collapsed.values()) and len(valid_subs_4ce
 # ══════════════════════════════════════════════════════════════════
 # 2. EXTRACT ROI DATA & BUILD CONTRASTS
 # ══════════════════════════════════════════════════════════════════
+
 # ROI Option 1: all channels starting with 'P' or 'O' (Parieto-Occipital)
-# sample_chs = next(iter(subject_ch_names.values()))
-# roi_channels = [ch for ch in sample_chs if ch.startswith(('P', 'O'))]
+sample_chs = next(iter(subject_ch_names.values()))
+roi_channels = [ch for ch in sample_chs if ch.startswith(('P', 'O'))]
 
 # # ROI Option 2: Frontocentral
-roi_channels = ['Fz', 'FCz', 'FC1', 'FC2']
+# roi_channels = ['Fz', 'FCz', 'FC1', 'FC2']
 
 print(f"\nAveraging over ROI channels ({len(roi_channels)}): {roi_channels}\n")
 
