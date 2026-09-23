@@ -20,7 +20,7 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import mne
-from mne.stats import permutation_cluster_1samp_test
+from mne.stats import permutation_cluster_1samp_test, permutation_cluster_test
 from scipy.stats import t as t_dist
 
 # ══════════════════════════════════════════════════════════════════
@@ -406,3 +406,433 @@ report_file = os.path.join(figures_path, 'TFR_permutation_HL_MF_statistics_repor
 with open(report_file, 'w', encoding='utf-8') as f:
     f.write('\n'.join(report_lines) + '\n')
 print(f"\n* Statistical report saved to {report_file}")
+
+# ══════════════════════════════════════════════════════════════════
+# 5. EXPLORATORY: Split by Starting Condition (High-start vs Low-start)
+# ══════════════════════════════════════════════════════════════════
+print("\n" + "=" * 70)
+print("EXPLORATORY: Split by Starting Condition (Block Order)")
+print("=" * 70)
+
+# Participant numbers by which condition they started the experiment with
+highstart_pnums = {4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 30, 32, 34, 36, 38, 40, 42, 44, 48, 50}
+lowstart_pnums  = {7, 9, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 49}
+
+# Split valid_subs into subgroups based on participant number
+highstart_subs = [sub for sub in valid_subs if int(sub) in highstart_pnums]
+lowstart_subs  = [sub for sub in valid_subs if int(sub) in lowstart_pnums]
+
+print(f"  High-start: N={len(highstart_subs)}, participants={highstart_subs}")
+print(f"  Low-start:  N={len(lowstart_subs)}, participants={lowstart_subs}")
+
+for group_name, group_subs in [('highstart', highstart_subs), ('lowstart', lowstart_subs)]:
+    n_group = len(group_subs)
+    if n_group < 2:
+        print(f"\n  SKIPPING {group_name}: only {n_group} subject(s) (need >= 2).")
+        continue
+
+    group_label = "High-Start" if group_name == "highstart" else "Low-Start"
+    print(f"\n{'─'*70}")
+    print(f"  {group_label} Subgroup (N={n_group})")
+    print(f"{'─'*70}")
+
+    # ── Extract ROI data for subgroup ──
+    high_arr_grp = np.array([extract_roi(subject_data[sub]['high_control'], sub) for sub in group_subs])
+    low_arr_grp  = np.array([extract_roi(subject_data[sub]['low_control'], sub) for sub in group_subs])
+
+    X_diff_plot_grp = high_arr_grp - low_arr_grp
+
+    # ── Align channels for whole-brain topoplots ──
+    high_all_chs_grp = np.array([
+        align_channels(subject_data[sub]['high_control'], subject_ch_names[sub], canonical_ch_names)
+        for sub in group_subs
+    ])
+    low_all_chs_grp = np.array([
+        align_channels(subject_data[sub]['low_control'], subject_ch_names[sub], canonical_ch_names)
+        for sub in group_subs
+    ])
+    ga_high_all_chs_grp = np.nanmean(high_all_chs_grp, axis=0)
+    ga_low_all_chs_grp  = np.nanmean(low_all_chs_grp, axis=0)
+    ga_diff_all_chs_grp = ga_high_all_chs_grp - ga_low_all_chs_grp
+
+    # ── Condition grand averages ──
+    condition_ga_grp = {
+        "High_Control": {
+            'data': np.nanmean(high_arr_grp, axis=0),
+            'title': f"Grand Average TFR: High Control\n({group_label}, N={n_group})",
+            'filename': f"00_TFR_power_MainEffect_Control_high_{group_name}.png"
+        },
+        "Low_Control": {
+            'data': np.nanmean(low_arr_grp, axis=0),
+            'title': f"Grand Average TFR: Low Control\n({group_label}, N={n_group})",
+            'filename': f"00_TFR_power_MainEffect_Control_low_{group_name}.png"
+        }
+    }
+
+    # ── Plot condition grand averages ──
+    print(f"  Generating Condition Grand-Average TFR Power Plots ({group_label})...")
+    for cond_key, item in condition_ga_grp.items():
+        fig_cond, ax_cond = plt.subplots(figsize=(10, 6))
+        im = ax_cond.pcolormesh(time_edges, freq_edges_plot, item['data'],
+                                cmap='RdBu_r', vmin=POWER_LIMITS[0], vmax=POWER_LIMITS[1], shading='flat')
+        cb = fig_cond.colorbar(im, ax=ax_cond, label='Power (dB)')
+        ax_cond.set_xlabel('Time (s)', fontsize=14, fontname='Times New Roman')
+        ax_cond.set_ylabel('Frequency (Hz)', fontsize=14, fontname='Times New Roman')
+        ax_cond.set_title(item['title'], fontsize=15, fontname='Times New Roman')
+        ax_cond.axvline(0, color='black', linestyle='--', linewidth=1)
+        plt.tight_layout()
+        out_path = os.path.join(figures_path, item['filename'])
+        fig_cond.savefig(out_path, dpi=300)
+        plt.close(fig_cond)
+        print(f"    Saved: {item['filename']}")
+
+    # ── Run cluster permutation test ──
+    print(f"  Running 2D cluster permutation test ({group_label}, {N_PERMUTATIONS} permutations)...")
+
+    report_lines_grp = []
+    report_lines_grp.append(f"MAIN EFFECT OF CONTROL (HIGH VS LOW) TFR PERMUTATION - {group_label.upper()} SUBGROUP")
+    report_lines_grp.append("=" * 70)
+    report_lines_grp.append(f"Number of permutations: {N_PERMUTATIONS}")
+    report_lines_grp.append(f"N subjects: {n_group}")
+    report_lines_grp.append(f"Participants: {group_subs}")
+    report_lines_grp.append(f"Time window: {TEST_TIME[0]} - {TEST_TIME[1]} s")
+    report_lines_grp.append(f"Test Frequency window: {TEST_FREQ[0]} - {TEST_FREQ[1]} Hz")
+    report_lines_grp.append(f"ROI channels: {roi_channels}")
+    report_lines_grp.append("=" * 70)
+
+    X_diff_plot_grp = np.nan_to_num(X_diff_plot_grp, nan=0.0)
+
+    n_subs_grp = X_diff_plot_grp.shape[0]
+    df_grp = n_subs_grp - 1
+    t_threshold_grp = t_dist.ppf(1 - CLUSTER_ALPHA / 2, df_grp)
+    print(f"    N={n_subs_grp}, df={df_grp}, cluster threshold t = +/-{t_threshold_grp:.3f}")
+
+    X_diff_test_grp = X_diff_plot_grp[:, test_f_inds, :]
+
+    T_obs_grp, clusters_grp, cluster_p_grp, H0_grp = permutation_cluster_1samp_test(
+        X_diff_test_grp,
+        n_permutations=N_PERMUTATIONS,
+        threshold=t_threshold_grp,
+        tail=TAIL,
+        seed=SEED,
+        n_jobs=-1,
+        out_type='mask',
+        verbose=True
+    )
+
+    sig_clusters_grp = [i for i, p in enumerate(cluster_p_grp) if p < 0.05]
+    n_sig_grp = len(sig_clusters_grp)
+
+    contrast_name_grp = f"{contrast_name}_{group_name}"
+
+    msg_header_grp = (f"\n{contrast_name.replace('_', ' ').upper()} - {group_label.upper()} SUBGROUP {contrast_desc}"
+                      f"\nN={n_subs_grp}, df={df_grp}, cluster threshold=+/-{t_threshold_grp:.3f}"
+                      f"\n{len(clusters_grp)} clusters found, {n_sig_grp} significant (p < 0.05)")
+    print(msg_header_grp)
+    report_lines_grp.append(msg_header_grp)
+    report_lines_grp.append("-" * 70)
+
+    mask_tf_grp = np.zeros(T_obs_grp.shape, dtype=bool)
+
+    for i, (mask_grp, pval) in enumerate(zip(clusters_grp, cluster_p_grp)):
+        freq_in = np.any(mask_grp, axis=1)
+        time_in = np.any(mask_grp, axis=0)
+
+        t_start, t_end = times[np.where(time_in)[0][0]], times[np.where(time_in)[0][-1]]
+        f_low, f_high = freqs_test[np.where(freq_in)[0][0]], freqs_test[np.where(freq_in)[0][-1]]
+
+        if pval < 0.05:
+            mask_tf_grp |= mask_grp
+            sig_marker = " ** SIGNIFICANT"
+
+            # ── Generate Whole-Brain Topoplots for Significant Cluster Period ──
+            c_time_mask = (times >= t_start) & (times <= t_end)
+            c_freq_mask = (freqs_plot >= f_low) & (freqs_plot <= f_high)
+
+            topo_high_grp = np.nanmean(ga_high_all_chs_grp[:, c_freq_mask, :][:, :, c_time_mask], axis=(1, 2))
+            topo_low_grp  = np.nanmean(ga_low_all_chs_grp[:, c_freq_mask, :][:, :, c_time_mask], axis=(1, 2))
+            topo_diff_grp = np.nanmean(ga_diff_all_chs_grp[:, c_freq_mask, :][:, :, c_time_mask], axis=(1, 2))
+            roi_mask_arr  = np.array([ch in roi_channels for ch in canonical_ch_names])
+            roi_label_grp = "/".join(roi_channels) if len(roi_channels) <= 6 else f"{len(roi_channels)} ROI channels"
+
+            v_cond_grp = max(0.5, float(np.nanpercentile(np.abs(np.concatenate([topo_high_grp, topo_low_grp])), 99)))
+            v_cond_grp = round(v_cond_grp, 2)
+            v_diff_grp = max(0.5, float(np.nanpercentile(np.abs(topo_diff_grp), 99)))
+            v_diff_grp = round(v_diff_grp, 2)
+
+            star_kwargs_grp = dict(marker='*', markerfacecolor='yellow', markeredgecolor='black', markersize=14)
+
+            # 1) Condition: High Control
+            fig_h, ax_h = plt.subplots(figsize=(6, 6))
+            im_h, _ = mne.viz.plot_topomap(topo_high_grp, info, axes=ax_h, mask=roi_mask_arr, mask_params=star_kwargs_grp,
+                                           cmap='RdBu_r', sphere='eeglab', vlim=(-v_cond_grp, v_cond_grp), show=False)
+            cb_h = plt.colorbar(im_h, ax=ax_h, orientation='horizontal', pad=0.08, shrink=0.7)
+            cb_h.set_label('Power (dB)', fontname='Times New Roman', fontsize=12)
+            ax_h.set_title(f"High Control ({group_label})\nCluster {i+1}: {f_low:.1f}-{f_high:.1f} Hz, {t_start:.3f}-{t_end:.3f} s\n(* = ROI: {roi_label_grp})",
+                           fontsize=13, fontname='Times New Roman', pad=12)
+            plt.tight_layout()
+            fname_h = f"03_TFR_topo_{contrast_name_grp}_cluster_{i+1}_high_control.png"
+            fig_h.savefig(os.path.join(figures_path, fname_h), dpi=300)
+            plt.close(fig_h)
+            print(f"    [OK] Saved condition topoplot: {fname_h}")
+
+            # 2) Condition: Low Control
+            fig_l, ax_l = plt.subplots(figsize=(6, 6))
+            im_l, _ = mne.viz.plot_topomap(topo_low_grp, info, axes=ax_l, mask=roi_mask_arr, mask_params=star_kwargs_grp,
+                                           cmap='RdBu_r', sphere='eeglab', vlim=(-v_cond_grp, v_cond_grp), show=False)
+            cb_l = plt.colorbar(im_l, ax=ax_l, orientation='horizontal', pad=0.08, shrink=0.7)
+            cb_l.set_label('Power (dB)', fontname='Times New Roman', fontsize=12)
+            ax_l.set_title(f"Low Control ({group_label})\nCluster {i+1}: {f_low:.1f}-{f_high:.1f} Hz, {t_start:.3f}-{t_end:.3f} s\n(* = ROI: {roi_label_grp})",
+                           fontsize=13, fontname='Times New Roman', pad=12)
+            plt.tight_layout()
+            fname_l = f"03_TFR_topo_{contrast_name_grp}_cluster_{i+1}_low_control.png"
+            fig_l.savefig(os.path.join(figures_path, fname_l), dpi=300)
+            plt.close(fig_l)
+            print(f"    [OK] Saved condition topoplot: {fname_l}")
+
+            # 3) Difference: High Control - Low Control
+            fig_d, ax_d = plt.subplots(figsize=(6, 6))
+            im_d, _ = mne.viz.plot_topomap(topo_diff_grp, info, axes=ax_d, mask=roi_mask_arr, mask_params=star_kwargs_grp,
+                                           cmap='RdBu_r', sphere='eeglab', vlim=(-v_diff_grp, v_diff_grp), show=False)
+            cb_d = plt.colorbar(im_d, ax=ax_d, orientation='horizontal', pad=0.08, shrink=0.7)
+            cb_d.set_label('Power Difference (dB)', fontname='Times New Roman', fontsize=12)
+            ax_d.set_title(f"Difference (High - Low Control, {group_label})\nCluster {i+1}: {f_low:.1f}-{f_high:.1f} Hz, {t_start:.3f}-{t_end:.3f} s\np = {pval:.4f} (* = ROI: {roi_label_grp})",
+                           fontsize=13, fontname='Times New Roman', pad=12)
+            plt.tight_layout()
+            fname_d = f"03_TFR_topo_{contrast_name_grp}_cluster_{i+1}_diff.png"
+            fig_d.savefig(os.path.join(figures_path, fname_d), dpi=300)
+            plt.close(fig_d)
+            print(f"    [OK] Saved difference topoplot: {fname_d}")
+
+            # 4) Combined 3-Panel Figure
+            fig_p, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
+            im1, _ = mne.viz.plot_topomap(topo_high_grp, info, axes=ax1, mask=roi_mask_arr, mask_params=star_kwargs_grp,
+                                          cmap='RdBu_r', sphere='eeglab', vlim=(-v_cond_grp, v_cond_grp), show=False)
+            cb1 = plt.colorbar(im1, ax=ax1, orientation='horizontal', pad=0.08, shrink=0.7)
+            cb1.set_label('Power (dB)', fontname='Times New Roman', fontsize=11)
+            ax1.set_title("High Control", fontsize=14, fontname='Times New Roman')
+
+            im2, _ = mne.viz.plot_topomap(topo_low_grp, info, axes=ax2, mask=roi_mask_arr, mask_params=star_kwargs_grp,
+                                          cmap='RdBu_r', sphere='eeglab', vlim=(-v_cond_grp, v_cond_grp), show=False)
+            cb2 = plt.colorbar(im2, ax=ax2, orientation='horizontal', pad=0.08, shrink=0.7)
+            cb2.set_label('Power (dB)', fontname='Times New Roman', fontsize=11)
+            ax2.set_title("Low Control", fontsize=14, fontname='Times New Roman')
+
+            im3, _ = mne.viz.plot_topomap(topo_diff_grp, info, axes=ax3, mask=roi_mask_arr, mask_params=star_kwargs_grp,
+                                          cmap='RdBu_r', sphere='eeglab', vlim=(-v_diff_grp, v_diff_grp), show=False)
+            cb3 = plt.colorbar(im3, ax=ax3, orientation='horizontal', pad=0.08, shrink=0.7)
+            cb3.set_label('Power Difference (dB)', fontname='Times New Roman', fontsize=11)
+            ax3.set_title(f"Difference (High - Low)\np = {pval:.4f}", fontsize=14, fontname='Times New Roman')
+
+            fig_p.suptitle(f"{group_label} \u2014 Cluster {i+1}: {f_low:.1f}-{f_high:.1f} Hz, {t_start:.3f}-{t_end:.3f} s (* = ROI: {roi_label_grp})",
+                           fontsize=15, fontname='Times New Roman', y=0.98)
+            plt.tight_layout()
+            fname_p = f"03_TFR_topo_{contrast_name_grp}_cluster_{i+1}_panel.png"
+            fig_p.savefig(os.path.join(figures_path, fname_p), dpi=300)
+            plt.close(fig_p)
+            print(f"    [OK] Saved 3-panel comparison topoplot: {fname_p}")
+        else:
+            sig_marker = ""
+
+        mean_t_grp = T_obs_grp[mask_grp].mean()
+
+        msg = (f"  Cluster {i+1}: {t_start:.3f}-{t_end:.3f}s, {f_low:.1f}-{f_high:.1f}Hz, "
+               f"p={pval:.4f}{sig_marker} | Mean T: {mean_t_grp:.2f}")
+        print(msg)
+        report_lines_grp.append(msg)
+
+    # ── Difference TFR plot ──
+    print(f"  Creating standalone TFR plots for {group_label}...")
+    roi_str_grp = "/".join(roi_channels) if len(roi_channels) <= 6 else f"Parieto-Occipital ({len(roi_channels)} channels)"
+
+    ga_diff_grp = np.nanmean(X_diff_plot_grp, axis=0)
+    fig_diff_grp, ax_diff_grp = plt.subplots(figsize=(10, 6))
+    im_diff_grp = ax_diff_grp.pcolormesh(time_edges, freq_edges_plot, ga_diff_grp, cmap='RdBu_r',
+                                         vmin=POWER_LIMITS[0], vmax=POWER_LIMITS[1], shading='flat')
+    if mask_tf_grp.any():
+        ax_diff_grp.contour(times, freqs_test, mask_tf_grp.astype(float), levels=[0.5], colors='black', linewidths=2)
+    cb_diff_grp = fig_diff_grp.colorbar(im_diff_grp, ax=ax_diff_grp, label='Power Difference (dB)')
+    ax_diff_grp.set_xlabel('Time (s)', fontsize=14, fontname='Times New Roman')
+    ax_diff_grp.set_ylabel('Frequency (Hz)', fontsize=14, fontname='Times New Roman')
+    ax_diff_grp.set_title(f"DIFFERENCE TFR: HIGH VS LOW CONTROL\n({group_label}, ROI: {roi_str_grp}, N={n_subs_grp})",
+                          fontsize=15, fontname='Times New Roman')
+    ax_diff_grp.axvline(0, color='black', linestyle='--', linewidth=1)
+    plt.tight_layout()
+    fig_diff_grp.savefig(os.path.join(figures_path, f'01_TFR_diff_{contrast_name_grp}.png'), dpi=300)
+    plt.close(fig_diff_grp)
+    print(f"    Saved difference TFR: 01_TFR_diff_{contrast_name_grp}.png")
+
+    # ── Statistical t-map ──
+    fig_stat_grp, ax_stat_grp = plt.subplots(figsize=(10, 6))
+    im_stat_grp = ax_stat_grp.pcolormesh(time_edges, freq_edges_test, T_obs_grp, cmap='RdBu_r',
+                                         vmin=STAT_LIMITS[0], vmax=STAT_LIMITS[1], shading='flat')
+    if mask_tf_grp.any():
+        ax_stat_grp.contour(times, freqs_test, mask_tf_grp.astype(float), levels=[0.5], colors='black', linewidths=2)
+    cb_stat_grp = fig_stat_grp.colorbar(im_stat_grp, ax=ax_stat_grp, label='t value')
+    ax_stat_grp.set_xlabel('Time (s)', fontsize=14, fontname='Times New Roman')
+    ax_stat_grp.set_ylabel('Frequency (Hz)', fontsize=14, fontname='Times New Roman')
+    ax_stat_grp.set_title(f"STAT MAP: HIGH VS LOW CONTROL\n({group_label}, ROI: {roi_str_grp}, N={n_subs_grp})",
+                          fontsize=15, fontname='Times New Roman')
+    ax_stat_grp.axvline(0, color='black', linestyle='--', linewidth=1)
+    plt.tight_layout()
+    fig_stat_grp.savefig(os.path.join(figures_path, f'02_TFR_stat_{contrast_name_grp}.png'), dpi=300)
+    plt.close(fig_stat_grp)
+    print(f"    Saved stat map: 02_TFR_stat_{contrast_name_grp}.png")
+
+    # ── Save subgroup report ──
+    report_file_grp = os.path.join(figures_path, f'TFR_permutation_HL_MF_statistics_report_{group_name}.txt')
+    with open(report_file_grp, 'w', encoding='utf-8') as fout:
+        fout.write('\n'.join(report_lines_grp) + '\n')
+    print(f"  * Subgroup report saved to {report_file_grp}")
+
+# ══════════════════════════════════════════════════════════════════
+# 6. INTERACTION: Order × Condition (Between-Subjects)
+# ══════════════════════════════════════════════════════════════════
+# Tests whether the (High − Low) control TFR difference differs
+# between participants who started with High vs Low control blocks.
+# Between-subjects test → permutation_cluster_test (F-test).
+# ══════════════════════════════════════════════════════════════════
+print(f"\n{'='*70}")
+print("TEST: Interaction of Order x Condition (Between-Subjects TFR)")
+print(f"{'='*70}")
+
+n_hs = len(highstart_subs)
+n_ls = len(lowstart_subs)
+
+if n_hs >= 2 and n_ls >= 2:
+    # Build difference arrays (High - Low) for each order group
+    diff_hs = np.array([extract_roi(subject_data[sub]['high_control'], sub) -
+                        extract_roi(subject_data[sub]['low_control'], sub)
+                        for sub in highstart_subs])
+    diff_ls = np.array([extract_roi(subject_data[sub]['high_control'], sub) -
+                        extract_roi(subject_data[sub]['low_control'], sub)
+                        for sub in lowstart_subs])
+
+    diff_hs = np.nan_to_num(diff_hs, nan=0.0)
+    diff_ls = np.nan_to_num(diff_ls, nan=0.0)
+
+    # Restrict to test frequency band
+    diff_hs_test = diff_hs[:, test_f_inds, :]
+    diff_ls_test = diff_ls[:, test_f_inds, :]
+
+    print(f"  High-start: N={n_hs}, participants={highstart_subs}")
+    print(f"  Low-start:  N={n_ls}, participants={lowstart_subs}")
+    print(f"  Running between-subjects permutation test ({N_PERMUTATIONS} permutations)...")
+
+    F_obs_int, clusters_int, cluster_p_int, H0_int = permutation_cluster_test(
+        [diff_hs_test, diff_ls_test],
+        n_permutations=N_PERMUTATIONS,
+        tail=TAIL,
+        n_jobs=-1,
+        seed=SEED,
+        out_type='mask',
+        verbose=True
+    )
+
+    sig_int = [i for i, p in enumerate(cluster_p_int) if p < 0.05]
+    n_sig_int = len(sig_int)
+
+    # ── Report ──
+    report_int = []
+    report_int.append("INTERACTION: ORDER x CONDITION (BETWEEN-SUBJECTS) TFR PERMUTATION")
+    report_int.append("=" * 70)
+    report_int.append(f"Number of permutations: {N_PERMUTATIONS}")
+    report_int.append(f"High-start: N={n_hs}, participants={highstart_subs}")
+    report_int.append(f"Low-start:  N={n_ls}, participants={lowstart_subs}")
+    report_int.append(f"Time window: {TEST_TIME[0]} - {TEST_TIME[1]} s")
+    report_int.append(f"Test Frequency window: {TEST_FREQ[0]} - {TEST_FREQ[1]} Hz")
+    report_int.append(f"ROI channels: {roi_channels}")
+    report_int.append(f"Total clusters found: {len(clusters_int)}")
+    report_int.append(f"Significant clusters (p < 0.05): {n_sig_int}")
+    report_int.append("=" * 70)
+
+    mask_tf_int = np.zeros(F_obs_int.shape, dtype=bool)
+
+    for i, (mask_int, pval) in enumerate(zip(clusters_int, cluster_p_int)):
+        freq_in = np.any(mask_int, axis=1)
+        time_in = np.any(mask_int, axis=0)
+
+        t_start = times[np.where(time_in)[0][0]]
+        t_end   = times[np.where(time_in)[0][-1]]
+        f_low   = freqs_test[np.where(freq_in)[0][0]]
+        f_high  = freqs_test[np.where(freq_in)[0][-1]]
+
+        if pval < 0.05:
+            mask_tf_int |= mask_int
+            sig_marker = " ** SIGNIFICANT"
+
+            # Compute subgroup mean differences within the cluster
+            c_freq_idx = np.where(freq_in)[0]
+            c_time_idx = np.where(time_in)[0]
+            cluster_mean_hs = np.nanmean(diff_hs_test[:, c_freq_idx, :][:, :, c_time_idx])
+            cluster_mean_ls = np.nanmean(diff_ls_test[:, c_freq_idx, :][:, :, c_time_idx])
+        else:
+            sig_marker = ""
+            cluster_mean_hs = np.nan
+            cluster_mean_ls = np.nan
+
+        mean_f = F_obs_int[mask_int].mean()
+
+        msg = (f"  Cluster {i+1}: {t_start:.3f}-{t_end:.3f}s, {f_low:.1f}-{f_high:.1f}Hz, "
+               f"p={pval:.4f}{sig_marker} | Mean F: {mean_f:.2f}")
+        if pval < 0.05:
+            msg += f"\n    High-start mean(H-L): {cluster_mean_hs:.4f} dB"
+            msg += f"\n    Low-start mean(H-L):  {cluster_mean_ls:.4f} dB"
+        print(msg)
+        report_int.append(msg)
+
+    if len(clusters_int) == 0:
+        report_int.append("  No clusters found at all.")
+
+    # ── Difference-of-differences TFR heatmap ──
+    print("  Creating interaction TFR plots...")
+    roi_str_int = "/".join(roi_channels) if len(roi_channels) <= 6 else f"Parieto-Occipital ({len(roi_channels)} channels)"
+
+    ga_diff_hs = np.nanmean(diff_hs, axis=0)   # High-start group's H-L difference
+    ga_diff_ls = np.nanmean(diff_ls, axis=0)    # Low-start group's H-L difference
+    ga_diff_of_diff = ga_diff_hs - ga_diff_ls   # Difference of differences
+
+    fig_int, ax_int = plt.subplots(figsize=(10, 6))
+    im_int = ax_int.pcolormesh(time_edges, freq_edges_plot, ga_diff_of_diff, cmap='RdBu_r',
+                               vmin=POWER_LIMITS[0], vmax=POWER_LIMITS[1], shading='flat')
+    if mask_tf_int.any():
+        ax_int.contour(times, freqs_test, mask_tf_int.astype(float), levels=[0.5], colors='black', linewidths=2)
+    cb_int = fig_int.colorbar(im_int, ax=ax_int, label='Power Difference of Differences (dB)')
+    ax_int.set_xlabel('Time (s)', fontsize=14, fontname='Times New Roman')
+    ax_int.set_ylabel('Frequency (Hz)', fontsize=14, fontname='Times New Roman')
+    ax_int.set_title(f"INTERACTION: ORDER x CONDITION\n(High-Start [H-L]) \u2212 (Low-Start [H-L]), ROI: {roi_str_int}",
+                     fontsize=15, fontname='Times New Roman')
+    ax_int.axvline(0, color='black', linestyle='--', linewidth=1)
+    plt.tight_layout()
+    fig_int.savefig(os.path.join(figures_path, '04_TFR_interaction_order_x_condition.png'), dpi=300)
+    plt.close(fig_int)
+    print(f"    Saved interaction TFR: 04_TFR_interaction_order_x_condition.png")
+
+    # ── Stat map for interaction ──
+    fig_int_stat, ax_int_stat = plt.subplots(figsize=(10, 6))
+    im_int_stat = ax_int_stat.pcolormesh(time_edges, freq_edges_test, F_obs_int, cmap='hot_r',
+                                         shading='flat')
+    if mask_tf_int.any():
+        ax_int_stat.contour(times, freqs_test, mask_tf_int.astype(float), levels=[0.5], colors='black', linewidths=2)
+    cb_int_stat = fig_int_stat.colorbar(im_int_stat, ax=ax_int_stat, label='F value')
+    ax_int_stat.set_xlabel('Time (s)', fontsize=14, fontname='Times New Roman')
+    ax_int_stat.set_ylabel('Frequency (Hz)', fontsize=14, fontname='Times New Roman')
+    ax_int_stat.set_title(f"STAT MAP: ORDER x CONDITION INTERACTION\n(ROI: {roi_str_int}, N_hs={n_hs}, N_ls={n_ls})",
+                          fontsize=15, fontname='Times New Roman')
+    ax_int_stat.axvline(0, color='black', linestyle='--', linewidth=1)
+    plt.tight_layout()
+    fig_int_stat.savefig(os.path.join(figures_path, '04_TFR_stat_interaction_order_x_condition.png'), dpi=300)
+    plt.close(fig_int_stat)
+    print(f"    Saved interaction stat map: 04_TFR_stat_interaction_order_x_condition.png")
+
+    # ── Save interaction report ──
+    report_file_int = os.path.join(figures_path, 'TFR_permutation_HL_MF_statistics_report_interaction_order.txt')
+    with open(report_file_int, 'w', encoding='utf-8') as fout:
+        fout.write('\n'.join(report_int) + '\n')
+    print(f"  * Interaction report saved to {report_file_int}")
+
+else:
+    print(f"  SKIPPING interaction test: need >= 2 subjects in each group "
+          f"(High-start={n_hs}, Low-start={n_ls}).")
+
+print("\nALL PERMUTATION TESTS (INCLUDING SUBGROUP ANALYSES) COMPLETED SUCCESSFULLY!")
