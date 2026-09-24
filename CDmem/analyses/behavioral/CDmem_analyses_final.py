@@ -262,6 +262,23 @@ for detail in manip_details:
 write_report(f"- Total recognition trials excluded for RT outliers: {rt_removed}")
 write_report(f"- Final N participants: {len(valid_px)}\n")
 
+# --- Demographics (final sample) ---
+write_report("## Demographics (Final Sample)\n")
+demo_df = data[data['participant'].isin(valid_px)].drop_duplicates(subset=['participant']).copy()
+demo_df['age'] = pd.to_numeric(demo_df['age'], errors='coerce')
+
+age_valid = demo_df['age'].dropna()
+write_report(f"**Age**: M = {age_valid.mean():.2f}, SD = {age_valid.std():.2f}, "
+             f"min = {age_valid.min():.0f}, max = {age_valid.max():.0f}")
+
+gender_counts = demo_df['gender'].str.strip().str.lower().value_counts()
+write_report(f"**Gender**: {', '.join(f'{g} = {n}' for g, n in gender_counts.items())}")
+
+if 'handedness' in demo_df.columns:
+    hand_counts = demo_df['handedness'].str.strip().str.lower().value_counts()
+    write_report(f"**Handedness**: {', '.join(f'{h} = {n}' for h, n in hand_counts.items())}")
+write_report("")
+
 
 # Memory floor/ceiling: Exclude participants whose overall recognition d' < 0.10
 # or who respond "yes" to > 95% or < 5% of all items (extreme bias).
