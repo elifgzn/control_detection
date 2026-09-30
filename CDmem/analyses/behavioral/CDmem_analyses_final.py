@@ -669,7 +669,7 @@ def make_3row_plot(df_2x2, df_bd, y_col, y_label, title, out_path, annotate_stat
     axes[0].set_xlabel('Control Task Level', fontsize=12)
     axes[0].set_ylabel(y_label, fontsize=12)
     if is_rt:
-        pass  # auto y-limits for RT
+        axes[0].set_ylim(0, 2)
     elif y_col == 'd_prime':
         axes[0].axhline(0, color='black', linestyle='--')
         axes[0].set_ylim(0, 2.5)
@@ -683,7 +683,7 @@ def make_3row_plot(df_2x2, df_bd, y_col, y_label, title, out_path, annotate_stat
     axes[1].set_xlabel('Control Task Level', fontsize=12)
     axes[1].set_ylabel(y_label, fontsize=12)
     if is_rt:
-        pass  # auto y-limits for RT
+        axes[1].set_ylim(0, 2)
     elif y_col == 'd_prime':
         axes[1].axhline(0, color='black', linestyle='--')
         axes[1].set_ylim(0, 2.5)
@@ -709,7 +709,7 @@ def make_3row_plot(df_2x2, df_bd, y_col, y_label, title, out_path, annotate_stat
     axes[2].set_xlabel('Control Task Level', fontsize=12)
     axes[2].set_ylabel(y_label, fontsize=12)
     if is_rt:
-        pass  # auto y-limits for RT
+        axes[2].set_ylim(0, 2)
     elif y_col == 'd_prime':
         axes[2].axhline(0, color='black', linestyle='--')
         axes[2].set_ylim(0, 2.5)
@@ -926,36 +926,43 @@ def make_calibration_plot(plot_data, out_path, title_suffix=""):
     print(f"Saved calibration plot: {out_path}")
 
 
-def make_agency_recognition_plot(plot_data, out_path, title_suffix=""):
-    """Generate Sense of Agency vs Recognition Memory plot using z-transformed agency ratings."""
-    if plot_data.empty or 'agency_z' not in plot_data.columns or 'said_old_int' not in plot_data.columns:
+def make_agency_recognition_plot(plot_data, out_path, title_suffix="", agency_col='agency_z'):
+    """Generate Sense of Agency vs Recognition Memory plot.
+    agency_col: 'agency_z' for z-transformed or 'agency_rating' for raw (1-7)."""
+    if plot_data.empty or agency_col not in plot_data.columns or 'said_old_int' not in plot_data.columns:
         return
         
-    df = plot_data.dropna(subset=['agency_z', 'said_old_int']).copy()
+    df = plot_data.dropna(subset=[agency_col, 'said_old_int']).copy()
     if df.empty:
         return
+
+    is_raw = agency_col == 'agency_rating'
+    x_label = 'Agency Rating at Encoding (1–7)' if is_raw else 'Agency Rating at Encoding (z-transformed)'
+    scale_tag = 'Raw' if is_raw else 'z-scored'
 
     plt.style.use('seaborn-v0_8-whitegrid')
     fig, ax = plt.subplots(figsize=(10, 6))
 
     # 1. Participant Means (scatter)
     if df['participant'].nunique() > 1:
-        px_means = df.groupby(['participant', 'agency_z'])['said_old_int'].mean().reset_index()
-        sns.scatterplot(data=px_means, x='agency_z', y='said_old_int', color='#85bfe3', alpha=0.7, 
+        px_means = df.groupby(['participant', agency_col])['said_old_int'].mean().reset_index()
+        sns.scatterplot(data=px_means, x=agency_col, y='said_old_int', color='#85bfe3', alpha=0.7, 
                         label='Participant Mean', ax=ax, zorder=2)
     else:
-        px_means = df.groupby('agency_z')['said_old_int'].mean().reset_index()
-        sns.scatterplot(data=px_means, x='agency_z', y='said_old_int', color='#85bfe3', alpha=0.7, 
+        px_means = df.groupby(agency_col)['said_old_int'].mean().reset_index()
+        sns.scatterplot(data=px_means, x=agency_col, y='said_old_int', color='#85bfe3', alpha=0.7, 
                         label='Mean per Agency Level', ax=ax, zorder=2)
 
     # 2. Group Mean ± SE
     if df['participant'].nunique() > 1:
-        # Define sensible bins for z-scores (-3 to 3)
-        bins = np.arange(-3.5, 4.0, 1.0)
-        df['z_bin'] = pd.cut(df['agency_z'], bins=bins)
-        df['z_bin_mid'] = df['z_bin'].apply(lambda x: x.mid if pd.notna(x) else np.nan).astype(float)
+        if is_raw:
+            bins = np.arange(0.5, 8.5, 1.0)  # bins centred on 1-7
+        else:
+            bins = np.arange(-3.5, 4.0, 1.0)
+        df['a_bin'] = pd.cut(df[agency_col], bins=bins)
+        df['a_bin_mid'] = df['a_bin'].apply(lambda x: x.mid if pd.notna(x) else np.nan).astype(float)
         
-        bin_stats = df.groupby('z_bin_mid')['said_old_int'].agg(['mean', 'sem', 'count']).dropna()
+        bin_stats = df.groupby('a_bin_mid')['said_old_int'].agg(['mean', 'sem', 'count']).dropna()
         bin_stats = bin_stats[bin_stats['count'] >= 5]
         
         if not bin_stats.empty:
@@ -970,11 +977,12 @@ def make_agency_recognition_plot(plot_data, out_path, title_suffix=""):
         
     try:
         from scipy.optimize import curve_fit
-        popt, _ = curve_fit(logistic_func, df['agency_z'], df['said_old_int'], p0=[0, 0], maxfev=5000)
-        x_min, x_max = df['agency_z'].min(), df['agency_z'].max()
-        x_fit = np.linspace(x_min - 0.2, x_max + 0.2, 100)
-        y_fit = logistic_func(x_fit, *popt)
-        ax.plot(x_fit, y_fit, color='#2ca02c', linewidth=3, label='Logistic Trend', zorder=3)
+        if df[agency_col].nunique() >= 2:
+            popt, _ = curve_fit(logistic_func, df[agency_col], df['said_old_int'], p0=[0, 0], maxfev=5000)
+            x_min, x_max = df[agency_col].min(), df[agency_col].max()
+            x_fit = np.linspace(x_min - 0.2, x_max + 0.2, 100)
+            y_fit = logistic_func(x_fit, *popt)
+            ax.plot(x_fit, y_fit, color='#2ca02c', linewidth=3, label='Logistic Trend', zorder=3)
     except Exception as e:
         pass
 
@@ -982,9 +990,11 @@ def make_agency_recognition_plot(plot_data, out_path, title_suffix=""):
     ax.axhline(y=0.5, color='gray', linestyle=':', alpha=0.6, label='Chance', zorder=1)
 
     ax.set_ylim(-0.05, 1.05)
-    ax.set_xlabel('Agency Rating at Encoding (z-transformed)')
+    if is_raw:
+        ax.set_xlim(0.5, 7.5)
+    ax.set_xlabel(x_label)
     ax.set_ylabel('Hit Rate (Proportion Recognised)')
-    ax.set_title(f'Sense of Agency vs Recognition Memory{title_suffix}', fontsize=14, fontweight='bold')
+    ax.set_title(f'Agency ({scale_tag}) vs Recognition Memory{title_suffix}', fontsize=14, fontweight='bold')
     
     # Deduplicate legend just in case
     handles, labels = ax.get_legend_handles_labels()
@@ -996,12 +1006,101 @@ def make_agency_recognition_plot(plot_data, out_path, title_suffix=""):
     plt.close()
     print(f"Saved agency vs memory plot: {out_path}")
 
+
+def make_agency_rt_plot(plot_data, out_path, title_suffix="", agency_col='agency_z'):
+    """Generate Agency Rating vs Recognition RT plot, split by control level.
+    Mirrors the agency_recognition plot but with RT on the y-axis.
+    agency_col: 'agency_z' for z-transformed or 'agency_rating' for raw (1-7)."""
+    if plot_data.empty or agency_col not in plot_data.columns or 'mem_rt' not in plot_data.columns:
+        return
+
+    df = plot_data.dropna(subset=[agency_col, 'mem_rt', 'control_level']).copy()
+    # Restrict to hits (said_old == 1) since RT is only meaningful for recognised items
+    if 'said_old_int' in df.columns:
+        df = df[df['said_old_int'] == 1].copy()
+    if df.empty:
+        return
+
+    is_raw = agency_col == 'agency_rating'
+    x_label = 'Agency Rating at Encoding (1–7)' if is_raw else 'Agency Rating at Encoding (z-transformed)'
+    scale_tag = 'Raw' if is_raw else 'z-scored'
+
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    color_map = {'high': '#1f77b4', 'low': '#ff7f0e'}
+    label_map = {'high': 'High Control', 'low': 'Low Control'}
+
+    # 1. Participant means as scatter points, split by control level
+    for cond in ['high', 'low']:
+        cond_df = df[df['control_level'] == cond]
+        if cond_df.empty:
+            continue
+        if cond_df['participant'].nunique() > 1:
+            px_means = cond_df.groupby(['participant', agency_col])['mem_rt'].mean().reset_index()
+        else:
+            px_means = cond_df.groupby(agency_col)['mem_rt'].mean().reset_index()
+        sns.scatterplot(data=px_means, x=agency_col, y='mem_rt',
+                        color=color_map[cond], alpha=0.4, label=label_map[cond],
+                        ax=ax, zorder=2, s=30)
+
+    # 2. Binned group means ± SE, split by control level
+    if df['participant'].nunique() > 1:
+        if is_raw:
+            bins = np.arange(0.5, 8.5, 1.0)  # bins centred on 1-7
+        else:
+            bins = np.arange(-3.5, 4.0, 1.0)
+        for cond in ['high', 'low']:
+            cond_df = df[df['control_level'] == cond].copy()
+            if cond_df.empty:
+                continue
+            cond_df['a_bin'] = pd.cut(cond_df[agency_col], bins=bins)
+            cond_df['a_bin_mid'] = cond_df['a_bin'].apply(lambda x: x.mid if pd.notna(x) else np.nan).astype(float)
+            bin_stats = cond_df.groupby('a_bin_mid')['mem_rt'].agg(['mean', 'sem', 'count']).dropna()
+            bin_stats = bin_stats[bin_stats['count'] >= 5]
+            if not bin_stats.empty:
+                offset = 0.05 if cond == 'high' else -0.05  # slight horizontal offset to avoid overlap
+                ax.errorbar(bin_stats.index + offset, bin_stats['mean'], yerr=bin_stats['sem'],
+                            fmt='s', color=color_map[cond], capsize=5, capthick=2, markersize=8,
+                            zorder=4, markeredgecolor='black', markeredgewidth=0.5)
+
+    # 3. Linear regression lines per condition
+    from scipy.stats import linregress
+    for cond in ['high', 'low']:
+        cond_df = df[df['control_level'] == cond]
+        if len(cond_df) < 3 or cond_df[agency_col].nunique() < 2:
+            continue
+        slope, intercept, r_val, p_val, _ = linregress(cond_df[agency_col], cond_df['mem_rt'])
+        x_range = np.linspace(cond_df[agency_col].min() - 0.2, cond_df[agency_col].max() + 0.2, 100)
+        ax.plot(x_range, intercept + slope * x_range, color=color_map[cond],
+                linewidth=3, linestyle='-', zorder=3)
+
+    ax.set_ylim(0, 2)
+    if is_raw:
+        ax.set_xlim(0.5, 7.5)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel('Recognition RT (seconds)')
+    ax.set_title(f'Agency ({scale_tag}) vs Recognition RT{title_suffix}', fontsize=14, fontweight='bold')
+
+    # Deduplicate legend
+    handles, labels = ax.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    ax.legend(by_label.values(), by_label.keys(), loc='upper right', frameon=True, facecolor='white', framealpha=0.9)
+
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+    print(f"Saved agency vs RT plot: {out_path}")
+
 # --- Generate Pooled Sanity Check & Calibration Plots ---
 # Pooled plots use post-exclusion data (only valid participants)
 make_sanity_plot(data, POOLED_DIR / "sanity_check_pooled.png", title_suffix="  (All Participants)")
 
 if 'df_controlled' in locals():
     make_agency_recognition_plot(df_controlled, POOLED_DIR / "agency_recognition_pooled.png", title_suffix="  (All Participants)")
+    make_agency_recognition_plot(df_controlled, POOLED_DIR / "agency_recognition_raw_pooled.png", title_suffix="  (All Participants)", agency_col='agency_rating')
+    make_agency_rt_plot(df_controlled, POOLED_DIR / "agency_rt_pooled.png", title_suffix="  (All Participants)")
+    make_agency_rt_plot(df_controlled, POOLED_DIR / "agency_rt_raw_pooled.png", title_suffix="  (All Participants)", agency_col='agency_rating')
 
 # --- Generate Per-Participant Sanity Check & Calibration Plots ---
 # Iterate over ALL participants (pre-exclusion) so every participant gets a plot.
@@ -1014,5 +1113,8 @@ for px in sorted(data_all['participant'].unique()):
     px_controlled = df_controlled_all[df_controlled_all['participant'] == px]
     if not px_controlled.empty:
         make_agency_recognition_plot(px_controlled, PER_PARTICIPANT_DIR / f"agency_recognition_p{px}.png", title_suffix=f"  (p. {px}){excl_flag}")
+        make_agency_recognition_plot(px_controlled, PER_PARTICIPANT_DIR / f"agency_recognition_raw_p{px}.png", title_suffix=f"  (p. {px}){excl_flag}", agency_col='agency_rating')
+        make_agency_rt_plot(px_controlled, PER_PARTICIPANT_DIR / f"agency_rt_p{px}.png", title_suffix=f"  (p. {px}){excl_flag}")
+        make_agency_rt_plot(px_controlled, PER_PARTICIPANT_DIR / f"agency_rt_raw_p{px}.png", title_suffix=f"  (p. {px}){excl_flag}", agency_col='agency_rating')
 
 print("Analysis Complete! Report and plots generated in:", OUTPUT_DIR)
