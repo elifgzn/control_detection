@@ -909,6 +909,383 @@ make_agency_rt_plot(df_detected, EXPLORE_DIR / "e3_agency_rt_raw_detected_only.p
 
 
 # ============================================================================
+# EXPLORATION 4: Starting Order as an Interacting Factor (Full Sample)
+# ============================================================================
+write_report("---")
+write_report("## Exploration 4: Starting Order as an Interacting Factor (Full Sample)\n")
+write_report("**Rationale:** Exploration 2 split the sample by starting condition and re-ran "
+             "models separately, but this halves N and cannot formally test whether starting "
+             "order *interacts* with other factors. Here we add `starts_with` (contrast-coded: "
+             "high = 0.5, low = −0.5) as a between-subjects factor and test its interactions "
+             "with all within-subjects predictors using the full sample.\n")
+
+# --- Contrast-code starts_with ---
+starts_with_lookup = data.groupby("participant")["starts_with"].first().dropna()
+data["starts_with_c"] = data["participant"].map(starts_with_lookup).map({"high": 0.5, "low": -0.5})
+targets["starts_with_c"] = targets["participant"].map(starts_with_lookup).map({"high": 0.5, "low": -0.5})
+
+# Also add the raw label for plotting convenience
+targets["starts_with"] = targets["participant"].map(starts_with_lookup)
+
+n_starts_high = (starts_with_lookup == "high").sum()
+n_starts_low = (starts_with_lookup == "low").sum()
+write_report(f"Starts HIGH: N = {n_starts_high}")
+write_report(f"Starts LOW:  N = {n_starts_low}\n")
+
+df_controlled_e4 = targets[targets['item_type'] == 'controlled'].copy()
+
+# --- Model 1B-order: said_old ~ control_level * item_type * starts_with ---
+write_report("### Model 1B-order: Binomial GLMM on OLD ITEMS\n")
+write_report("`said_old_int ~ control_level_c * item_type_c * starts_with_c + (1 | participant)`\n")
+df_1b_e4 = targets.dropna(subset=['said_old_int', 'control_level_c', 'item_type_c', 'starts_with_c']).copy()
+fit_print_lmm("said_old_int ~ control_level_c * item_type_c * starts_with_c + (1 | participant)", df_1b_e4, is_glmer=True)
+
+# --- Model 1C-order: log_mem_rt ~ control_level * item_type * starts_with (hits only) ---
+write_report("### Model 1C-order: Gaussian LMM on OLD ITEMS (hits only)\n")
+write_report("`log_mem_rt ~ control_level_c * item_type_c * starts_with_c + (1 | participant)`\n")
+df_1c_e4 = targets[targets['said_old_int'] == 1].dropna(subset=['log_mem_rt', 'control_level_c', 'item_type_c', 'starts_with_c']).copy()
+fit_print_lmm("log_mem_rt ~ control_level_c * item_type_c * starts_with_c + (1 | participant)", df_1c_e4, is_glmer=False)
+
+# --- Model 2D-order: said_old ~ detection_accuracy * control_level * starts_with (controlled items) ---
+write_report("### Model 2D-order: Binomial GLMM on OLD CONTROLLED ITEMS\n")
+write_report("`said_old_int ~ detection_accuracy_c * control_level_c * starts_with_c + (1 | participant)`\n")
+df_2d_e4 = df_controlled_e4.dropna(subset=['said_old_int', 'detection_accuracy_c', 'control_level_c', 'starts_with_c']).copy()
+fit_print_lmm("said_old_int ~ detection_accuracy_c * control_level_c * starts_with_c + (1 | participant)", df_2d_e4, is_glmer=True)
+
+# --- Model 2E-order: log_mem_rt ~ detection_accuracy * control_level * starts_with (controlled hits) ---
+write_report("### Model 2E-order: Gaussian LMM on OLD CONTROLLED ITEMS (hits only)\n")
+write_report("`log_mem_rt ~ detection_accuracy_c * control_level_c * starts_with_c + (1 | participant)`\n")
+df_2e_e4 = df_controlled_e4[df_controlled_e4['said_old_int'] == 1].dropna(subset=['log_mem_rt', 'detection_accuracy_c', 'control_level_c', 'starts_with_c']).copy()
+fit_print_lmm("log_mem_rt ~ detection_accuracy_c * control_level_c * starts_with_c + (1 | participant)", df_2e_e4, is_glmer=False)
+
+# --- Model 3F-order: said_old ~ agency_z * control_level * starts_with (controlled items) ---
+write_report("### Model 3F-order: Binomial GLMM on OLD CONTROLLED ITEMS\n")
+write_report("`said_old_int ~ agency_z * control_level_c * starts_with_c + (1 | participant)`\n")
+df_3f_e4 = df_controlled_e4.dropna(subset=['said_old_int', 'agency_z', 'control_level_c', 'starts_with_c']).copy()
+fit_print_lmm("said_old_int ~ agency_z * control_level_c * starts_with_c + (1 | participant)", df_3f_e4, is_glmer=True)
+
+# --- Model 3G-order: log_mem_rt ~ agency_z * control_level * starts_with (controlled hits) ---
+write_report("### Model 3G-order: Gaussian LMM on OLD CONTROLLED ITEMS (hits only)\n")
+write_report("`log_mem_rt ~ agency_z * control_level_c * starts_with_c + (1 | participant)`\n")
+df_3g_e4 = df_controlled_e4[df_controlled_e4['said_old_int'] == 1].dropna(subset=['log_mem_rt', 'agency_z', 'control_level_c', 'starts_with_c']).copy()
+fit_print_lmm("log_mem_rt ~ agency_z * control_level_c * starts_with_c + (1 | participant)", df_3g_e4, is_glmer=False)
+
+
+# ============================================================================
+# EXPLORATION 4 – PLOTS
+# ============================================================================
+
+# ---- A) Interaction Line Plots ----
+# These show the classic interaction pattern: x = control_level, y = DV,
+# separate lines for starts_high vs starts_low, with SE error bars.
+
+def make_interaction_lineplot(plot_df, y_col, y_label, title, out_path,
+                              x_col='control_level', group_col='starts_with',
+                              chance_line=None):
+    """Classic 2-factor interaction line plot with SE error bars."""
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    color_map = {'high': '#e74c3c', 'low': '#3498db'}
+    label_map = {'high': 'Starts HIGH', 'low': 'Starts LOW'}
+    marker_map = {'high': 'o', 'low': 's'}
+
+    x_order = ['high', 'low']
+    x_positions = {lv: i for i, lv in enumerate(x_order)}
+
+    for grp in ['high', 'low']:
+        grp_df = plot_df[plot_df[group_col] == grp]
+        if grp_df.empty:
+            continue
+
+        # Aggregate per participant first, then compute group mean ± SE
+        px_means = grp_df.groupby(['participant', x_col])[y_col].mean().reset_index()
+        summary = px_means.groupby(x_col)[y_col].agg(['mean', 'sem']).reindex(x_order)
+
+        xs = [x_positions[lv] for lv in summary.index]
+        offset = -0.03 if grp == 'high' else 0.03  # slight offset to avoid overlap
+
+        ax.errorbar([x + offset for x in xs], summary['mean'], yerr=summary['sem'],
+                    fmt=marker_map[grp] + '-', color=color_map[grp], capsize=6,
+                    capthick=2, markersize=10, linewidth=2.5, markeredgecolor='white',
+                    markeredgewidth=1.5, label=label_map[grp], zorder=3)
+
+    if chance_line is not None:
+        ax.axhline(chance_line, color='gray', linestyle='--', alpha=0.5, zorder=1)
+
+    ax.set_xticks(range(len(x_order)))
+    ax.set_xticklabels(['High', 'Low'], fontsize=12)
+    ax.set_xlabel('Control Task Level', fontsize=13)
+    ax.set_ylabel(y_label, fontsize=13)
+    ax.set_title(title, fontsize=14, fontweight='bold')
+    ax.legend(frameon=True, facecolor='white', framealpha=0.9, fontsize=11)
+
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+    print(f"Saved interaction line plot: {out_path}")
+
+
+def make_interaction_lineplot_3way(plot_df, y_col, y_label, title, out_path,
+                                   split_col, split_labels,
+                                   x_col='control_level',
+                                   group_col='starts_with',
+                                   chance_line=None):
+    """3-way interaction line plot: faceted by split_col (e.g. item_type or detection_accuracy)."""
+    plt.style.use('seaborn-v0_8-whitegrid')
+    split_vals = sorted(plot_df[split_col].dropna().unique())
+    n_panels = len(split_vals)
+    if n_panels == 0:
+        return
+
+    fig, axes = plt.subplots(1, n_panels, figsize=(7 * n_panels, 6), sharey=True)
+    if n_panels == 1:
+        axes = [axes]
+
+    color_map = {'high': '#e74c3c', 'low': '#3498db'}
+    label_map = {'high': 'Starts HIGH', 'low': 'Starts LOW'}
+    marker_map = {'high': 'o', 'low': 's'}
+    x_order = ['high', 'low']
+    x_positions = {lv: i for i, lv in enumerate(x_order)}
+
+    for ax, sv in zip(axes, split_vals):
+        sub_df = plot_df[plot_df[split_col] == sv]
+        panel_label = split_labels.get(sv, str(sv))
+
+        for grp in ['high', 'low']:
+            grp_df = sub_df[sub_df[group_col] == grp]
+            if grp_df.empty:
+                continue
+            px_means = grp_df.groupby(['participant', x_col])[y_col].mean().reset_index()
+            summary = px_means.groupby(x_col)[y_col].agg(['mean', 'sem']).reindex(x_order)
+            xs = [x_positions[lv] for lv in summary.index]
+            offset = -0.03 if grp == 'high' else 0.03
+
+            ax.errorbar([x + offset for x in xs], summary['mean'], yerr=summary['sem'],
+                        fmt=marker_map[grp] + '-', color=color_map[grp], capsize=6,
+                        capthick=2, markersize=10, linewidth=2.5, markeredgecolor='white',
+                        markeredgewidth=1.5, label=label_map[grp], zorder=3)
+
+        if chance_line is not None:
+            ax.axhline(chance_line, color='gray', linestyle='--', alpha=0.5, zorder=1)
+
+        ax.set_xticks(range(len(x_order)))
+        ax.set_xticklabels(['High', 'Low'], fontsize=12)
+        ax.set_xlabel('Control Task Level', fontsize=12)
+        ax.set_title(panel_label, fontsize=13, fontweight='bold')
+        ax.legend(frameon=True, facecolor='white', framealpha=0.9, fontsize=10)
+
+    axes[0].set_ylabel(y_label, fontsize=13)
+    fig.suptitle(title, fontsize=15, fontweight='bold', y=1.02)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"Saved 3-way interaction plot: {out_path}")
+
+
+# --- A1: Hit Rate by control_level × starts_with (all old items) ---
+make_interaction_lineplot(
+    targets.dropna(subset=['said_old_int', 'control_level', 'starts_with']),
+    y_col='said_old_int', y_label='Hit Rate',
+    title='Hit Rate × Starting Order',
+    out_path=EXPLORE_DIR / "e4_interaction_hitrate.png",
+    chance_line=0.5
+)
+
+# --- A2: Hit Rate by control_level × item_type × starts_with (3-way) ---
+make_interaction_lineplot_3way(
+    targets.dropna(subset=['said_old_int', 'control_level', 'item_type', 'starts_with']),
+    y_col='said_old_int', y_label='Hit Rate',
+    title='Hit Rate × Item Type × Starting Order',
+    out_path=EXPLORE_DIR / "e4_interaction_hitrate_by_itemtype.png",
+    split_col='item_type',
+    split_labels={'controlled': 'Controlled Items', 'uncontrolled': 'Uncontrolled Items'},
+    chance_line=0.5
+)
+
+# --- A3: RT by control_level × starts_with (hits only) ---
+hits_e4 = targets[targets['said_old_int'] == 1].dropna(subset=['mem_rt', 'control_level', 'starts_with']).copy()
+make_interaction_lineplot(
+    hits_e4,
+    y_col='mem_rt', y_label='Recognition RT (s)',
+    title='Recognition RT × Starting Order (Hits Only)',
+    out_path=EXPLORE_DIR / "e4_interaction_rt.png"
+)
+
+# --- A4: RT by control_level × item_type × starts_with ---
+make_interaction_lineplot_3way(
+    hits_e4.dropna(subset=['item_type']),
+    y_col='mem_rt', y_label='Recognition RT (s)',
+    title='Recognition RT × Item Type × Starting Order (Hits Only)',
+    out_path=EXPLORE_DIR / "e4_interaction_rt_by_itemtype.png",
+    split_col='item_type',
+    split_labels={'controlled': 'Controlled Items', 'uncontrolled': 'Uncontrolled Items'}
+)
+
+# --- A5: Hit Rate by control_level × detection_accuracy × starts_with (controlled only) ---
+df_controlled_e4_plot = df_controlled_e4.dropna(subset=['said_old_int', 'control_level', 'detection_accuracy', 'starts_with']).copy()
+make_interaction_lineplot_3way(
+    df_controlled_e4_plot,
+    y_col='said_old_int', y_label='Hit Rate',
+    title='Hit Rate × Detection Accuracy × Starting Order (Controlled Items)',
+    out_path=EXPLORE_DIR / "e4_interaction_hitrate_by_detection.png",
+    split_col='detection_accuracy',
+    split_labels={1: 'Correctly Detected', 0: 'Not Detected'},
+    chance_line=0.5
+)
+
+
+# ---- B) Faceted Versions of Existing Plots ----
+
+# --- B1: Faceted Hit-Rate 2x2 Plots ---
+def make_faceted_hitrate_plot(tgt_df, fa_df, out_path, facet_col='starts_with',
+                               facet_labels=None):
+    """Generate side-by-side 2x2 factorial hit-rate plots, one panel per facet level."""
+    if facet_labels is None:
+        facet_labels = {'high': 'Starts HIGH', 'low': 'Starts LOW'}
+
+    facet_vals = sorted(tgt_df[facet_col].dropna().unique())
+    n_panels = len(facet_vals)
+    if n_panels == 0:
+        return
+
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, axes = plt.subplots(1, n_panels, figsize=(8 * n_panels, 6), sharey=True)
+    if n_panels == 1:
+        axes = [axes]
+
+    for ax, fv in zip(axes, facet_vals):
+        sub_tgt = tgt_df[tgt_df[facet_col] == fv]
+        sub_fa = fa_df[fa_df['participant'].isin(sub_tgt['participant'].unique())]
+        m2x2 = sub_tgt.groupby(['participant', 'control_level', 'item_type'])['said_old'].mean().reset_index().rename(columns={'said_old': 'Hit_rate'})
+        n_px = sub_tgt['participant'].nunique()
+
+        sns.barplot(data=m2x2, x='control_level', y='Hit_rate', hue='item_type',
+                    errorbar='se', palette='Set2', capsize=0.1, ax=ax,
+                    order=['high', 'low'], hue_order=['controlled', 'uncontrolled'])
+
+        ax.axhline(0.5, color='gray', linestyle='--', alpha=0.5)
+        ax.set_ylim(0, 1)
+        ax.set_xlabel('Control Task Level', fontsize=12)
+        ax.set_ylabel('Hit Rate', fontsize=12)
+        ax.set_title(f'{facet_labels.get(fv, str(fv))} (N={n_px})', fontsize=13, fontweight='bold')
+        ax.legend(title='Item Type', frameon=True)
+
+    fig.suptitle('Hit Rate: 2×2 Factorial by Starting Order', fontsize=15, fontweight='bold', y=1.02)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"Saved faceted hit-rate plot: {out_path}")
+
+
+make_faceted_hitrate_plot(targets, fa_rates, EXPLORE_DIR / "e4_faceted_hitrate_2x2.png")
+
+
+# --- B2: Faceted Detection Breakdown Plots ---
+def make_faceted_detection_breakdown(tgt_df, fa_df, out_path, facet_col='starts_with',
+                                      facet_labels=None, y_col='Hit_rate'):
+    if facet_labels is None:
+        facet_labels = {'high': 'Starts HIGH', 'low': 'Starts LOW'}
+
+    facet_vals = sorted(tgt_df[facet_col].dropna().unique())
+    n_panels = len(facet_vals)
+    if n_panels == 0:
+        return
+
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, axes = plt.subplots(1, n_panels, figsize=(8 * n_panels, 6), sharey=True)
+    if n_panels == 1:
+        axes = [axes]
+
+    for ax, fv in zip(axes, facet_vals):
+        sub_tgt = tgt_df[tgt_df[facet_col] == fv]
+        sub_fa = fa_df[fa_df['participant'].isin(sub_tgt['participant'].unique())]
+        bd = _make_bd_results(sub_tgt, sub_fa)
+        n_px = sub_tgt['participant'].nunique()
+
+        draw_bd_bars(ax, bd, y_col=y_col, annotate_stats=True)
+        ax.axhline(0.5, color='gray', linestyle='--', alpha=0.5)
+        ax.set_ylim(0, 1)
+        ax.set_xlabel('Control Task Level', fontsize=12)
+        ax.set_ylabel('Hit Rate', fontsize=12)
+        ax.set_title(f'{facet_labels.get(fv, str(fv))} (N={n_px})', fontsize=13, fontweight='bold')
+
+    fig.suptitle('Hit Rate: Detection Breakdown by Starting Order', fontsize=15, fontweight='bold', y=1.02)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"Saved faceted detection breakdown: {out_path}")
+
+
+make_faceted_detection_breakdown(targets, fa_rates, EXPLORE_DIR / "e4_faceted_hitrate_detection_breakdown.png")
+
+
+# --- B3: Faceted RT 2x2 Plots ---
+def make_faceted_rt_plot(tgt_df, out_path, facet_col='starts_with', facet_labels=None):
+    if facet_labels is None:
+        facet_labels = {'high': 'Starts HIGH', 'low': 'Starts LOW'}
+
+    facet_vals = sorted(tgt_df[facet_col].dropna().unique())
+    n_panels = len(facet_vals)
+    if n_panels == 0:
+        return
+
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, axes = plt.subplots(1, n_panels, figsize=(8 * n_panels, 6), sharey=True)
+    if n_panels == 1:
+        axes = [axes]
+
+    for ax, fv in zip(axes, facet_vals):
+        sub_tgt = tgt_df[tgt_df[facet_col] == fv]
+        rt_2x2 = _make_rt_2x2(sub_tgt)
+        n_px = sub_tgt['participant'].nunique()
+
+        sns.barplot(data=rt_2x2, x='control_level', y='mean_rt', hue='item_type',
+                    errorbar='se', palette='Set2', capsize=0.1, ax=ax,
+                    order=['high', 'low'], hue_order=['controlled', 'uncontrolled'])
+
+        ax.set_ylim(0, 2)
+        ax.set_xlabel('Control Task Level', fontsize=12)
+        ax.set_ylabel('Mean RT (s)', fontsize=12)
+        ax.set_title(f'{facet_labels.get(fv, str(fv))} (N={n_px})', fontsize=13, fontweight='bold')
+        ax.legend(title='Item Type', frameon=True)
+
+    fig.suptitle('Recognition RT: 2×2 Factorial by Starting Order', fontsize=15, fontweight='bold', y=1.02)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"Saved faceted RT plot: {out_path}")
+
+
+make_faceted_rt_plot(targets, EXPLORE_DIR / "e4_faceted_rt_2x2.png")
+
+
+# --- B4: Faceted Agency vs Recognition Plots ---
+for agency_col_name, tag in [('agency_z', 'zscore'), ('agency_rating', 'raw')]:
+    for grp_label, grp_val in [('starts_high', 'high'), ('starts_low', 'low')]:
+        sub_ctrl = df_controlled_e4[df_controlled_e4['starts_with'] == grp_val].copy()
+        n_px = sub_ctrl['participant'].nunique()
+        make_agency_recognition_plot(
+            sub_ctrl,
+            EXPLORE_DIR / f"e4_faceted_agency_recognition_{tag}_{grp_label}.png",
+            title_suffix=f"  ({grp_label.replace('_', ' ').title()}, N={n_px})",
+            agency_col=agency_col_name
+        )
+
+# --- B5: Faceted Agency vs RT Plots ---
+for agency_col_name, tag in [('agency_z', 'zscore'), ('agency_rating', 'raw')]:
+    for grp_label, grp_val in [('starts_high', 'high'), ('starts_low', 'low')]:
+        sub_ctrl = df_controlled_e4[df_controlled_e4['starts_with'] == grp_val].copy()
+        n_px = sub_ctrl['participant'].nunique()
+        make_agency_rt_plot(
+            sub_ctrl,
+            EXPLORE_DIR / f"e4_faceted_agency_rt_{tag}_{grp_label}.png",
+            title_suffix=f"  ({grp_label.replace('_', ' ').title()}, N={n_px})",
+            agency_col=agency_col_name
+        )
+
+
+# ============================================================================
 # DONE
 # ============================================================================
 write_report("\n---")
