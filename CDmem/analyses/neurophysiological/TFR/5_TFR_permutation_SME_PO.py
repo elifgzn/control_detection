@@ -566,9 +566,18 @@ for comp_name, X_diff_plot in contrasts.items():
             sig_marker = ""
             
         mean_t = T_obs[mask].mean()
-        
+
+        # Compute Cohen's d (paired, d_z) for every cluster
+        participant_mean_diff = X_diff_test[:, mask].mean(axis=1)
+        mean_diff = np.mean(participant_mean_diff)
+        std_diff = np.std(participant_mean_diff, ddof=1)
+        cohens_d = mean_diff / std_diff if std_diff > 0 else np.nan
+
         msg = (f"  Cluster {i+1}: {t_start:.3f}-{t_end:.3f}s, {f_low:.1f}-{f_high:.1f}Hz, "
-               f"p={pval:.4f}{sig_marker} | Mean T: {mean_t:.2f}")
+               f"p={pval:.4f}{sig_marker} | Mean T: {mean_t:.2f}"
+               f"\n    Mean difference: {mean_diff:8.4f} dB"
+               f"\n    SD difference:   {std_diff:8.4f} dB"
+               f"\n    Cohen's d:       {cohens_d:8.4f}")
         print(msg)
         report_lines.append(msg)
 
