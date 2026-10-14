@@ -75,7 +75,7 @@ from mne.preprocessing import ICA
 # participants with 100% accuracy: 7,18, 21, 44
 
 # plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 17, 24, 26, 43, 45, 46, 47})
-plist = [15]
+plist = [17]
 # ──────────────────────────────────────────────────────────────
 # Bad channels per participant
 # Identified after visual inspection. If a channel is extremely

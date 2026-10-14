@@ -26,12 +26,14 @@ from scipy.stats import t as t_dist
 # ══════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════
-input_path   = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked_HL_MF"
+input_path   = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked_CTRL"
 eeg_path     = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_stimlocked"
-figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_stimlocked_HL_PO"
+figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_stimlocked_CTRL_MFT"
 os.makedirs(figures_path, exist_ok=True)
 
-plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+# plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+plist = sorted(set(range(24, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+
 
 # Load canonical sensor layout for whole-brain topoplots
 ref_sub = 4
@@ -63,8 +65,9 @@ CLUSTER_ALPHA = 0.05
 
 TEST_TIME = (0.0, 3.0)
 
-# Broadband
-TEST_FREQ = (2.0, 60.0)
+# # Broadband
+# TEST_FREQ = (2.0, 60.0)
+TEST_FREQ = (2.0, 40.0)
 
 # # Theta
 # TEST_FREQ = (4.0, 8.0)
@@ -76,7 +79,7 @@ TEST_FREQ = (2.0, 60.0)
 # #alpha / beta
 # TEST_FREQ = (8.0, 30.0)
 
-PLOT_FREQ = (2.0, 60.0)
+PLOT_FREQ = (2.0, 40.0)
 
 # Colorbar limits
 POWER_LIMITS = (-1.5, 1.5)  # dB limits for spectrograms
@@ -131,12 +134,12 @@ if len(valid_subs) < 2:
 # ══════════════════════════════════════════════════════════════════
 # 2. EXTRACT ROI DATA & BUILD CONTRAST
 # ══════════════════════════════════════════════════════════════════
-# ROI Option 1: all channels starting with 'P' or 'O' (Parieto-Occipital)
-sample_chs = next(iter(subject_ch_names.values()))
-roi_channels = [ch for ch in sample_chs if ch.startswith(('P', 'O'))]
+# # ROI Option 1: all channels starting with 'P' or 'O' (Parieto-Occipital)
+# sample_chs = next(iter(subject_ch_names.values()))
+# roi_channels = [ch for ch in sample_chs if ch.startswith(('P', 'O'))]
 
-# # ROI Option 2: Frontocentral
-# # roi_channels = ['Fz', 'FCz', 'FC1', 'FC2']
+# ROI Option 2: Frontocentral
+roi_channels = ['Fz', 'FCz', 'FC1', 'FC2']
 # roi_channels = ['Fz']
 
 

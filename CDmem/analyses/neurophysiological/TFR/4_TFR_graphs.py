@@ -59,7 +59,7 @@ for sub in plist:
         times = saved['times']
         freqs = saved['freqs']
         ch_names = saved['ch_names'].tolist()
-        roi_channels = saved['roi_channels'].tolist()
+        roi_channels = saved['roi_channels'].tolist() if 'roi_channels' in saved else [ch for ch in ch_names if ch.startswith(('P', 'O'))]
         
         # Load info object for topoplots
         epo_file = os.path.join(eeg_path, f"CDmem_{sub_id}-epo.fif")

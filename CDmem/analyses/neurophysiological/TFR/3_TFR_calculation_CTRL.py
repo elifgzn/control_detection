@@ -25,17 +25,30 @@ from mne.time_frequency import tfr_morlet
 # ══════════════════════════════════════════════════════════════════════════════
 eeg_path        = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_stimlocked"
 behavioral_path = r"H:\PHD\control_detection\main_data\behavioral"
-output_path     = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked_HL_MF"
+output_path     = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked_CTRL"
 
 os.makedirs(output_path, exist_ok=True)
 
 # TFR Parameters
-FREQS = np.arange(2, 61, 1)  # 2 to 60 Hz broadband (includes Gamma up to 60 Hz)
+FREQS = np.arange(2, 41, 1)  # 2 to 40 Hz broadband 
 N_CYCLES = FREQS * 0.5       # 0.5s effective window
 DECIM = 10                   # Downsample TFR to 25 Hz
 BASELINE = (-0.5, -0.2)      # Baseline window (-500 to -200 ms)
 
-plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+# ── DIAGNOSTIC SWITCH (NOT FOR REPORTING) ───────────────────────────────────
+# True  = crop the new epochs back to start at -0.5 s, as in the OLD pipeline,
+#         so the baseline (-0.5 to -0.2 s) again sits at the epoch edge.
+#         Everything else (ICA, exclusions, rejection) stays new.
+#         Output goes to a separate folder; normal results are not touched.
+# False = normal analysis (use this for everything you report).
+DIAG_OLD_EDGE = False
+if DIAG_OLD_EDGE:
+    output_path = output_path + "_DIAG_oldedge"
+    os.makedirs(output_path, exist_ok=True)
+    print(f"*** DIAGNOSTIC MODE: epochs cropped to -0.5 s, output -> {output_path} ***")
+
+# plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+plist = [17]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # HELPER FUNCTIONS
@@ -139,6 +152,8 @@ for sub in plist:
 
     # 1. Load Epochs
     epochs = mne.read_epochs(epo_file, preload=True, verbose=False)
+    if DIAG_OLD_EDGE:
+        epochs.crop(tmin=-0.5)   # diagnostic: restore old epoch start (edge at baseline)
     
     # Apply Spatial Laplacian (CSD)
     print("  Step 1: Applying Surface Laplacian (CSD)...")
@@ -201,15 +216,12 @@ for sub in plist:
     db_high = baseline_correct_db(avg_high, tfr.times, BASELINE)
     db_low  = baseline_correct_db(avg_low, tfr.times, BASELINE)
     
-    roi_channels = [ch for ch in tfr.ch_names if ch.startswith(('P', 'O'))]
-    
     # 5. Save Data
     np.savez(
         out_file,
         ch_names=tfr.ch_names,
         times=tfr.times,
         freqs=FREQS,
-        roi_channels=roi_channels,
         high_control=db_high,
         low_control=db_low
     )

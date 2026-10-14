@@ -29,7 +29,7 @@ from mne.time_frequency import tfr_morlet
 # ══════════════════════════════════════════════════════════════════════════════
 eeg_path       = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_stimlocked"
 behavioral_path = r"H:\PHD\control_detection\main_data\behavioral"
-output_path    = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked"
+output_path    = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked_SME"
 
 os.makedirs(output_path, exist_ok=True)
 
@@ -294,7 +294,6 @@ for sub in plist:
           ('not_detected_recalled', 'not_detected_not_recalled')])
     ]
 
-    roi_channels = [ch for ch in tfr.ch_names if ch.startswith('P') or ch.startswith('O')]
     rng = np.random.default_rng(2026)
     
     for conds, filename, desc, balance_pairs in file_configs:
@@ -331,7 +330,6 @@ for sub in plist:
                 ch_names=tfr.ch_names,
                 times=tfr.times,
                 freqs=FREQS,
-                roi_channels=roi_channels,
                 **out_data
             )
             print(f"      ✓ Saved to {filename}")
