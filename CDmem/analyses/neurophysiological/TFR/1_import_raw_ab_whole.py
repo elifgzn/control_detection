@@ -20,7 +20,7 @@ WHAT IT DOES (step by step):
     4. Bandpass filters 1-40 Hz using IIR Butterworth (matches FieldTrip default)
     5. Adds back the implicit reference channel (FCz) and re-references to average
     6. Epochs around STIMULUS ONSET triggers (S 11 = low control, S 13 = high control)
-       with a window of -0.5 to +5.5 seconds (covers pre-stimulus baseline + full encoding)
+       with a window of -0.8 to +5.5 seconds (covers pre-stimulus baseline + full encoding)
     6e. Computes per-trial encoding duration from S 91/S 92 triggers (agency rating
         onset = encoding end) and stores in epoch metadata
     7. Downsamples to 250 Hz
@@ -37,12 +37,12 @@ OUTPUTS:
 
 DIFFERENCES FROM 1_import_raw.py:
     - Epochs locked to S 11 / S 13 (stimulus onset) instead of S 21-24 (movement onset)
-    - Longer epoch window: -0.5 to +5.5s instead of -2.5 to +2.5s
+    - Longer epoch window: -0.8 to +5.5s instead of -2.5 to +2.5s
     - Output folder: eeg2_ica_stimlocked/ instead of eeg2_ica/
 
 NOTE:
-    The epoch window (-0.5 to +5.5s) is deliberately long to capture:
-    - Pre-stimulus baseline (-0.5 to 0s)
+    The epoch window (-0.8 to +5.5s) is deliberately long to capture:
+    - Pre-stimulus baseline (-0.8 to 0s)
     - Stimulus viewing (0 to ~0.5s, before mouse movement starts)
     - Movement phase (~0.5 to ~3.5s, 3 seconds of active motion)
     - Response screen (~3.5 to ~4.5s)
@@ -67,10 +67,15 @@ from mne.preprocessing import ICA
 # Use a single-element list (e.g. [2]) to test one participant,
 # or list(range(2, 21)) to run all of them.
 # ──────────────────────────────────────────────────────────────
-# plist = [4,6,7,8,9,10,12,13,14,15,16,17,19,20,21,22]
+# all participants, minus:
+# 1 - no triggers
+# 5 - reference elctrode appears noisy, renders data unusable
+# 28 - no triggers
+# data-based exclusions: 2, 3, 11, 24, 26, 43, 45, 46, 47
+# participants with 100% accuracy: 7,18, 21, 44
 
-plist = [23]  # <-- change this as needed
-
+# plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 17, 24, 26, 43, 45, 46, 47})
+plist = [15]
 # ──────────────────────────────────────────────────────────────
 # Bad channels per participant
 # Identified after visual inspection. If a channel is extremely
@@ -80,10 +85,11 @@ plist = [23]  # <-- change this as needed
 bad_channels = {
     7: ['P2'],
     8: ['F3'],
+    15: ['P3','TP10','T7','POz'],
     17: ['O1'],
     18: ['Fp1','Fp2'],
-    19: ['P3', 'TP10', 'T8', 'CP6', 'T7'],
-    20: ['P3', 'T8','P1','Fz'],
+    19: ['P3', 'TP10', 'T8', 'CP6', 'T7','Fp2'],
+    20: ['P3', 'T8','P1','Fz','Iz'],
     21: ['T8'],
     22: ['TP10'],
     25: ['AF4'],
@@ -92,11 +98,13 @@ bad_channels = {
     31: ['Fp1','Fp2'],
     32: ['F2','FT8'],
     34: ['AFz','F1'],
-    36: ['FT8'] ,
+    36: ['FT8','F6'] ,
+    39: ['O1'],
+    41: ['O1', 'AFz'],
     42: ['C5','FC2','FC6', 'TP7'],
     43: ['C5'],
     46:['C5', 'TP7'],
-    48: ['AFz','F1'],
+    48: ['AFz','F1','FC6'],
     50: ['F6','FT8']
 
 }
@@ -228,7 +236,7 @@ for sub in plist:
         events = events[mask]
 
         # Step 6d: Create epochs with a LONG window.
-        #   -0.5 s before stimulus onset: pre-stimulus baseline
+        #   -0.8 s before stimulus onset: pre-stimulus baseline
         #   +5.5 s after stimulus onset: covers the full encoding period
         #     (stimulus viewing + motion phase + response + agency rating)
         #
@@ -237,7 +245,7 @@ for sub in plist:
         #   (3_hilbert_alphabeta.py) to match FieldTrip conventions.
         epochs = mne.Epochs(
             raw, events, event_id=triggers,
-            tmin=-0.5, tmax=5.5,
+            tmin=-0.8, tmax=5.5,
             preload=True, verbose=False,
             baseline=None  # applied later in analysis script
         )

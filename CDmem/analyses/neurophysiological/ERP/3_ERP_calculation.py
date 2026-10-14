@@ -18,10 +18,14 @@ sys.stdout.reconfigure(encoding='utf-8')
 #   [1, 2]: compute both
 filter_modes = [1,2]
 
-# plist = [4,6,7,8,9,10,12,13,14,15,16,17,18,19,20,21,22,23,24,25,27,29,30,31]
-# 
-plist = list(range(32, 51))
+# all participants, minus:
+# 1 - no triggers
+# 5 - reference elctrode appears noisy, renders data unusable
+# 28 - no triggers
+# data-based exclusions: 2, 3, 11, 24, 26, 43, 45, 46, 47
+# participants with 100% accuracy: 7,18, 21, 44
 
+plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 17, 24, 26, 43, 45, 46, 47})
 
 
 # Paths

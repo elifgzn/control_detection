@@ -15,10 +15,14 @@ from mne.preprocessing import read_ica
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) do you want to process?
 # ──────────────────────────────────────────────────────────────
-# plist = [4,6,7,8,9,10,12,13,14,15,16,17,18]
-# plist = [15,16,17,18,19,20,21,22]
+# all participants, minus:
+# 1 - no triggers
+# 5 - reference elctrode appears noisy, renders data unusable
+# 28 - no triggers
+# data-based exclusions: 2, 3, 11, 24, 26, 43, 45, 46, 47
+# participants with 100% accuracy: 7,18, 21, 44
 
-plist = [50]
+plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 17, 24, 26, 43, 45, 46, 47})
 
 # ──────────────────────────────────────────────────────────────
 # Component exclusions — fill these in AFTER inspecting the plots; during the second run of the script .
@@ -212,8 +216,8 @@ for sub in plist:
         # ── Baseline correction ────────────────────────────────
         # Subtracts the mean of the −200 ms to 0 ms window from every
         # epoch. Applied after ICA (before artifact rejection).
-        epochs_clean.apply_baseline(baseline=(-0.30, 0.0))
-        print(f"  ✓ Baseline correction applied (−300 ms to 0 ms)")
+        epochs_clean.apply_baseline(baseline=(-0.200, 0.0))
+        print(f"  ✓ Baseline correction applied (−200 ms to 0 ms)")
 
         # ── Artifact rejection (general noise) ────────────────
         n_before = len(epochs_clean)
