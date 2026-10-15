@@ -20,7 +20,7 @@ WHAT IT DOES (step by step):
     4. Bandpass filters 1-40 Hz using IIR Butterworth (matches FieldTrip default)
     5. Adds back the implicit reference channel (FCz) and re-references to average
     6. Epochs around STIMULUS ONSET triggers (S 11 = low control, S 13 = high control)
-       with a window of -0.5 to +5.5 seconds (covers pre-stimulus baseline + full encoding)
+       with a window of -2.5 to +5.5 seconds (covers pre-stimulus baseline + full encoding)
     6e. Computes per-trial encoding duration from S 91/S 92 triggers (agency rating
         onset = encoding end) and stores in epoch metadata
     7. Downsamples to 250 Hz
@@ -37,18 +37,9 @@ OUTPUTS:
 
 DIFFERENCES FROM 1_import_raw.py:
     - Epochs locked to S 11 / S 13 (stimulus onset) instead of S 21-24 (movement onset)
-    - Longer epoch window: -0.5 to +5.5s instead of -2.5 to +2.5s
+    - Longer epoch window: -2.5 to +5.5s instead of -2.5 to +2.5s
     - Output folder: eeg2_ica_stimlocked/ instead of eeg2_ica/
 
-NOTE:
-    The epoch window (-0.5 to +5.5s) is deliberately long to capture:
-    - Pre-stimulus baseline (-0.5 to 0s)
-    - Stimulus viewing (0 to ~0.5s, before mouse movement starts)
-    - Movement phase (~0.5 to ~3.5s, 3 seconds of active motion)
-    - Response screen (~3.5 to ~4.5s)
-    - Agency rating (~4.5 to ~5.5s)
-    The analysis script (3_hilbert_alphabeta.py) will select the specific
-    time window of interest from these long epochs.
 """
 
 import os
@@ -104,8 +95,8 @@ bad_channels = {
 # ──────────────────────────────────────────────────────────────
 # Paths
 # ──────────────────────────────────────────────────────────────
-input_path  = r"H:\PHD\control_detection\main_data\eeg\eeg1_raweeg"
-output_path = r"H:\PHD\control_detection\main_data\eeg\eeg2_ica_stimlocked"
+input_path  = r"H:\PHD\control_detection\main_data\eeg\ERP\eeg1_raweeg"
+output_path = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg2_ica_stimlocked"
 
 # Montage file — the actual actiCAP electrode layout (.bvef format)
 # This is the same montage used in 1_import_raw.py.
@@ -228,16 +219,14 @@ for sub in plist:
         events = events[mask]
 
         # Step 6d: Create epochs with a LONG window.
-        #   -0.5 s before stimulus onset: pre-stimulus baseline
+        #   -2.5 s before stimulus onset: pre-stimulus baseline
         #   +5.5 s after stimulus onset: covers the full encoding period
         #     (stimulus viewing + motion phase + response + agency rating)
         #
-        #   baseline=None: we do NOT apply automatic baseline correction here.
-        #   Baseline correction will be applied explicitly in the analysis script
-        #   (3_hilbert_alphabeta.py) to match FieldTrip conventions.
+        #  
         epochs = mne.Epochs(
             raw, events, event_id=triggers,
-            tmin=-0.5, tmax=5.5,
+            tmin=-2.5, tmax=5.5,
             preload=True, verbose=False,
             baseline=None  # applied later in analysis script
         )

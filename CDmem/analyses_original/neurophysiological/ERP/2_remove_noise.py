@@ -121,8 +121,8 @@ bad_channels = {
 
 
 # Paths
-input_path  = r"H:\PHD\control_detection\main_data\eeg\eeg2_ica"
-output_path = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean"   # separate folder for clean data
+input_path  = r"H:\PHD\control_detection\main_data\eeg\ERP\eeg2_ica"
+output_path = r"H:\PHD\control_detection\main_data\eeg\ERP\eeg3_clean"   # separate folder for clean data
 os.makedirs(output_path, exist_ok=True)   # create folder if it doesn't exist
 
 # ──────────────────────────────────────────────────────────────
