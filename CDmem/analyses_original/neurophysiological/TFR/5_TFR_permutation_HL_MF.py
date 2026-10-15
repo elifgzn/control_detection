@@ -63,20 +63,20 @@ CLUSTER_ALPHA = 0.05
 
 TEST_TIME = (0.0, 3.0)
 
-# Broadband
-TEST_FREQ = (2.0, 60.0)
 
 # # Theta
 # TEST_FREQ = (4.0, 8.0)
 
-# # directly following maren
-# TEST_FREQ = (2.0, 20.0)
+# directly following maren
+TEST_FREQ = (2.0, 20.0)
 
+# # Broadband
+TEST_FREQ = (2.0, 40.0)
 
 # #alpha / beta
 # TEST_FREQ = (8.0, 30.0)
 
-PLOT_FREQ = (2.0, 60.0)
+PLOT_FREQ = (2.0, 40.0)
 
 # Colorbar limits
 POWER_LIMITS = (-1.5, 1.5)  # dB limits for spectrograms
