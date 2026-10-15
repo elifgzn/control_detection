@@ -38,9 +38,9 @@ from scipy.stats import t as t_dist
 # ══════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════
-input_path   = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked"
+input_path   = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked_SME"
 eeg_path     = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_stimlocked"
-figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_stimlocked_MF"
+figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_stimlocked_SME_PO_newepochs"
 os.makedirs(figures_path, exist_ok=True)
 
 plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
@@ -74,7 +74,7 @@ SEED = 2025
 CLUSTER_ALPHA = 0.05
 
 TEST_TIME = (0.0, 3.0)
-TEST_FREQ = (30.0, 60.0)
+TEST_FREQ = (2.0, 40.0)
 PLOT_FREQ = (2.0, 60.0)
 
 # Colorbar limits for standalone figures

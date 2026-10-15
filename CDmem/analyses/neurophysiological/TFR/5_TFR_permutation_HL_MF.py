@@ -31,8 +31,7 @@ eeg_path     = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_stimlocked"
 figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_stimlocked_CTRL_MFT"
 os.makedirs(figures_path, exist_ok=True)
 
-# plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
-plist = sorted(set(range(24, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
 
 
 # Load canonical sensor layout for whole-brain topoplots
