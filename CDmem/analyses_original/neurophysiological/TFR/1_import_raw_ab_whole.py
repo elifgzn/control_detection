@@ -58,9 +58,7 @@ from mne.preprocessing import ICA
 # Use a single-element list (e.g. [2]) to test one participant,
 # or list(range(2, 21)) to run all of them.
 # ──────────────────────────────────────────────────────────────
-# plist = [4,6,7,8,9,10,12,13,14,15,16,17,19,20,21,22]
-
-plist = [23]  # <-- change this as needed
+plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
 
 # ──────────────────────────────────────────────────────────────
 # Bad channels per participant
