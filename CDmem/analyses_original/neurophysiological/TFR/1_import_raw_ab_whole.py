@@ -98,7 +98,7 @@ output_path = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg2_ica_stimlocked"
 
 # Montage file — the actual actiCAP electrode layout (.bvef format)
 # This is the same montage used in 1_import_raw.py.
-bvef_path = r"H:\PHD\control_detection\CDmem\analyses\neurophysiological\CACS-64_REF_new.bvef"
+bvef_path = r"H:\PHD\control_detection\CDmem\analyses_original\neurophysiological\CACS-64_REF_new.bvef"
 
 # Create output folder if it doesn't exist
 os.makedirs(output_path, exist_ok=True)
