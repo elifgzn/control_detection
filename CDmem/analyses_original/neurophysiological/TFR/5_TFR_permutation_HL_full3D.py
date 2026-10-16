@@ -10,9 +10,13 @@ PURPOSE:
 
     Adjacency:
       - Spatial adjacency: Delaunay triangulation across 65 scalp EEG electrodes
-      - Spectral adjacency: Regular 1D lattice along frequency bins (2 - 40 Hz)
+      - Spectral adjacency: Regular 1D lattice along frequency bins (2 - 30 Hz)
       - Temporal adjacency: Regular 1D lattice along time points (0 - 3 s)
       Combined via mne.stats.combine_adjacency(ch_adj, n_freqs, n_times).
+
+    Only participants that passed the 25-trial rule (checked again on the
+    trial counts stored in each file) are included; included / skipped
+    participant numbers are printed and written to the report.
 
     Outputs (generated IF AND ONLY IF a cluster is significant, p < 0.05):
       1. Condition Topoplot: High Control (participating cluster electrodes starred)
@@ -36,12 +40,53 @@ from scipy.stats import t as t_dist
 # ══════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════
-input_path   = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked_HL_MF"
-eeg_path     = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_stimlocked"
-figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_stimlocked_HL_full3D"
+input_path   = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg4_TFR_stimlocked_HL_MF"
+eeg_path     = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg3_clean_stimlocked"
+figures_path = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg5_figures_stimlocked_HL_full3D"
 os.makedirs(figures_path, exist_ok=True)
 
 plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+
+# ── Minimum-trial rule (safety check) ─────────────────────────────────────────
+# The 25-trial rule is applied in the 3_TFR_calculation scripts: a participant
+# with fewer than MIN_TRIALS trials in any cell of an analysis gets no output
+# file for that analysis. As a second line of defence, every file loaded here
+# is checked again:
+#   - files without stored trial counts are from an OLD run (made before the
+#     rule existed) and are skipped -> rerun the 3_TFR_calculation script;
+#   - files where any cell has fewer than MIN_TRIALS trials are skipped.
+# Participants without a file at all are reported as "no file" (most often
+# because the calculation script excluded them).
+MIN_TRIALS = 25
+
+def passes_trial_rule(saved, sub_id, label, skipped):
+    """Return True if this file passes the minimum-trial rule.
+    Failures are recorded in skipped[label] as (participant, reason)."""
+    if 'cell_n_trials' not in saved:
+        skipped.setdefault(label, []).append((int(sub_id), "old file without trial counts"))
+        return False
+    names = [str(c) for c in saved['cell_names']]
+    counts = [int(n) for n in saved['cell_n_trials']]
+    low = [f"{c}={n}" for c, n in zip(names, counts) if n < MIN_TRIALS]
+    if low:
+        skipped.setdefault(label, []).append((int(sub_id), ", ".join(low)))
+        return False
+    return True
+
+def participant_lines(label, used_subs, skipped):
+    """Text lines listing the included / skipped participants of one analysis."""
+    used = sorted(int(s) for s in used_subs)
+    no_file = [s for s in plist if s not in used
+               and s not in [p for p, _ in skipped.get(label, [])]]
+    lines = [f"[{label}] Included participants (N={len(used)}): {used}"]
+    for p, reason in sorted(skipped.get(label, [])):
+        lines.append(f"[{label}]   skipped px {p}: {reason}")
+    if no_file:
+        lines.append(f"[{label}]   no file (excluded by the {MIN_TRIALS}-trial rule "
+                     f"in 3_TFR_calculation, or missing data): {no_file}")
+    return lines
+
+trial_rule_skipped = {}   # label -> list of (participant, reason)
 
 # Permutation test parameters
 N_PERMUTATIONS = 1000
@@ -50,8 +95,8 @@ SEED = 2025
 CLUSTER_ALPHA = 0.05
 
 TEST_TIME = (0.0, 3.0)
-TEST_FREQ = (2.0, 40.0)
-PLOT_FREQ = (2.0, 40.0)
+TEST_FREQ = (2.0, 30.0)   # full calculated range
+PLOT_FREQ = (2.0, 30.0)
 
 # Spatial clustering & pruning parameters (mirroring FieldTrip's cfg.minnbchan)
 # At each (freq, time) bin, an electrode is only retained if at least
@@ -112,6 +157,10 @@ for sub in plist:
 
     saved = np.load(data_file, allow_pickle=True)
 
+    # Minimum-trial rule safety check (see MIN_TRIALS above)
+    if not passes_trial_rule(saved, sub_id, "Main Effect - Control", trial_rule_skipped):
+        continue
+
     if sub_id not in subject_ch_names and 'ch_names' in saved:
         subject_ch_names[sub_id] = saved['ch_names'].tolist()
 
@@ -135,6 +184,7 @@ for sub in plist:
 # Determine valid subjects
 valid_subs = [sub for sub in subject_data if all(c in subject_data[sub] for c in conditions)]
 print(f"  [OK] Found {len(valid_subs)} subjects with both conditions")
+print("\n".join("  " + l for l in participant_lines("Main Effect - Control", valid_subs, trial_rule_skipped)))
 
 if len(valid_subs) < 2:
     print("Not enough complete subjects to run contrasts. Exiting.")
@@ -226,6 +276,9 @@ report_lines.append("MAIN EFFECT OF CONTROL: FULL 3D CLUSTER PERMUTATION TEST RE
 report_lines.append("=" * 75)
 report_lines.append(f"Number of permutations: {N_PERMUTATIONS}")
 report_lines.append(f"N subjects: {n_subs} (df={df})")
+# Participant list (minimum-trial rule)
+report_lines.append(f"Minimum-trial rule: at least {MIN_TRIALS} trials in every cell")
+report_lines.extend(participant_lines("Main Effect - Control", valid_subs, trial_rule_skipped))
 report_lines.append(f"Channels: {n_chs} (whole scalp, Delaunay adjacency)")
 report_lines.append(f"Spatial neighbor constraint (FieldTrip minnbchan): >= {MIN_ADJACENT_NEIGHBORS} adjacent neighbors")
 report_lines.append(f"Minimum cluster channels required: {MIN_CLUSTER_CHANNELS} (1- and 2-channel clusters excluded)")

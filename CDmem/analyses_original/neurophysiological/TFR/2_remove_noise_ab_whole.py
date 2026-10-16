@@ -1,46 +1,60 @@
 """
-2b_remove_noise_alphabeta.py
-=============================
-Noise Removal Script for Stimulus-Locked Epochs (Alpha/Beta Analysis)
-----------------------------------------------------------------------
+2_remove_noise_ab_whole.py
+==========================
+Noise Removal for the Stimulus-Locked Time-Frequency Analysis
+-------------------------------------------------------------
 
 PURPOSE:
-    Removes ICA components (eye blinks, eye movements) and applies artifact
-    rejection to the stimulus-locked epochs created by 1b_import_raw_alphabeta.py.
+    Removes ICA components (eye blinks, eye movements, muscle) and applies
+    artifact rejection to the stimulus-locked epochs created by
+    1_import_raw_ab_whole.py. The cleaned epochs are the input of
+    3_TFR_calculation_SME_PO.py and 3_TFR_calculation_HL_MF.py.
 
-    This is the companion to 2_remove_noise.py, which cleans movement-onset epochs.
-    The workflow is identical — only the input/output paths differ.
+    Companion of 2_remove_noise.py (ERP pipeline, movement-onset epochs).
 
-WORKFLOW (two-pass):
-    Pass 1 — INSPECTION MODE:
-        Run the script with empty component_exclusions for a participant.
-        Inspection plots will appear (ICA topomaps, time courses, raw EEG).
-        Close the plots, decide which components to exclude, and fill in
-        the component_exclusions dictionary below.
+WORKFLOW (two passes):
+    Pass 1 - INSPECTION MODE:
+        For participants without an entry (or with an empty list) in
+        component_exclusions, the script shows inspection plots: ICA
+        topomaps (first 20 components), component time courses, and the
+        epochs before cleaning. Close the plots, decide which components to
+        exclude, and fill in component_exclusions below.
+        NOTE: the percentages in the topomap titles are computed from the
+        component time courses, which MNE scales to roughly equal variance,
+        so every component shows ~1/(number of components). They do NOT show
+        how much of the EEG a component explains (see README.md, section 3).
 
-    Pass 2 — CLEANING MODE:
-        Run the script again. Now it applies the exclusions automatically:
-        1. Removes the specified ICA components
-        2. Applies baseline correction (-200 ms to 0 ms)
-        3. Rejects epochs with amplitudes > ±100 µV
-        4. Interpolates bad channels (spherical spline)
-        5. Saves cleaned epochs to eeg3_clean_stimlocked/
+    Pass 2 - CLEANING MODE (participants with exclusions defined):
+        1. Removes the listed ICA components
+        2. Applies a voltage baseline correction (-200 to 0 ms)
+        3. Rejects epochs with amplitudes beyond +/-100 uV on any channel
+        4. Adds back the channels dropped in 1_import_raw_ab_whole.py and
+           interpolates them (spherical splines)
+        5. Saves the cleaned epochs and updates the exclusion-rate log
+
+COMPONENT SELECTION:
+    See README.md, section 3, for the criteria discussed (eye vs. muscle
+    components, keeping components with an alpha peak, checking the
+    spectrum before/after removal, consistency across participants).
 
 IMPORTANT:
-    The component exclusion decisions should be the SAME as in 2_remove_noise.py,
-    because the ICA decomposition captures the same types of artifacts
-    (blinks, eye movements) regardless of the epoching trigger. You can
-    typically copy the exclusions directly from 2_remove_noise.py.
+    The ICA used here is fitted on the stimulus-locked epochs in
+    1_import_raw_ab_whole.py, i.e. it is a SEPARATE decomposition from the
+    ERP pipeline's ICA (2_remove_noise.py). The same TYPES of components
+    (blinks, eye movements) are expected, but component NUMBERS are not
+    guaranteed to match: check the exclusions on this ICA's own plots rather
+    than copying indices from 2_remove_noise.py.
 
 INPUTS:
-    - Epoch files: eeg2_ica_stimlocked/CDmem_XXXX-epo.fif
-    - ICA files:   eeg2_ica_stimlocked/CDmem_XXXX-ica.fif
+    - Epochs:   main_data/eeg/TFR/eeg2_ica_stimlocked/CDmem_XXXX-epo.fif
+    - ICA:      main_data/eeg/TFR/eeg2_ica_stimlocked/CDmem_XXXX-ica.fif
+    - Montage:  CDmem/analyses_original/neurophysiological/CACS-64_REF_new.bvef
 
 OUTPUTS:
-    - Cleaned epochs: eeg3_clean_stimlocked/CDmem_XXXX-epo.fif
-    - Exclusion log:  eeg3_clean_stimlocked/exclusionrate.json
+    - Cleaned epochs: main_data/eeg/TFR/eeg3_clean_stimlocked/CDmem_XXXX-epo.fif
+    - Exclusion log:  main_data/eeg/TFR/eeg3_clean_stimlocked/exclusionrate.json
+      (per participant: % rejected epochs, excluded components, bad channels)
 """
-
 import os
 import json
 import numpy as np
@@ -55,14 +69,8 @@ from mne.preprocessing import read_ica
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) to process?
 # ──────────────────────────────────────────────────────────────
-# plist = [4,6,7,8,9,10,12,13,14,15,16,17,18,19,20,21,22,23,24]
-# plist = [15,17,19,20,21,22]
-
-
-
-
-plist = [23]
-
+plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+# plist = [8,10,14,15,17,19,20,23,25,30,34,36,37,38,39,40,41]
 # ──────────────────────────────────────────────────────────────
 # Component exclusions — fill these in AFTER inspecting the plots.
 # Keys are participant numbers (integers).
@@ -70,57 +78,54 @@ plist = [23]
 # Leave the list EMPTY ([]) if you haven't decided yet; the
 # script will then show the inspection plots.
 #
-# TIP: These are typically the SAME components as in 2_remove_noise.py,
-#      because blinks/eye movements look the same regardless of
-#      which trigger the epochs are locked to.
+# TIP: The same TYPES of components as in 2_remove_noise.py are
+#      expected (blinks/eye movements look the same regardless of the
+#      trigger), but this ICA is a separate decomposition, so the
+#      component NUMBERS can differ. Check them on this ICA's plots.
 # ──────────────────────────────────────────────────────────────
 component_exclusions = {
    
-    4: [0,1,3,9,11,14,15,17],
-    # # 5: [0,1,2,3],
-    6: [0,2,14],
-    7: [0,1,2],
-    8: [0,1,2],
-    9: [0,1,2],
-    10: [0,1,2,3],
-    12: [0,1],
-    13: [0,1],
-    14: [0,1,2,11],
-    15: [0,1,2,7,12],
-    16: [0,1],
+    4: [0,1,2,5,11,12,14,15,16],
+    6: [0,1,8,18],
+    7: [0,1,2,13,15,16,17],
+
+    8: [0,1,2,16],
+    9: [0,1,2,15],
+    10: [0,1,4],
+    12: [0,1,9,11,12,15,19],
+    13: [0,1,12,13,17,18],
+    14: [0,1,2,6,7,10,15,18,19],
+    15: [0,1,2,3],
+    16: [0,1,2],
     17: [0,1],
-    18: [0,1,2,4,5,8,16],
-    19: [0,1,2,3,8,11,12,14,15,16,18,19],
-    20: [0,1,2, 3,11,16,18,19],
-    21: [0,1,7,10,16],
-    22: [0,1],
-    23: [0,1,2, 8,9,12,15,16,17,18],
-    24: [0,1,2, 15,19],
-    25: [0,1,5,8,16,17],
-    26: [0,1,2,7,10],
-    27: [0,1],
-    29: [0,1,2,3,6],
-    30: [0,1,10,12,14],
-    31: [0,1,2,6,9,10],
-    32: [0,1,2,8,16,19],
-    33: [0,1,2,8,9,19],
-    34: [0,1,2,15,18],
-    35: [0,1,16,17],
+    18: [0,1,2,4,5,14,16],
+    19: [0,1,2,3,8,9,10,11,12,13,14,15,16,17,18,19],
+    20: [0,1,2,9,13,14,16,19],
+    21: [0,1,2,5,9,12,15],   
+    22: [0,1,3,8,18],
+    23: [0,1,6,8,9,15,18],
+    
+    25: [0,1,2,3,4,11,16,17,19],
+    
+    27: [0,1,9],
+    29: [0,1,2,3,4,7,8,17,18],
+    30: [0,1,10,11,18],
+    31: [0,1,2,6,7,8],
+    32: [0,1,2,11,15],
+    33: [0,1,2,11,17,19],
+    34: [0,1,13,16,19],
+    35: [0,1,15,17,19],
     36: [0,1,2,3],
-    37: [0,1,2,7],
-    38: [0,1,2,3,5,15],
-    39: [0,1,2,3,4,5,9,10,15,17],
-    40: [0,1,2,8,9,12,18],
-    41: [0,1,2,3,4,18,19],
-    42: [0,1,2,16,17,18],
-    43: [0,1,2,3,4],
-    44: [0,1,2,3,4,11,12],
-    45: [0,1,2,3,10,11,16],
-    46: [0,3,4,10,13,14,15,18,19],
-    47: [0,1,2,3,6,7,10,14,15,19],
-    48: [0,1,2,3,5,68,12,14,15,16,17,18,19],
-    49:[0,1,2,14,19],
-    50: [0,1,2,4,8,9,11,13,14,15,17,18]
+    37: [0,1,2,3,4,8],
+    38: [0,1,2,3,5,18,19],
+    39: [0,1,2,3,4,6,16],
+    40: [0,1,6,10,12,16,19],
+    41: [0,1,2,3,10,15,16,18],
+    42: [0,1,2,3,12],
+    44: [0,1,2,3,11,18],
+    48: [0,1,2,3,4,9,12,13,17,18],
+    49: [0,1,2,19],
+    50: [0,1,2,3,4,12,15,16,19]
     
 
 
@@ -128,29 +133,35 @@ component_exclusions = {
 }
 
 # ──────────────────────────────────────────────────────────────
-# Bad channels per participant (same as in 1b_import_raw_alphabeta.py)
+# Bad channels per participant (must be the same as in 1_import_raw_ab_whole.py)
 # These will be interpolated using spherical spline interpolation
 # after ICA cleaning.
 # ──────────────────────────────────────────────────────────────
 bad_channels = {
-    7: ['P2'],
-    8: ['F3'],
-    17: ['O1'],
+   7: ['P2'],
+    8: ['F3','F7'],
+    10: ['Fp2'],
+    14: ['Fp2'],
+    15: ['P3'],
+    17: ['O1','Iz'],
     18: ['Fp1','Fp2'],
-
-    19: ['P3', 'TP10', 'T8', 'CP6', 'T7'],
-    20: ['P3', 'T8','P1', 'Fz'],
+    19: ['P3', 'TP9', 'TP10', 'T8', 'CP6', 'T7'],
+    20: ['P3', 'T8','P1','Fz','Iz'],
     21: ['T8'],
     22: ['TP10'],
-    25: ['AF4'],
+    23: ['FT9'],
+    25: ['AF4','FP1', 'FP2'],
     27: ['C3'],
     29: ['AFz','T7'],
     31: ['Fp1','Fp2'],
     32: ['F2','FT8'],
-
-    34: ['AFz','F1'],
-    36: ['FT8'] ,
-    42: ['C5','FC2','FC6','TP7'],
+    34: ['AFz','F1','FT8'],
+    36: ['FT8','F6'],
+    38: ['O1'],
+    39: ['O1'],
+    40: ['O1'],
+    41: ['O1','AFz'],
+    42: ['C5','FC2','FC6', 'TP7'],
     43: ['C5'],
     46:['C5', 'TP7'],
     48: ['AFz','F1'],
@@ -167,12 +178,12 @@ bad_channels = {
 # ──────────────────────────────────────────────────────────────
 # Paths
 # ──────────────────────────────────────────────────────────────
-input_path  = r"H:\PHD\control_detection\main_data\eeg\eeg2_ica_stimlocked"
-output_path = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_stimlocked"
+input_path  = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg2_ica_stimlocked"
+output_path = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg3_clean_stimlocked"
 os.makedirs(output_path, exist_ok=True)
 
 # Montage file — needed for spherical spline interpolation of bad channels
-bvef_path = r"H:\PHD\control_detection\CDmem\analyses\neurophysiological\CACS-64_REF_new.bvef"
+bvef_path = r"H:\PHD\control_detection\CDmem\analyses_original\neurophysiological\CACS-64_REF_new.bvef"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PROCESSING LOOP
@@ -272,10 +283,10 @@ for sub in plist:
         # This removes any DC offset that varies across trials.
         # Applied after ICA (before artifact rejection).
         #
-        # Note: For the Hilbert analysis, we apply a SECOND baseline correction
-        # in the analysis script (3_hilbert_alphabeta.py) using -500 to -200 ms,
-        # specifically on the Hilbert envelope. This initial baseline correction
-        # here is on the raw voltage signal and is standard practice.
+        # Note: the time-frequency analysis applies a SECOND, separate baseline
+        # in 3_TFR_calculation_*.py (-500 to -200 ms, dB, per condition, on
+        # wavelet power). This initial baseline correction here is on the raw
+        # voltage signal and is standard practice.
         epochs_clean.apply_baseline(baseline=(-0.20, 0.0))
         print(f"  ✓ Baseline correction applied (−200 ms to 0 ms)")
 

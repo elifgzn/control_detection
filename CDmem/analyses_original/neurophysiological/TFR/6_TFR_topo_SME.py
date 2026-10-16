@@ -8,10 +8,14 @@ PURPOSE:
     Computes and plots grand-average whole-brain EEG topoplots during the full
     3-second stimulus presentation period (0.0 to 3.0 s) for canonical frequency
     bands:
-      - Theta (4 - 8 Hz)
+      - Theta (4 - 7 Hz; as in Cheng et al., 2023)
       - Alpha (8 - 12 Hz)
       - Beta (13 - 30 Hz)
-      - Gamma (30 - 60 Hz)
+    (Gamma was removed: the data are only calculated up to 30 Hz.)
+
+    Only participants that passed the 25-trial rule (checked again on the
+    trial counts stored in each file) are included, separately per analysis
+    file.
 
     Contrasts & Conditions plotted:
       1. Main Effect of Memory (All Items):
@@ -33,22 +37,63 @@ import mne
 # ══════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════
-input_path   = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked"
-eeg_path     = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_stimlocked"
-figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_stimlocked_topo_SME"
+input_path   = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg4_TFR_stimlocked"
+eeg_path     = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg3_clean_stimlocked"
+figures_path = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg5_figures_stimlocked_topo_SME"
 os.makedirs(figures_path, exist_ok=True)
 
 plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+
+# ── Minimum-trial rule (safety check) ─────────────────────────────────────────
+# The 25-trial rule is applied in the 3_TFR_calculation scripts: a participant
+# with fewer than MIN_TRIALS trials in any cell of an analysis gets no output
+# file for that analysis. As a second line of defence, every file loaded here
+# is checked again:
+#   - files without stored trial counts are from an OLD run (made before the
+#     rule existed) and are skipped -> rerun the 3_TFR_calculation script;
+#   - files where any cell has fewer than MIN_TRIALS trials are skipped.
+# Participants without a file at all are reported as "no file" (most often
+# because the calculation script excluded them).
+MIN_TRIALS = 25
+
+def passes_trial_rule(saved, sub_id, label, skipped):
+    """Return True if this file passes the minimum-trial rule.
+    Failures are recorded in skipped[label] as (participant, reason)."""
+    if 'cell_n_trials' not in saved:
+        skipped.setdefault(label, []).append((int(sub_id), "old file without trial counts"))
+        return False
+    names = [str(c) for c in saved['cell_names']]
+    counts = [int(n) for n in saved['cell_n_trials']]
+    low = [f"{c}={n}" for c, n in zip(names, counts) if n < MIN_TRIALS]
+    if low:
+        skipped.setdefault(label, []).append((int(sub_id), ", ".join(low)))
+        return False
+    return True
+
+def participant_lines(label, used_subs, skipped):
+    """Text lines listing the included / skipped participants of one analysis."""
+    used = sorted(int(s) for s in used_subs)
+    no_file = [s for s in plist if s not in used
+               and s not in [p for p, _ in skipped.get(label, [])]]
+    lines = [f"[{label}] Included participants (N={len(used)}): {used}"]
+    for p, reason in sorted(skipped.get(label, [])):
+        lines.append(f"[{label}]   skipped px {p}: {reason}")
+    if no_file:
+        lines.append(f"[{label}]   no file (excluded by the {MIN_TRIALS}-trial rule "
+                     f"in 3_TFR_calculation, or missing data): {no_file}")
+    return lines
+
+trial_rule_skipped = {}   # label -> list of (participant, reason)
 
 # Analysis Window
 TOPO_TIME = (0.0, 3.0)  # Full 3-second active period
 
 # Canonical Frequency Bands
 BANDS = {
-    'Theta': (4.0, 8.0),
+    'Theta': (4.0, 7.0),   # 4-7 Hz (as in Cheng et al., 2023)
     'Alpha': (8.0, 12.0),
     'Beta':  (13.0, 30.0),
-    'Gamma': (30.0, 60.0)
+    # 'Gamma': (30.0, 60.0)   # removed: data only go up to 30 Hz
 }
 
 # Colorbar limits (dB)
@@ -98,6 +143,7 @@ for key, suffix in main_effect_configs.items():
     print(f"Loading Main Effect ({key})...")
     sub_rec_list = []
     sub_not_list = []
+    used_subs    = []   # participant numbers that end up in these topoplots
     
     for sub in plist:
         sub_id = f"{sub:04d}"
@@ -106,6 +152,11 @@ for key, suffix in main_effect_configs.items():
             continue
         
         saved = np.load(file_path, allow_pickle=True)
+
+        # Minimum-trial rule safety check (see MIN_TRIALS above)
+        if not passes_trial_rule(saved, sub_id, f"Main Effect - {key}", trial_rule_skipped):
+            continue
+
         if times is None:
             times = saved['times']
             freqs = saved['freqs']
@@ -116,6 +167,7 @@ for key, suffix in main_effect_configs.items():
             not_aligned = align_channels(saved['not_recalled'], chs, canonical_ch_names)
             sub_rec_list.append(rec_aligned)
             sub_not_list.append(not_aligned)
+            used_subs.append(sub)
             
     if sub_rec_list:
         data_main_effects[key] = {
@@ -124,10 +176,12 @@ for key, suffix in main_effect_configs.items():
             'n_subs': len(sub_rec_list)
         }
         print(f"  ✓ {key}: loaded {len(sub_rec_list)} subjects")
+    print("\n".join("  " + l for l in participant_lines(f"Main Effect - {key}", used_subs, trial_rule_skipped)))
 
 # --- B. 4-cell AllItems file ---
 print("Loading 4-cell condition averages (All Items)...")
 sub_4cell = {'low_recalled': [], 'low_not_recalled': [], 'high_recalled': [], 'high_not_recalled': []}
+used_subs_4cell = []   # participant numbers that end up in the 4-cell topoplots
 
 for sub in plist:
     sub_id = f"{sub:04d}"
@@ -135,15 +189,22 @@ for sub in plist:
     if not os.path.exists(file_path):
         continue
     saved = np.load(file_path, allow_pickle=True)
+
+    # Minimum-trial rule safety check (see MIN_TRIALS above)
+    if not passes_trial_rule(saved, sub_id, "4-cell AllItems", trial_rule_skipped):
+        continue
+
     chs = saved['ch_names'].tolist()
     
     if all(c in saved for c in sub_4cell.keys()):
         for c in sub_4cell.keys():
             aligned = align_channels(saved[c], chs, canonical_ch_names)
             sub_4cell[c].append(aligned)
+        used_subs_4cell.append(sub)
 
 n_4cell = len(sub_4cell['low_recalled'])
 print(f"  ✓ 4-cell AllItems: loaded {n_4cell} subjects")
+print("\n".join("  " + l for l in participant_lines("4-cell AllItems", used_subs_4cell, trial_rule_skipped)))
 for c in sub_4cell.keys():
     sub_4cell[c] = np.array(sub_4cell[c])
 
@@ -168,7 +229,7 @@ def plot_single_topomap(data_vector, title, filename, vlim, cmap='RdBu_r'):
     print(f"  Saved: {filename}")
 
 def plot_multi_band_panel(band_data_dict, title_prefix, filename_prefix, vlim, cmap='RdBu_r'):
-    fig, axes = plt.subplots(1, 4, figsize=(20, 5))
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))   # one panel per band (Theta, Alpha, Beta)
     im = None
     for idx, (band_name, data_vec) in enumerate(band_data_dict.items()):
         ax = axes[idx]
@@ -187,7 +248,7 @@ def plot_multi_band_panel(band_data_dict, title_prefix, filename_prefix, vlim, c
     out_file = os.path.join(figures_path, f"{filename_prefix}_all_bands.png")
     fig.savefig(out_file, dpi=300)
     plt.close(fig)
-    print(f"  ✓ Saved 4-band panel: {filename_prefix}_all_bands.png")
+    print(f"  ✓ Saved 3-band panel: {filename_prefix}_all_bands.png")
 
 # ══════════════════════════════════════════════════════════════════
 # 4. GENERATE TOPOPLOTS FOR EACH CONTRAST AND BAND

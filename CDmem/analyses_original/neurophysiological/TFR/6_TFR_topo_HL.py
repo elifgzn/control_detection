@@ -8,11 +8,14 @@ PURPOSE:
     Computes and plots grand-average whole-brain EEG topoplots during the full
     3-second stimulus presentation period (0.0 to 3.0 s) for canonical frequency
     bands:
-      - Theta (4 - 8 Hz)
+      - Theta (4 - 7 Hz; as in Cheng et al., 2023)
       - Alpha (8 - 12 Hz)
       - Beta (13 - 30 Hz)
-      - Gamma (30 - 60 Hz)
-      - (Also includes the significant cluster band: 28 - 40 Hz)
+    (Gamma and the 28-40 Hz cluster band were removed: the data are only
+     calculated up to 30 Hz.)
+
+    Only participants that passed the 25-trial rule (checked again on the
+    trial counts stored in each file) are included.
 
     Contrasts & Conditions plotted:
       - High Control (all trials)
@@ -29,23 +32,64 @@ import mne
 # ══════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════
-input_path   = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked_HL_MF"
-eeg_path     = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_stimlocked"
-figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_stimlocked_topo_HL"
+input_path   = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg4_TFR_stimlocked_HL_MF"
+eeg_path     = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg3_clean_stimlocked"
+figures_path = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg5_figures_stimlocked_topo_HL"
 os.makedirs(figures_path, exist_ok=True)
 
 plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+
+# ── Minimum-trial rule (safety check) ─────────────────────────────────────────
+# The 25-trial rule is applied in the 3_TFR_calculation scripts: a participant
+# with fewer than MIN_TRIALS trials in any cell of an analysis gets no output
+# file for that analysis. As a second line of defence, every file loaded here
+# is checked again:
+#   - files without stored trial counts are from an OLD run (made before the
+#     rule existed) and are skipped -> rerun the 3_TFR_calculation script;
+#   - files where any cell has fewer than MIN_TRIALS trials are skipped.
+# Participants without a file at all are reported as "no file" (most often
+# because the calculation script excluded them).
+MIN_TRIALS = 25
+
+def passes_trial_rule(saved, sub_id, label, skipped):
+    """Return True if this file passes the minimum-trial rule.
+    Failures are recorded in skipped[label] as (participant, reason)."""
+    if 'cell_n_trials' not in saved:
+        skipped.setdefault(label, []).append((int(sub_id), "old file without trial counts"))
+        return False
+    names = [str(c) for c in saved['cell_names']]
+    counts = [int(n) for n in saved['cell_n_trials']]
+    low = [f"{c}={n}" for c, n in zip(names, counts) if n < MIN_TRIALS]
+    if low:
+        skipped.setdefault(label, []).append((int(sub_id), ", ".join(low)))
+        return False
+    return True
+
+def participant_lines(label, used_subs, skipped):
+    """Text lines listing the included / skipped participants of one analysis."""
+    used = sorted(int(s) for s in used_subs)
+    no_file = [s for s in plist if s not in used
+               and s not in [p for p, _ in skipped.get(label, [])]]
+    lines = [f"[{label}] Included participants (N={len(used)}): {used}"]
+    for p, reason in sorted(skipped.get(label, [])):
+        lines.append(f"[{label}]   skipped px {p}: {reason}")
+    if no_file:
+        lines.append(f"[{label}]   no file (excluded by the {MIN_TRIALS}-trial rule "
+                     f"in 3_TFR_calculation, or missing data): {no_file}")
+    return lines
+
+trial_rule_skipped = {}   # label -> list of (participant, reason)
 
 # Analysis Window
 TOPO_TIME = (0.0, 3.0)  # Full 3-second active tracking period
 
 # Canonical Frequency Bands (+ Cluster band)
 BANDS = {
-    'Theta': (4.0, 8.0),
+    'Theta': (4.0, 7.0),   # 4-7 Hz (as in Cheng et al., 2023)
     'Alpha': (8.0, 12.0),
     'Beta':  (13.0, 30.0),
-    'Gamma': (30.0, 60.0),
-    'HighBeta_Gamma_Cluster': (28.0, 40.0)
+    # 'Gamma': (30.0, 60.0),                    # removed: data only go up to 30 Hz
+    # 'HighBeta_Gamma_Cluster': (28.0, 40.0)    # removed: data only go up to 30 Hz
 }
 
 # Colorbar limits (dB)
@@ -84,6 +128,7 @@ def align_channels(sub_data, sub_ch_names, canonical_ch_names):
 print("Loading Main Effect of Control data across participants...")
 sub_high_list = []
 sub_low_list  = []
+used_subs     = []   # participant numbers that end up in the topoplots
 times, freqs = None, None
 
 for sub in plist:
@@ -93,6 +138,11 @@ for sub in plist:
         continue
         
     saved = np.load(file_path, allow_pickle=True)
+
+    # Minimum-trial rule safety check (see MIN_TRIALS above)
+    if not passes_trial_rule(saved, sub_id, "Main Effect - Control", trial_rule_skipped):
+        continue
+
     if times is None:
         times = saved['times']
         freqs = saved['freqs']
@@ -103,9 +153,11 @@ for sub in plist:
         low_aligned  = align_channels(saved['low_control'], chs, canonical_ch_names)
         sub_high_list.append(high_aligned)
         sub_low_list.append(low_aligned)
+        used_subs.append(sub)
 
 n_subs = len(sub_high_list)
 print(f"  ✓ Loaded {n_subs} complete subjects")
+print("\n".join("  " + l for l in participant_lines("Main Effect - Control", used_subs, trial_rule_skipped)))
 
 if n_subs < 2:
     print("Not enough subjects to plot topomaps. Exiting.")
@@ -141,8 +193,8 @@ def plot_single_topomap(data_vector, title, filename, vlim, cmap='RdBu_r'):
     print(f"  Saved: {filename}")
 
 def plot_multi_band_panel(band_data_dict, title_prefix, filename_prefix, vlim, cmap='RdBu_r'):
-    fig, axes = plt.subplots(1, 4, figsize=(20, 5))
-    canonical_keys = ['Theta', 'Alpha', 'Beta', 'Gamma']
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))   # one panel per band (Theta, Alpha, Beta)
+    canonical_keys = ['Theta', 'Alpha', 'Beta']
     im = None
     for idx, band_name in enumerate(canonical_keys):
         ax = axes[idx]
@@ -162,7 +214,7 @@ def plot_multi_band_panel(band_data_dict, title_prefix, filename_prefix, vlim, c
     out_file = os.path.join(figures_path, f"{filename_prefix}_all_bands.png")
     fig.savefig(out_file, dpi=300)
     plt.close(fig)
-    print(f"  ✓ Saved 4-band panel: {filename_prefix}_all_bands.png")
+    print(f"  ✓ Saved 3-band panel: {filename_prefix}_all_bands.png")
 
 # ══════════════════════════════════════════════════════════════════
 # 4. GENERATE TOPOPLOTS FOR EACH BAND

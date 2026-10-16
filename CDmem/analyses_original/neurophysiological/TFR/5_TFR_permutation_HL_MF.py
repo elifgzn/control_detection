@@ -7,7 +7,14 @@ Main Effect of Control (High vs Low) TFR Permutation & Stat Maps (ROI-based)
 PURPOSE:
     Loads condition-averaged TFR data for the Main Effect of Control
     (High Control vs. Low Control, computed across all trials in 3_TFR_calculation_HL_MF.py)
-    and runs a 2D cluster-based permutation test (Frequency x Time).
+    and runs a 2D cluster-based permutation test (Frequency x Time) over
+    2-30 Hz and 0-3 s, on power averaged over posterior ROI channels (P*/O*).
+    Also runs the test separately for participants who started with the high-
+    vs. low-control block, and compares the two subgroups.
+
+    Only participants that passed the 25-trial rule (checked again on the
+    trial counts stored in each file) are included; included / skipped
+    participant numbers are printed and written to the reports.
 
     Generates standalone figures for:
       1. Condition Grand-Average TFRs (High Control, Low Control)
@@ -26,12 +33,53 @@ from scipy.stats import t as t_dist
 # ══════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════
-input_path   = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked_HL_MF"
-eeg_path     = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_stimlocked"
-figures_path = r"H:\PHD\control_detection\main_data\eeg\eeg5_figures_stimlocked_HL_PO"
+input_path   = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg4_TFR_stimlocked_HL_MF"
+eeg_path     = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg3_clean_stimlocked"
+figures_path = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg5_figures_stimlocked_HL_PO"
 os.makedirs(figures_path, exist_ok=True)
 
 plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+
+# ── Minimum-trial rule (safety check) ─────────────────────────────────────────
+# The 25-trial rule is applied in the 3_TFR_calculation scripts: a participant
+# with fewer than MIN_TRIALS trials in any cell of an analysis gets no output
+# file for that analysis. As a second line of defence, every file loaded here
+# is checked again:
+#   - files without stored trial counts are from an OLD run (made before the
+#     rule existed) and are skipped -> rerun the 3_TFR_calculation script;
+#   - files where any cell has fewer than MIN_TRIALS trials are skipped.
+# Participants without a file at all are reported as "no file" (most often
+# because the calculation script excluded them).
+MIN_TRIALS = 25
+
+def passes_trial_rule(saved, sub_id, label, skipped):
+    """Return True if this file passes the minimum-trial rule.
+    Failures are recorded in skipped[label] as (participant, reason)."""
+    if 'cell_n_trials' not in saved:
+        skipped.setdefault(label, []).append((int(sub_id), "old file without trial counts"))
+        return False
+    names = [str(c) for c in saved['cell_names']]
+    counts = [int(n) for n in saved['cell_n_trials']]
+    low = [f"{c}={n}" for c, n in zip(names, counts) if n < MIN_TRIALS]
+    if low:
+        skipped.setdefault(label, []).append((int(sub_id), ", ".join(low)))
+        return False
+    return True
+
+def participant_lines(label, used_subs, skipped):
+    """Text lines listing the included / skipped participants of one analysis."""
+    used = sorted(int(s) for s in used_subs)
+    no_file = [s for s in plist if s not in used
+               and s not in [p for p, _ in skipped.get(label, [])]]
+    lines = [f"[{label}] Included participants (N={len(used)}): {used}"]
+    for p, reason in sorted(skipped.get(label, [])):
+        lines.append(f"[{label}]   skipped px {p}: {reason}")
+    if no_file:
+        lines.append(f"[{label}]   no file (excluded by the {MIN_TRIALS}-trial rule "
+                     f"in 3_TFR_calculation, or missing data): {no_file}")
+    return lines
+
+trial_rule_skipped = {}   # label -> list of (participant, reason)
 
 # Load canonical sensor layout for whole-brain topoplots
 ref_sub = 4
@@ -64,19 +112,16 @@ CLUSTER_ALPHA = 0.05
 TEST_TIME = (0.0, 3.0)
 
 
+# Frequency range for the cluster test and for the plots: the full calculated
+# range, 2-30 Hz (theta, alpha, beta). Alternatives kept for reference:
 # # Theta
 # TEST_FREQ = (4.0, 8.0)
-
-# directly following maren
-TEST_FREQ = (2.0, 20.0)
-
-# # Broadband
-TEST_FREQ = (2.0, 40.0)
-
+# # directly following maren
+# TEST_FREQ = (2.0, 20.0)
 # #alpha / beta
 # TEST_FREQ = (8.0, 30.0)
-
-PLOT_FREQ = (2.0, 40.0)
+TEST_FREQ = (2.0, 30.0)
+PLOT_FREQ = (2.0, 30.0)
 
 # Colorbar limits
 POWER_LIMITS = (-1.5, 1.5)  # dB limits for spectrograms
@@ -99,6 +144,10 @@ for sub in plist:
         continue
 
     saved = np.load(data_file, allow_pickle=True)
+
+    # Minimum-trial rule safety check (see MIN_TRIALS above)
+    if not passes_trial_rule(saved, sub_id, "Main Effect - Control", trial_rule_skipped):
+        continue
 
     if sub_id not in subject_ch_names and 'ch_names' in saved:
         subject_ch_names[sub_id] = saved['ch_names'].tolist()
@@ -123,6 +172,7 @@ for sub in plist:
 # Determine valid subjects
 valid_subs = [sub for sub in subject_data if all(c in subject_data[sub] for c in conditions)]
 print(f"[Main Effect - Control] Found {len(valid_subs)} subjects with both conditions")
+print("\n".join("" + l for l in participant_lines("Main Effect - Control", valid_subs, trial_rule_skipped)))
 
 if len(valid_subs) < 2:
     print("Not enough complete subjects to run contrasts. Exiting.")
@@ -215,6 +265,9 @@ report_lines.append("MAIN EFFECT OF CONTROL (HIGH VS LOW) TFR PERMUTATION TEST R
 report_lines.append("=" * 70)
 report_lines.append(f"Number of permutations: {N_PERMUTATIONS}")
 report_lines.append(f"N subjects: {len(valid_subs)}")
+# Participant list (minimum-trial rule)
+report_lines.append(f"Minimum-trial rule: at least {MIN_TRIALS} trials in every cell")
+report_lines.extend(participant_lines("Main Effect - Control", valid_subs, trial_rule_skipped))
 report_lines.append(f"Time window: {TEST_TIME[0]} - {TEST_TIME[1]} s")
 report_lines.append(f"Test Frequency window: {TEST_FREQ[0]} - {TEST_FREQ[1]} Hz")
 report_lines.append(f"ROI channels: {roi_channels}")

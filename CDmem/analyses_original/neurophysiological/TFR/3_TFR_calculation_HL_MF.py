@@ -1,17 +1,51 @@
 """
 3_TFR_calculation_HL_MF.py
 ==========================
-Main Effect of Control (High vs Low) TFR Calculation & Baseline Correction
---------------------------------------------------------------------------
+Time-Frequency Calculation for the Main Effect of Control (High vs Low), 2-30 Hz
+-------------------------------------------------------------------------------
 
 PURPOSE:
-    Computes Time-Frequency Representation (TFR) via Morlet wavelets across
-    ALL trials for High Control vs. Low Control (regardless of subsequent memory).
-    Balances trials between High and Low control (100 iterations), applies decibel
-    baseline correction, and saves per-participant condition averages to:
+    For each participant: applies a surface Laplacian, computes single-trial
+    time-frequency power with Morlet wavelets (2-30 Hz: theta, alpha, beta) for
+    ALL trials, compares High Control vs. Low Control (regardless of
+    subsequent memory), balances trial counts, applies dB baseline correction
+    per condition, and saves the condition averages to:
         CDmem_XXXX_TFR_MainEffect_Control.npz
-"""
 
+PIPELINE (per participant):
+    1. Load cleaned stimulus-locked epochs (output of 2_remove_noise_ab_whole.py;
+       -2.5 to 5.5 s, 250 Hz, 1-40 Hz filtered, average reference, ICA-cleaned).
+    2. Surface Laplacian / current source density (MNE spherical splines,
+       Perrin et al., 1989; MNE defaults: m = 4, lambda = 1e-5).
+    3. Load behavioural data and align it to the surviving epochs
+       (epochs.selection). Trigger check: S 11 = low control, S 13 = high control.
+    4. Minimum-trial rule: the participant is excluded if High or Low Control
+       has fewer than 25 trials. An old output file is deleted.
+    5. Morlet wavelet power for every trial (power only, no phase):
+         - 2-30 Hz in 1 Hz steps
+         - cycles = max(0.5 x f, 3): fixed time window from 6 Hz up
+           (Wu-like), at least 3 cycles at 2-5 Hz (Cheng et al., 2023)
+         - output downsampled to 25 Hz (40 ms steps)
+    6. Trial balancing: the larger condition is randomly subsampled to the size
+       of the smaller one, 100 times, and the subsample averages are averaged
+       (random generator seeded from (RANDOM_SEED = 2026, participant number),
+       so results are identical on every run).
+    7. Baseline correction in dB, SEPARATELY FOR EACH CONDITION:
+           10 * log10(condition_power / mean condition_power in -500 to -200 ms)
+       per channel and frequency (per-condition baseline, following Wu et al.).
+       Any pre-stimulus power difference between High and Low Control
+       (e.g. block-level state differences) is therefore removed from the
+       contrast.
+
+OUTPUT:
+    - Per participant: .npz with high_control / low_control dB arrays
+      (channels x 29 frequencies x time points), channel names, times, freqs,
+      posterior ROI channels (P*/O*), raw trial counts per cell, balanced
+      trial count, and the minimum-trial rule used.
+    - trial_counts_HL.csv (all participants x cells, included yes/no).
+    - At the end of the run: trial-count summary and a trigger-check summary
+      listing every participant with an EEG/behaviour trigger mismatch.
+"""
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
 import os
@@ -23,19 +57,134 @@ from mne.time_frequency import tfr_morlet
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════════════════
-eeg_path        = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean_stimlocked"
+eeg_path        = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg3_clean_stimlocked"
 behavioral_path = r"H:\PHD\control_detection\main_data\behavioral"
-output_path     = r"H:\PHD\control_detection\main_data\eeg\eeg4_TFR_stimlocked_HL_MF"
+output_path     = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg4_TFR_stimlocked_HL_MF"
 
 os.makedirs(output_path, exist_ok=True)
 
-# TFR Parameters
-FREQS = np.arange(2, 41, 1)  # 2 to 60 Hz broadband (includes Gamma up to 60 Hz)
-N_CYCLES = FREQS * 0.5       # 0.5s effective window
-DECIM = 10                   # Downsample TFR to 25 Hz
-BASELINE = (-0.5, -0.2)      # Baseline window (-500 to -200 ms)
+# ──────────────────────────────────────────────────────────────────────────────
+# TFR PARAMETERS — SETTINGS AND REASONING
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# (1) FREQUENCY RANGE: 2-30 Hz in 1 Hz steps (29 frequencies)
+#     - Covers the three bands of interest: theta (~4-7 Hz), alpha (~8-12 Hz)
+#       and beta (~13-30 Hz).
+#     - 2-30 Hz follows Wu et al. (2025), whose main interest was alpha/beta.
+#       Cheng et al. (2023) analysed theta (4-7 Hz; their main focus) and also
+#       reported alpha (8-12 Hz), low beta (13-17 Hz) and high beta (18-30 Hz)
+#       effects, all of which fall inside this range.
+#     - Nothing above 30 Hz is calculated (earlier versions went up to 40/60 Hz).
+#     - Steps: Wu et al. used 2 Hz steps, which corresponds to the frequency
+#       resolution of a 0.5 s window (1 / 0.5 s = 2 Hz). We use 1 Hz steps.
+#       Neighbouring 1 Hz bins overlap (see frequency smoothing below); this
+#       is harmless and only gives a smoother frequency axis.
+#
+# (2) NUMBER OF WAVELET CYCLES: max(0.5 x f, 3)
+#     Background (Cohen, 2014, ch. 12-13): the number of cycles of a Morlet
+#     wavelet sets the trade-off between time and frequency precision. In MNE,
+#     sigma_t = n_cycles / (2*pi*f) and sigma_f = f / n_cycles; FWHM = 2.355 x sigma.
+#     More cycles -> sharper in frequency, blurrier in time, and vice versa.
+#     Wavelets with fewer than ~3 cycles are no longer well-defined oscillations
+#     and give poor frequency specificity (Cohen, 2014).
+#
+#     (a) 6-30 Hz: 0.5 x f cycles (3 to 15 cycles)
+#         - With n_cycles proportional to f, the time window is the SAME at
+#           every frequency: time FWHM ~0.19 s, frequency FWHM ~4.7 Hz
+#           (e.g. 10 Hz is smoothed over ~7.6-12.4 Hz, 20 Hz over ~17.6-22.4 Hz).
+#         - This follows the fixed-time-window approach of Wu et al. (2025),
+#           who used a 0.5 s time window at all frequencies (FieldTrip-style),
+#           which suits alpha/beta, the main focus of this analysis.
+#         - NOTE: this is a Morlet approximation of that approach, NOT an exact
+#           0.5 s window. A 0.5 s Hanning window has a time FWHM of ~0.25 s and
+#           a frequency FWHM of ~2.9 Hz, so our estimates are somewhat finer in
+#           time and broader in frequency than Wu et al.'s.
+#
+#     (b) 2-5 Hz: raised to a minimum of 3 cycles
+#         - 0.5 x f alone would give only 1, 1.5, 2 and 2.5 cycles at 2, 3, 4
+#           and 5 Hz. At 4 Hz this would smooth over ~1.6-6.4 Hz, i.e. well
+#           into delta, so the lower half of theta would be poorly estimated.
+#           (A 0.5 s window, as in Wu et al., has the same limitation; it
+#           mattered less there because theta was not their focus.)
+#         - Because theta is also a band of interest here, these frequencies
+#           use 3 cycles, the setting used by Cheng et al. (2023) for theta
+#           (Morlet wavelets with 3 cycles, 1-40 Hz; following Cohen, 2014).
+#           With 3 cycles: 4 Hz is smoothed over ~2.4-5.6 Hz (time FWHM
+#           ~0.28 s), 5 Hz over ~3.0-7.0 Hz (time FWHM ~0.22 s).
+#         - This gives the same NUMBER of cycles as Cheng et al. at 2-5 Hz. It
+#           is not necessarily an identical wavelet: toolboxes (MNE, FieldTrip,
+#           EEGLAB) differ slightly in how the wavelet is defined and truncated.
+#         - At 6 Hz both rules give 3 cycles, so 6-30 Hz is unchanged by the
+#           minimum, and alpha/beta keep the Wu-like fixed window.
+#
+#     (c) Alternatives considered (not used)
+#         - Fixed 3 cycles at all frequencies (exactly as Cheng et al., 2023):
+#           rejected because alpha/beta would be strongly smeared in frequency
+#           (10 Hz over ~6-14 Hz, 20 Hz over ~12-28 Hz), which is a poor fit
+#           for alpha/beta as the main interest.
+#         - Cycles rising linearly from 3 (2 Hz) to 8 (20 Hz), as in the
+#           original FieldTrip pipeline (A2_3_freqCalc_feedback.m; a common
+#           approach, Cohen, 2014): slightly sharper theta, practically
+#           identical alpha, slightly broader beta. A valid alternative; not
+#           chosen in order to keep the Wu-like fixed time window for alpha/beta.
+#         - 0.67 x f cycles (closer to the time smoothing of a 0.5 s Hanning
+#           window): not chosen.
+#
+#     (d) Caveats for interpretation
+#         - Theta and low alpha overlap in frequency (e.g. 7 Hz is smoothed
+#           over ~4.6-9.4 Hz), so theta effects should be described as
+#           "around 4-7 Hz", not as a sharply separated band.
+#         - At 2-3 Hz the 3-cycle wavelet is long (time FWHM ~0.37-0.56 s), so
+#           power at the end of the baseline window (-0.2 s) already contains
+#           some post-stimulus activity. Effects below ~4 Hz should be
+#           interpreted with caution.
+#         - Power is total power (evoked + induced). Shortly after stimulus
+#           onset, theta in particular can be partly driven by the ERP.
+#
+# (3) TIME RESOLUTION OF THE OUTPUT: DECIM = 10
+#     Every 10th sample is kept: 250 Hz -> 25 Hz (40 ms steps). Power changes
+#     slowly at the time scales above (time FWHM >= ~0.19 s), so nothing is
+#     lost; it only saves memory and disk space. (Cheng et al., 2023, used
+#     50 ms bins.)
+#
+# (4) BASELINE: -500 to -200 ms, dB, separately for each condition
+#     10 * log10(power / mean baseline power), per channel and frequency,
+#     computed for each condition's own average (following Wu et al., 2025).
+#     Consequence: pre-stimulus power differences between conditions are
+#     removed from the contrast. Alternatives: one shared ("grand") baseline
+#     over all trials (original FieldTrip pipeline, A2_3_freqCalc_feedback.m),
+#     or no frequency-domain baseline (Cheng et al., 2023, who compared raw
+#     power between conditions); both keep pre-stimulus differences visible.
+#
+# REFERENCES
+#   Cheng, S., Ding, Z., Chen, C., Sun, W., Jiang, T., Liu, X., & Zhang, M.
+#     (2023). The effect of choice on memory: The role of theta oscillations.
+#     Psychophysiology, 60(12), e14390. https://doi.org/10.1111/psyp.14390
+#   Cohen, M. X. (2014). Analyzing neural time series data: Theory and
+#     practice. MIT Press. https://doi.org/10.7551/mitpress/9609.001.0001
+#   Wu et al. (2025). [TODO: add full reference]
+# ──────────────────────────────────────────────────────────────────────────────
+FREQS = np.arange(2, 31, 1)            # 2 to 30 Hz in 1 Hz steps (29 frequencies): theta, alpha and beta; see (1)
+N_CYCLES = np.maximum(FREQS * 0.5, 3)  # 0.5 x f cycles (Wu-like fixed window), but at least 3 cycles (as in Cheng et al., 2023); see (2)
+DECIM = 10                             # Keep every 10th sample: 250 Hz -> 25 Hz (40 ms steps); see (3)
+BASELINE = (-0.5, -0.2)                # Baseline window (-500 to -200 ms), applied per condition; see (4)
 
 plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+
+# ── Minimum-trial rule ────────────────────────────────────────────────────────
+# A participant is EXCLUDED from this analysis if either cell (High Control or
+# Low Control) has fewer than MIN_TRIALS clean trials. The count is taken
+# BEFORE trial balancing.
+MIN_TRIALS = 25
+
+# ── Random seed for trial balancing ───────────────────────────────────────────
+# Trial balancing draws random subsamples. To make results IDENTICAL on every
+# run of this script, each random generator is seeded from fixed numbers:
+#   (RANDOM_SEED, participant number)
+# Because every participant gets its own seed, its random draws do not depend on
+# which other participants were processed before it (e.g. when a
+# participant is added, removed or excluded by the 25-trial rule).
+RANDOM_SEED = 2026
 
 # ══════════════════════════════════════════════════════════════════════════════
 # HELPER FUNCTIONS
@@ -124,7 +273,12 @@ print("=" * 70)
 print("  MAIN EFFECT OF CONTROL: TFR COMPUTATION & BASELINE CORRECTION")
 print("=" * 70)
 
-rng = np.random.default_rng(2026)
+# One row per participant x cell (trial counts, included yes/no).
+# Printed as a summary and saved as a CSV at the end of the script.
+count_rows = []
+
+# Collects trigger problems as (participant, message); printed at the very end.
+trigger_problems = []
 
 for sub in plist:
     sub_id = f"{sub:04d}"
@@ -154,12 +308,17 @@ for sub in plist:
     log_triggers  = trial_info['trigger_stim_onset'].values
 
     if len(eeg_triggers) != len(log_triggers):
-        print(f"  ERROR: EEG epoch count ({len(eeg_triggers)}) ≠ behavioral rows ({len(log_triggers)}).")
+        msg = f"EEG epoch count ({len(eeg_triggers)}) ≠ behavioral rows ({len(log_triggers)})."
+        print(f"  ERROR: {msg}")
+        trigger_problems.append((sub, msg))
     else:
         mismatch_found = False
         for i in range(len(eeg_triggers)):
             if eeg_triggers[i] != log_triggers[i]:
-                print(f"  ERROR: Trigger mismatch at trial index {i}")
+                msg = (f"Trigger mismatch at trial index {i}: "
+                       f"EEG={eeg_triggers[i]}, Log={log_triggers[i]}")
+                print(f"  ERROR: {msg}")
+                trigger_problems.append((sub, msg))
                 mismatch_found = True
                 break
         if not mismatch_found:
@@ -171,11 +330,21 @@ for sub in plist:
     mask_high = (cond_arr == 'high')
     mask_low  = (cond_arr == 'low')
     
-    n_high, n_low = mask_high.sum(), mask_low.sum()
+    n_high, n_low = int(mask_high.sum()), int(mask_low.sum())
     print(f"  Trial counts: High Control={n_high}, Low Control={n_low}")
-    
-    if n_high < 2 or n_low < 2:
-        print(f"  Warning: Not enough trials for High/Low control in participant {sub}. Skipping.")
+
+    # ── Minimum-trial rule (MIN_TRIALS) ──────────────────────────────────────
+    included = (n_high >= MIN_TRIALS) and (n_low >= MIN_TRIALS)
+    count_rows.append({'participant': sub, 'cell': 'high_control', 'n_trials': n_high, 'included': included})
+    count_rows.append({'participant': sub, 'cell': 'low_control',  'n_trials': n_low,  'included': included})
+
+    if not included:
+        print(f"  EXCLUDED: fewer than {MIN_TRIALS} trials in at least one cell.")
+        # A file saved by an older run would let the later scripts include
+        # this participant anyway, so delete it.
+        if os.path.exists(out_file):
+            os.remove(out_file)
+            print(f"  Removed old file from a previous run: {os.path.basename(out_file)}")
         continue
 
     # 3. Compute TFR (Morlet Wavelets) for all trials
@@ -196,6 +365,8 @@ for sub in plist:
     power_high = tfr.data[mask_high]
     power_low  = tfr.data[mask_low]
     
+    # Fixed seed for this participant (see RANDOM_SEED above)
+    rng = np.random.default_rng([RANDOM_SEED, sub])
     avg_high, avg_low, n_min = balance_trials(power_high, power_low, n_iterations=100, rng=rng)
     
     db_high = baseline_correct_db(avg_high, tfr.times, BASELINE)
@@ -204,6 +375,8 @@ for sub in plist:
     roi_channels = [ch for ch in tfr.ch_names if ch.startswith(('P', 'O'))]
     
     # 5. Save Data
+    # Also stores the trial counts (raw per cell + balanced) and the rule used;
+    # the later scripts (5_, 6_) use cell_n_trials as a safety check.
     np.savez(
         out_file,
         ch_names=tfr.ch_names,
@@ -211,9 +384,54 @@ for sub in plist:
         freqs=FREQS,
         roi_channels=roi_channels,
         high_control=db_high,
-        low_control=db_low
+        low_control=db_low,
+        cell_names=np.array(['high_control', 'low_control']),
+        cell_n_trials=np.array([n_high, n_low]),
+        n_balanced=np.array([n_min]),
+        min_trials=MIN_TRIALS
     )
     print(f"  ✓ Saved to CDmem_{sub_id}_TFR_MainEffect_Control.npz (balanced to {n_min} trials/condition)")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TRIAL-COUNT SUMMARY
+# ══════════════════════════════════════════════════════════════════════════════
+print("\n" + "=" * 70)
+print(f"  TRIAL-COUNT SUMMARY (rule: at least {MIN_TRIALS} trials in every cell)")
+print("=" * 70)
+
+counts_df = pd.DataFrame(count_rows)
+if not counts_df.empty:
+    per_sub = counts_df.groupby('participant')['included'].first()
+    incl = sorted(per_sub[per_sub].index.tolist())
+    excl = sorted(per_sub[~per_sub].index.tolist())
+    print(f"  Included: N = {len(incl)}  -> {incl}")
+    print(f"  Excluded: N = {len(excl)}  -> {excl}")
+    for s in excl:
+        small = counts_df[(counts_df['participant'] == s) & (counts_df['n_trials'] < MIN_TRIALS)]
+        details = ", ".join(f"{r.cell}={r.n_trials}" for r in small.itertuples())
+        print(f"    px {s}: {details}")
+
+    csv_file = os.path.join(output_path, "trial_counts_HL.csv")
+    counts_df.to_csv(csv_file, index=False)
+    print(f"  ✓ Trial counts saved to {csv_file}")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TRIGGER-CHECK SUMMARY
+# ══════════════════════════════════════════════════════════════════════════════
+# All trigger problems found above, collected in one place so they do not have
+# to be searched for in the per-participant output. The script does NOT stop
+# on a mismatch: affected participants are still analysed, so check them!
+print("\n" + "=" * 70)
+print("  TRIGGER-CHECK SUMMARY (EEG triggers vs. behavioural CSV)")
+print("=" * 70)
+if trigger_problems:
+    bad_px = sorted({p for p, _ in trigger_problems})
+    print(f"  !! Problems found for {len(bad_px)} participant(s): {bad_px}")
+    for p, msg in trigger_problems:
+        print(f"    px {p}: {msg}")
+    print("  These participants were still analysed. Check their alignment!")
+else:
+    print("  ✓ No trigger problems: EEG and behavioural triggers matched for all participants.")
 
 print("\n" + "=" * 70)
 print("  MAIN EFFECT OF CONTROL TFR CALCULATION COMPLETE")

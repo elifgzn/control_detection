@@ -1,47 +1,58 @@
 """
-1b_import_raw_alphabeta.py
-==========================
-Preprocessing Script for Alpha/Beta Hilbert Analysis
------------------------------------------------------
+1_import_raw_ab_whole.py
+========================
+Preprocessing for the Stimulus-Locked Time-Frequency Analysis (2-30 Hz)
+-----------------------------------------------------------------------
 
 PURPOSE:
-    This script creates STIMULUS-LOCKED epochs for the alpha/beta (10-20 Hz)
-    time-frequency analysis. It epochs around STIMULUS ONSET (S 11 / S 13)
-    rather than movement onset (S 21-24), because we want to analyze oscillatory
-    activity during the full encoding period.
+    Creates STIMULUS-LOCKED epochs (around S 11 / S 13) for the time-frequency
+    analysis of theta, alpha and beta (2-30 Hz; see 3_TFR_calculation_*.py),
+    and fits an ICA for artifact removal in 2_remove_noise_ab_whole.py.
+    Epochs cover the full encoding period, not just movement onset.
 
-    This is a companion to 1_import_raw.py, which epochs around movement onset
-    for the ERP analysis. Both scripts share the same preprocessing pipeline.
+    Companion of 1_import_raw.py (ERP pipeline, epochs around movement onset).
+    Both share the same preprocessing steps (montage, bad channels, filter,
+    reference).
 
-WHAT IT DOES (step by step):
-    1. Loads raw BrainVision EEG data (.vhdr/.vmrk/.eeg)
-    2. Applies the actiCAP electrode montage (CACS-64_REF_new.bvef)
-    3. Drops bad channels (if any are specified)
-    4. Bandpass filters 1-40 Hz using IIR Butterworth (matches FieldTrip default)
-    5. Adds back the implicit reference channel (FCz) and re-references to average
-    6. Epochs around STIMULUS ONSET triggers (S 11 = low control, S 13 = high control)
-       with a window of -2.5 to +5.5 seconds (covers pre-stimulus baseline + full encoding)
-    6e. Computes per-trial encoding duration from S 91/S 92 triggers (agency rating
-        onset = encoding end) and stores in epoch metadata
-    7. Downsamples to 250 Hz
-    8. Fits ICA (Picard algorithm) for later artifact removal
-    9. Saves epochs + ICA to eeg2_ica_stimlocked/
+WHAT IT DOES (step by step, per participant):
+    1. Loads raw BrainVision EEG data (.vhdr/.vmrk/.eeg).
+    2. Applies the actiCAP electrode montage (CACS-64_REF_new.bvef; the online
+       reference "REF" is renamed to FCz).
+    3. Drops the bad channels listed in bad_channels (they are added back and
+       interpolated in 2_remove_noise_ab_whole.py).
+    4. Band-pass filters 1-40 Hz (IIR Butterworth, 4th order; as FieldTrip's
+       default filter type).
+    5. Adds back the online reference channel (FCz) and re-references to the
+       common average.
+    6. Epochs around STIMULUS ONSET: S 11 = low control, S 13 = high control,
+       -2.5 to +5.5 s, no baseline. Only these two triggers are kept, so that
+       epochs.selection matches the trial index in the behavioural file.
+    6e. Computes the per-trial encoding duration (S 11/S 13 -> S 91/S 92 =
+        agency-rating onset) and stores it as epoch metadata.
+    7. Resamples to 250 Hz.
+    8. Fits ICA: Picard algorithm with ortho=False, extended=False
+       (equivalent to standard Infomax, as FieldTrip's 'runica'),
+       random_state=42 (reproducible).
+    9. Saves epochs (float32) + ICA.
 
 INPUTS:
-    - Raw EEG files: H:/PHD/control_detection/main_data/eeg/eeg1_raweeg/CDmem_XXXX.vhdr
-    - Montage file: CACS-64_REF_new.bvef (in the same folder as this script)
+    - Raw EEG:  H:/PHD/control_detection/main_data/eeg/ERP/eeg1_raweeg/CDmem_XXXX.vhdr
+    - Montage:  H:/PHD/control_detection/CDmem/analyses_original/neurophysiological/CACS-64_REF_new.bvef
 
 OUTPUTS:
-    - Epoch files: H:/PHD/control_detection/main_data/eeg/eeg2_ica_stimlocked/CDmem_XXXX-epo.fif
-    - ICA files:   H:/PHD/control_detection/main_data/eeg/eeg2_ica_stimlocked/CDmem_XXXX-ica.fif
+    - Epochs:   H:/PHD/control_detection/main_data/eeg/TFR/eeg2_ica_stimlocked/CDmem_XXXX-epo.fif
+    - ICA:      H:/PHD/control_detection/main_data/eeg/TFR/eeg2_ica_stimlocked/CDmem_XXXX-ica.fif
 
-DIFFERENCES FROM 1_import_raw.py:
-    - Epochs locked to S 11 / S 13 (stimulus onset) instead of S 21-24 (movement onset)
-    - Longer epoch window: -2.5 to +5.5s instead of -2.5 to +2.5s
-    - Output folder: eeg2_ica_stimlocked/ instead of eeg2_ica/
+DIFFERENCES FROM 1_import_raw.py (ERP pipeline):
+    - Epochs locked to S 11 / S 13 (stimulus onset) instead of S 21-24
+      (movement onset)
+    - Longer epoch window: -2.5 to +5.5 s instead of -2.5 to +2.5 s
+    - Output folder: main_data/eeg/TFR/eeg2_ica_stimlocked/
+    - The ICA is fitted on these stimulus-locked epochs, i.e. it is a
+      SEPARATE decomposition from the ERP pipeline's ICA.
 
+See README.md in this folder for the full pipeline.
 """
-
 import os
 import gc
 import numpy as np
@@ -58,7 +69,11 @@ from mne.preprocessing import ICA
 # Use a single-element list (e.g. [2]) to test one participant,
 # or list(range(2, 21)) to run all of them.
 # ──────────────────────────────────────────────────────────────
-plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+# plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+# plist = [10,14,15,17,19,20,23,25,30,34,36,37,38,39,40,41]
+
+plist = [25]
+
 
 # ──────────────────────────────────────────────────────────────
 # Bad channels per participant
@@ -68,20 +83,28 @@ plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
 # ──────────────────────────────────────────────────────────────
 bad_channels = {
     7: ['P2'],
-    8: ['F3'],
-    17: ['O1'],
+    8: ['F3','F7'],
+    10: ['Fp2'],
+    14: ['Fp2'],
+    15: ['P3'],
+    17: ['O1','Iz'],
     18: ['Fp1','Fp2'],
-    19: ['P3', 'TP10', 'T8', 'CP6', 'T7'],
-    20: ['P3', 'T8','P1','Fz'],
+    19: ['P3', 'TP9', 'TP10', 'T8', 'CP6', 'T7'],
+    20: ['P3', 'T8','P1','Fz','Iz'],
     21: ['T8'],
     22: ['TP10'],
-    25: ['AF4'],
+    23: ['FT9'],
+    25: ['AF4','Fp1', 'Fp2'],
     27: ['C3'],
     29: ['AFz','T7'],
     31: ['Fp1','Fp2'],
     32: ['F2','FT8'],
-    34: ['AFz','F1'],
-    36: ['FT8'] ,
+    34: ['AFz','F1','FT8'],
+    36: ['FT8','F6'],
+    38: ['O1'],
+    39: ['O1'],
+    40: ['O1'],
+    41: ['O1','AFz'],
     42: ['C5','FC2','FC6', 'TP7'],
     43: ['C5'],
     46:['C5', 'TP7'],
@@ -143,7 +166,7 @@ for sub in plist:
         # ── STEP 3: Drop bad channels ────────────────────────────────────────
         # Bad channels are identified by visual inspection and should be the
         # same ones used in 1_import_raw.py. They will be interpolated later
-        # in 2b_remove_noise_alphabeta.py using spherical spline interpolation.
+        # in 2_remove_noise_ab_whole.py using spherical spline interpolation.
         bads = bad_channels.get(sub, [])
         if bads:
             raw.drop_channels(bads)
@@ -162,7 +185,7 @@ for sub in plist:
         # Why 1-40 Hz?
         #   - 1 Hz high-pass removes slow drifts
         #   - 40 Hz low-pass removes line noise (50 Hz) and muscle artifacts
-        #   - Our alpha/beta band of interest (10-20 Hz) sits well within this
+        #   - Our frequencies of interest (2-30 Hz: theta, alpha, beta) sit within this
         raw.filter(
             l_freq=1.,
             h_freq=40.,
@@ -237,7 +260,7 @@ for sub in plist:
         #     encoding_duration = (S 91/S 92 sample) - (S 11/S 13 sample) / sfreq
         #
         # This is stored as epoch metadata so downstream analysis scripts
-        # (3_TFR.py, 3_hilbert_alphabeta.py) can use it to:
+        # (e.g. 3_TFR_calculation_*.py) can use it to:
         #   - Set informed statistical time windows
         #   - Mask data after encoding ends per trial
         #   - Quality-check trial durations
@@ -316,7 +339,7 @@ for sub in plist:
         # ── STEP 8: Fit ICA ──────────────────────────────────────────────────
         # ICA decomposes the data into statistically independent components.
         # Components capturing eye blinks and eye movements will be identified
-        # and removed in a later step (2b_remove_noise_alphabeta.py).
+        # and removed in a later step (2_remove_noise_ab_whole.py).
         #
         # We use Picard, which is mathematically equivalent to Infomax (the
         # algorithm used by FieldTrip's 'runica') but converges much faster.
