@@ -125,7 +125,23 @@ PLOT_FREQ = (2.0, 30.0)
 
 # Colorbar limits for standalone figures
 POWER_LIMITS = (-1.5, 1.5)  # dB limits for condition and difference spectrograms
-STAT_LIMITS = (-2.5, 2.5)   # t-value limits for permutation stat maps
+# t-value colour limits for the stat maps.
+#   None  -> automatic: symmetric +/- (largest |t| in that map), i.e. the data's
+#            own range, as in the original FieldTrip pipeline
+#            (A2_5_permuatation_TFmaps_feedbacktheta.m used zlim = 'maxmin').
+#            The scale then differs between maps: read the colourbar of each.
+#   (a, b) -> fixed limits for all maps, e.g. (-4, 4).
+# Colour limits only affect the figures, not the statistics.
+STAT_LIMITS = None
+
+def stat_limits(t_map):
+    """Colour limits for a t-map: fixed STAT_LIMITS, or symmetric +/- max |t|."""
+    if STAT_LIMITS is not None:
+        return STAT_LIMITS
+    v = float(np.nanmax(np.abs(t_map)))
+    if not np.isfinite(v) or v == 0:
+        v = 1.0
+    return (-v, v)
 
 # ══════════════════════════════════════════════════════════════════
 # 1. LOAD DATA
@@ -675,7 +691,7 @@ for comp_name, X_diff_plot in contrasts.items():
     # 2) Standalone Statistical t-map (with cluster contours)
     fig_stat, ax_stat = plt.subplots(figsize=(10, 6))
     im_stat = ax_stat.pcolormesh(time_edges, freq_edges_test, T_obs, cmap='RdBu_r', 
-                                 vmin=STAT_LIMITS[0], vmax=STAT_LIMITS[1], shading='flat')
+                                 vmin=stat_limits(T_obs)[0], vmax=stat_limits(T_obs)[1], shading='flat')
     if mask_tf.any():
         ax_stat.contour(times, freqs_test, mask_tf.astype(float), levels=[0.5], colors='black', linewidths=2)
     cb_stat = fig_stat.colorbar(im_stat, ax=ax_stat, label='t value')

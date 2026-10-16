@@ -125,7 +125,23 @@ PLOT_FREQ = (2.0, 30.0)
 
 # Colorbar limits
 POWER_LIMITS = (-1.5, 1.5)  # dB limits for spectrograms
-STAT_LIMITS  = (-2.5, 2.5)  # t-value limits for stat maps
+# t-value colour limits for the stat maps.
+#   None  -> automatic: symmetric +/- (largest |t| in that map), i.e. the data's
+#            own range, as in the original FieldTrip pipeline
+#            (A2_5_permuatation_TFmaps_feedbacktheta.m used zlim = 'maxmin').
+#            The scale then differs between maps: read the colourbar of each.
+#   (a, b) -> fixed limits for all maps, e.g. (-4, 4).
+# Colour limits only affect the figures, not the statistics.
+STAT_LIMITS = None
+
+def stat_limits(t_map):
+    """Colour limits for a t-map: fixed STAT_LIMITS, or symmetric +/- max |t|."""
+    if STAT_LIMITS is not None:
+        return STAT_LIMITS
+    v = float(np.nanmax(np.abs(t_map)))
+    if not np.isfinite(v) or v == 0:
+        v = 1.0
+    return (-v, v)
 
 # ══════════════════════════════════════════════════════════════════
 # 1. LOAD DATA
@@ -450,7 +466,7 @@ print(f"  Saved difference TFR: 01_TFR_diff_{contrast_name}.png")
 # 2) Standalone Statistical t-map (with cluster contours)
 fig_stat, ax_stat = plt.subplots(figsize=(10, 6))
 im_stat = ax_stat.pcolormesh(time_edges, freq_edges_test, T_obs, cmap='RdBu_r', 
-                             vmin=STAT_LIMITS[0], vmax=STAT_LIMITS[1], shading='flat')
+                             vmin=stat_limits(T_obs)[0], vmax=stat_limits(T_obs)[1], shading='flat')
 if mask_tf.any():
     ax_stat.contour(times, freqs_test, mask_tf.astype(float), levels=[0.5], colors='black', linewidths=2)
 cb_stat = fig_stat.colorbar(im_stat, ax=ax_stat, label='t value')
@@ -736,7 +752,7 @@ for group_name, group_subs in [('highstart', highstart_subs), ('lowstart', lowst
     # ── Statistical t-map ──
     fig_stat_grp, ax_stat_grp = plt.subplots(figsize=(10, 6))
     im_stat_grp = ax_stat_grp.pcolormesh(time_edges, freq_edges_test, T_obs_grp, cmap='RdBu_r',
-                                         vmin=STAT_LIMITS[0], vmax=STAT_LIMITS[1], shading='flat')
+                                         vmin=stat_limits(T_obs_grp)[0], vmax=stat_limits(T_obs_grp)[1], shading='flat')
     if mask_tf_grp.any():
         ax_stat_grp.contour(times, freqs_test, mask_tf_grp.astype(float), levels=[0.5], colors='black', linewidths=2)
     cb_stat_grp = fig_stat_grp.colorbar(im_stat_grp, ax=ax_stat_grp, label='t value')

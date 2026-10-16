@@ -93,8 +93,11 @@ BANDS = {
 }
 
 # Colorbar limits (dB)
-Z_LIMITS_COND = (-1.0, 1.0)  # Condition power limits
-Z_LIMITS_DIFF = (-0.8, 0.8)  # Difference limits
+# +/-1.5 dB for conditions AND differences: the same scale as 4_TFR_graphs.py,
+# the spectrograms in the 5_ scripts, and the original FieldTrip pipeline
+# (A2_4_freqGraphs_feedbacktheta.m / A2_5_permuatation_TFmaps_feedbacktheta.m).
+Z_LIMITS_COND = (-1.5, 1.5)  # Condition power limits (dB)
+Z_LIMITS_DIFF = (-1.5, 1.5)  # Difference limits (dB)
 
 # ══════════════════════════════════════════════════════════════════
 # 1. LOAD MNE INFO FOR CANONICAL SENSOR LAYOUT

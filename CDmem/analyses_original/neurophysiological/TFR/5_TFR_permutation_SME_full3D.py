@@ -114,7 +114,7 @@ MIN_CLUSTER_CHANNELS   = 3  # Overall cluster must span at least 3 distinct chan
 
 # Colorbar limits
 POWER_LIMITS = (-1.5, 1.5)  # dB limits for spectrograms
-STAT_LIMITS  = (-2.5, 2.5)  # t-value limits for stat maps
+# (No t-maps are drawn in this script, so there is no STAT_LIMITS setting here.)
 
 # ══════════════════════════════════════════════════════════════════
 # 1. LOAD SENSOR INFO & ALIGNMENT

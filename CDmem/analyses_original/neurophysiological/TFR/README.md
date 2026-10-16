@@ -357,6 +357,22 @@ effects / interaction from the all-items 4-cell file.
 
 ---
 
+### Figure colour scales
+
+Colour limits only affect the figures, not the statistics.
+- Power (conditions **and** differences; heatmaps, spectrograms, topoplots in
+  `4_`, `5_`, `6_`): fixed ±1.5 dB, as in the original FieldTrip pipeline
+  (`A2_4_freqGraphs_feedbacktheta.m`, `A2_5_permuatation_TFmaps_feedbacktheta.m`).
+- t-maps (`5_TFR_permutation_SME_PO.py`, `5_TFR_permutation_HL_MF.py`):
+  `STAT_LIMITS = None` → symmetric ± largest |t| of each map (the data's own
+  range, as the original used `zlim = 'maxmin'`); the scale differs between
+  maps, so read each colourbar. Set e.g. `STAT_LIMITS = (-4, 4)` for a fixed
+  scale. (The previous fixed ±2.5 cut off strong effects.)
+- The cluster topoplots inside the `5_` scripts use their own automatic scale
+  (99th percentile of the data, separately for conditions and differences).
+
+---
+
 ## 8. Reference approaches compared
 
 | | Wu et al. (2025) | Cheng et al. (2023) | Original FieldTrip script (`A2_3_freqCalc_feedback.m`) | This pipeline |
