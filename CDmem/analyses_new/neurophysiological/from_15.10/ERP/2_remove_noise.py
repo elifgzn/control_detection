@@ -131,9 +131,13 @@ bad_channels = {
 }
 
 
+# PATHS UPDATED (20.10): data folders moved -> inputs are now in main_data\eeg\ERP\,
+# new outputs go to main_data\eeg\ERP\from 15.10\ (the earlier outputs stay untouched
+# in main_data\eeg\archive\from_15.10\). Montage file: the copy in analyses_original
+# (same file the TFR scripts use; the old CDmem\analyses\ path may no longer exist).
 # Paths
-input_path  = r"H:\PHD\control_detection\main_data\eeg\eeg2_ica"
-output_path = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean"   # separate folder for clean data
+input_path  = r"H:\PHD\control_detection\main_data\eeg\ERP\eeg2_ica"
+output_path = r"H:\PHD\control_detection\main_data\eeg\ERP\eeg3_clean"   # separate folder for clean data
 os.makedirs(output_path, exist_ok=True)   # create folder if it doesn't exist
 
 # ──────────────────────────────────────────────────────────────
@@ -286,7 +290,7 @@ for sub in plist:
             # Add the missing channels back as flat (all zeros) channels
             epochs_clean.add_reference_channels(bads)
 
-        bvef_path = r"H:\PHD\control_detection\CDmem\analyses\neurophysiological\CACS-64_REF_new.bvef"
+        bvef_path = r"H:\PHD\control_detection\CDmem\analyses_original\neurophysiological\CACS-64_REF_new.bvef"
         montage = mne.channels.read_custom_montage(bvef_path)
         # Rename 'REF' → 'FCz' to match our channel naming (see 1_import_raw.py)
         montage.rename_channels({'REF': 'FCz'})

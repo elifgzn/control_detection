@@ -53,7 +53,7 @@ def write_report(text):
 # 28 - no triggers
 # other, data-based exclusions will be imposed by code
 
-PARTICIPANT_FILTER = sorted(set(range(1, 51)) - {1, 5, 28})
+PARTICIPANT_FILTER = sorted(set(range(1, 51)) - {1, 5, 28, 6, 20, 37, 50})
 
 
 TIMEOUT_THRESHOLD = 0.50

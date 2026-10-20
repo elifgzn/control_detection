@@ -29,17 +29,21 @@ plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
 ROI = 'MF'
 
 # ──────────────────────────────────────────────────────────────
+# PATHS UPDATED (20.10): data folders moved -> inputs are now in main_data\eeg\ERP\,
+# new outputs go to main_data\eeg\ERP\from 15.10\ (the earlier outputs stay untouched
+# in main_data\eeg\archive\from_15.10\). Montage file: the copy in analyses_original
+# (same file the TFR scripts use; the old CDmem\analyses\ path may no longer exist).
 # Paths
 # ──────────────────────────────────────────────────────────────
 # FieldTrip: dfolder = 'D:/MCRL DATA/eeg4_ERPSummaries';
 # CHANGED (from_15.10): only the folders. Same dataset as before (only correct,
 # pre-movement baseline). Other options: replace "premove_onlycorrect" with
 # "premove", "prestim" or "prestim_onlycorrect" in BOTH lines.
-dfolder = r"H:\PHD\control_detection\main_data\eeg\from_15.10\eeg4_ERPSummaries_premove_onlycorrect"
+dfolder = r"H:\PHD\control_detection\main_data\eeg\ERP\from 15.10\eeg4_ERPSummaries_premove_onlycorrect"
 
 # Path for saving figures
 # FieldTrip: save_to = 'D:/MCRL DATA/eeg5_figures'; dpi = '-r600';
-save_to = rf"H:\PHD\control_detection\main_data\eeg\from_15.10\eeg5_ERP_graphs_premove_onlycorrect_{ROI}"
+save_to = rf"H:\PHD\control_detection\main_data\eeg\ERP\from 15.10\eeg5_ERP_graphs_premove_onlycorrect_{ROI}"
 os.makedirs(save_to, exist_ok=True)
 
 # ──────────────────────────────────────────────────────────────
@@ -98,7 +102,7 @@ for p_idx, pnum in enumerate(plist):
     # CRITICAL FIX: Re-apply montage to restore FCz positions 
     # that were lost in earlier preprocessing runs.
     # ──────────────────────────────────────────────────────────
-    bvef_path = r"H:\PHD\control_detection\CDmem\analyses\neurophysiological\CACS-64_REF_new.bvef"
+    bvef_path = r"H:\PHD\control_detection\CDmem\analyses_original\neurophysiological\CACS-64_REF_new.bvef"
     montage = mne.channels.read_custom_montage(bvef_path)
     montage.rename_channels({'REF': 'FCz'})
     for ev in evoked_list:

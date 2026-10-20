@@ -40,9 +40,9 @@ from scipy.stats import t as t_dist
 # ══════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════
-input_path   = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg4_TFR_stimlocked_HL_MF_pooledbaseline"
+input_path   = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg4_TFR_movelocked_HL_pooledbaseline"
 eeg_path     = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg3_clean_stimlocked"
-figures_path = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg5_figures_stimlocked_HL_full3D_pooledbaseline"
+figures_path = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg5_figures_movelocked_HL_full3D_pooledbaseline"
 os.makedirs(figures_path, exist_ok=True)
 
 plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})

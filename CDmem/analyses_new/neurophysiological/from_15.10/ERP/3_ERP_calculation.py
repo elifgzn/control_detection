@@ -30,7 +30,7 @@ WHAT CHANGED COMPARED TO THE before_15.10 VERSION (agreed on 15.10):
           data gives exactly the same result as baseline-correcting the
           uncorrected data with the new window (a constant offset cancels).
 
-    Output folders (inside main_data\eeg\from_15.10\):
+    Output folders (inside main_data\eeg\ERP\from 15.10\):
           eeg4_ERPSummaries_premove              (all trials)
           eeg4_ERPSummaries_premove_onlycorrect  (correct detection trials)
           eeg4_ERPSummaries_prestim
@@ -72,11 +72,15 @@ filter_modes = [1,2]
 plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 17, 24, 26, 43, 45, 46, 47})
 
 
+# PATHS UPDATED (20.10): data folders moved -> inputs are now in main_data\eeg\ERP\,
+# new outputs go to main_data\eeg\ERP\from 15.10\ (the earlier outputs stay untouched
+# in main_data\eeg\archive\from_15.10\). Montage file: the copy in analyses_original
+# (same file the TFR scripts use; the old CDmem\analyses\ path may no longer exist).
 # Paths
-eeg_path = r"H:\PHD\control_detection\main_data\eeg\eeg3_clean"
+eeg_path = r"H:\PHD\control_detection\main_data\eeg\ERP\eeg3_clean"
 log_path = r"H:\PHD\control_detection\main_data\behavioral"
-raw_path = r"H:\PHD\control_detection\main_data\eeg\eeg1_raweeg"            # NEW: .vmrk marker files
-out_root = r"H:\PHD\control_detection\main_data\eeg\from_15.10"            # NEW: all new outputs go here
+raw_path = r"H:\PHD\control_detection\main_data\eeg\ERP\eeg1_raweeg"            # NEW: .vmrk marker files
+out_root = r"H:\PHD\control_detection\main_data\eeg\ERP\from 15.10"            # NEW: all new outputs go here
 
 # NEW: which baseline versions to compute (see header). Both by default.
 baseline_versions = ['premove', 'prestim']
@@ -130,9 +134,12 @@ for sub in plist:
     epo_file = os.path.join(eeg_path, f"CDmem_{sub_id}-epo.fif")
     
     # Find behavioral log file
-    import glob
-    log_files = glob.glob(os.path.join(log_path, f"CDmem_1_{sub}*.csv"))
-    log_files = [f for f in log_files if 'kinematics' not in f and 'recognition' not in f]
+    # CHANGED (20.10): exact file name instead of the pattern CDmem_1_{sub}*.csv.
+    # The pattern also matched other participants' files (e.g. for sub 4 also
+    # CDmem_1_40.csv ... CDmem_1_49.csv) and the first match was used, so the
+    # result depended on the order in which the files were listed.
+    exact_log = os.path.join(log_path, f"CDmem_1_{sub}.csv")
+    log_files = [exact_log] if os.path.exists(exact_log) else []
 
     # Check that files exist
     if not os.path.exists(epo_file):
@@ -156,7 +163,7 @@ for sub in plist:
     # CRITICAL FIX: Re-apply montage to restore FCz positions 
     # that were lost in earlier preprocessing runs.
     # ──────────────────────────────────────────────────────────
-    bvef_path = r"H:\PHD\control_detection\CDmem\analyses\neurophysiological\CACS-64_REF_new.bvef"
+    bvef_path = r"H:\PHD\control_detection\CDmem\analyses_original\neurophysiological\CACS-64_REF_new.bvef"
     montage = mne.channels.read_custom_montage(bvef_path)
     montage.rename_channels({'REF': 'FCz'})
     epochs.set_montage(montage, on_missing='ignore')

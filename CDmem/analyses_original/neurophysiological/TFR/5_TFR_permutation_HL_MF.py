@@ -33,7 +33,7 @@ from scipy.stats import t as t_dist
 # ══════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════
-input_path   = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg4_TFR_stimlocked_HL_MF"
+input_path   = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg4_TFR_stimlocked_HL"
 eeg_path     = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg3_clean_stimlocked"
 figures_path = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg5_figures_stimlocked_HL_PO"
 os.makedirs(figures_path, exist_ok=True)
@@ -201,9 +201,9 @@ if len(valid_subs) < 2:
 sample_chs = next(iter(subject_ch_names.values()))
 roi_channels = [ch for ch in sample_chs if ch.startswith(('P', 'O'))]
 
-# # ROI Option 2: Frontocentral
-# # roi_channels = ['Fz', 'FCz', 'FC1', 'FC2']
-# roi_channels = ['Fz']
+# ROI Option 2: Midfrontal (Giersiepen et al., 2023;2024)
+# roi_channels = ['Fz', 'FCz', 'FC1', 'FC2']
+# roi_channels = ['FCz','Cz','CPz','Pz'] # Wen et al., 2017
 
 
 print(f"\nAveraging over ROI channels ({len(roi_channels)}): {roi_channels}\n")

@@ -52,9 +52,13 @@ bad_channels = {
    
 }
 
+# PATHS UPDATED (20.10): data folders moved -> inputs are now in main_data\eeg\ERP\,
+# new outputs go to main_data\eeg\ERP\from 15.10\ (the earlier outputs stay untouched
+# in main_data\eeg\archive\from_15.10\). Montage file: the copy in analyses_original
+# (same file the TFR scripts use; the old CDmem\analyses\ path may no longer exist).
 # Input and output folders
-input_path = r"H:\PHD\control_detection\main_data\eeg\eeg1_raweeg"
-output_path = r"H:\PHD\control_detection\main_data\eeg\eeg2_ica"
+input_path = r"H:\PHD\control_detection\main_data\eeg\ERP\eeg1_raweeg"
+output_path = r"H:\PHD\control_detection\main_data\eeg\ERP\eeg2_ica"
 
 # Create output folder if it doesn't exist
 os.makedirs(output_path, exist_ok=True)
@@ -78,7 +82,7 @@ for sub in plist:
         raw = mne.io.read_raw_brainvision(filepath, preload=True)
         
         # Set electrode positions from the actual actiCAP .bvef file.
-        bvef_path = r"H:\PHD\control_detection\CDmem\analyses\neurophysiological\CACS-64_REF_new.bvef"
+        bvef_path = r"H:\PHD\control_detection\CDmem\analyses_original\neurophysiological\CACS-64_REF_new.bvef"
         montage = mne.channels.read_custom_montage(bvef_path)
         # The .bvef file names the online reference "REF", but in our data it's
         # called "FCz" (added later via add_reference_channels). Rename so

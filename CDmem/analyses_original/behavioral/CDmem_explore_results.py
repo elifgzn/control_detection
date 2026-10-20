@@ -64,7 +64,9 @@ def write_report(text):
 # 28 - no triggers
 # other, data-based exclusions will be imposed by code
 
-PARTICIPANT_FILTER = sorted(set(range(1, 51)) - {1, 5, 28})
+# PARTICIPANT_FILTER = sorted(set(range(1, 51)) - {1, 5, 28})
+PARTICIPANT_FILTER = sorted(set(range(1, 51)) - {1, 5, 28, 6, 20, 37, 50})
+
 
 
 TIMEOUT_THRESHOLD = 0.50
@@ -1283,6 +1285,169 @@ for agency_col_name, tag in [('agency_z', 'zscore'), ('agency_rating', 'raw')]:
             title_suffix=f"  ({grp_label.replace('_', ' ').title()}, N={n_px})",
             agency_col=agency_col_name
         )
+
+
+# ============================================================================
+# EXPLORATION 5: Agency Rating Distribution – Categorical vs Continuous?
+# ============================================================================
+write_report("---")
+write_report("## Exploration 5: Agency Rating Distribution – Categorical vs Continuous Use of the Scale\n")
+write_report("**Rationale:** Participants rated their sense of agency on a 1–7 Likert scale on "
+             "every trial. If agency is perceived categorically (e.g., 'I controlled it' vs 'I "
+             "did not'), ratings should cluster at the scale extremes (bimodal). If perceived "
+             "more continuously, ratings should spread across the full range. We examine the "
+             "distribution (a) overall and (b) separately for high- vs low-control conditions.\n")
+
+
+# ---------- Helper: Histogram of agency ratings ----------
+def make_agency_histogram(test_df, out_path):
+    """3-panel histogram: Overall, High Control, Low Control."""
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6), sharey=True)
+
+    rating_values = np.arange(1, 8)  # 1-7
+    color_overall = '#7f8c8d'
+    color_high = '#1f77b4'
+    color_low = '#ff7f0e'
+
+    # --- Panel 1: Overall ---
+    overall_counts = test_df['agency_rating'].value_counts().reindex(rating_values, fill_value=0)
+    overall_pct = overall_counts / overall_counts.sum() * 100
+    axes[0].bar(rating_values, overall_pct, color=color_overall, edgecolor='white', width=0.7)
+    axes[0].set_title('Overall', fontsize=14, fontweight='bold')
+    axes[0].set_xlabel('Agency Rating', fontsize=12)
+    axes[0].set_ylabel('Percentage of Trials (%)', fontsize=12)
+    axes[0].set_xticks(rating_values)
+    for i, v in enumerate(overall_pct):
+        axes[0].text(rating_values[i], v + 0.5, f'{v:.1f}%', ha='center', va='bottom', fontsize=9)
+
+    # --- Panel 2: High Control ---
+    high_df = test_df[test_df['control_condition'] == 'high']
+    high_counts = high_df['agency_rating'].value_counts().reindex(rating_values, fill_value=0)
+    high_pct = high_counts / high_counts.sum() * 100
+    axes[1].bar(rating_values, high_pct, color=color_high, edgecolor='white', width=0.7)
+    axes[1].set_title('High Control', fontsize=14, fontweight='bold')
+    axes[1].set_xlabel('Agency Rating', fontsize=12)
+    axes[1].set_xticks(rating_values)
+    for i, v in enumerate(high_pct):
+        axes[1].text(rating_values[i], v + 0.5, f'{v:.1f}%', ha='center', va='bottom', fontsize=9)
+
+    # --- Panel 3: Low Control ---
+    low_df = test_df[test_df['control_condition'] == 'low']
+    low_counts = low_df['agency_rating'].value_counts().reindex(rating_values, fill_value=0)
+    low_pct = low_counts / low_counts.sum() * 100
+    axes[2].bar(rating_values, low_pct, color=color_low, edgecolor='white', width=0.7)
+    axes[2].set_title('Low Control', fontsize=14, fontweight='bold')
+    axes[2].set_xlabel('Agency Rating', fontsize=12)
+    axes[2].set_xticks(rating_values)
+    for i, v in enumerate(low_pct):
+        axes[2].text(rating_values[i], v + 0.5, f'{v:.1f}%', ha='center', va='bottom', fontsize=9)
+
+    fig.suptitle('Agency Rating Distribution: Categorical vs Continuous?',
+                 fontsize=16, fontweight='bold', y=1.02)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"Saved agency histogram: {out_path}")
+
+
+# ---------- Helper: Raincloud plot of agency ratings ----------
+def make_agency_raincloud(test_df, out_path):
+    """Raincloud plot (half-violin + jitter + boxplot) for High vs Low control."""
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, ax = plt.subplots(figsize=(10, 7))
+
+    conditions = ['high', 'low']
+    color_map = {'high': '#1f77b4', 'low': '#ff7f0e'}
+    label_map = {'high': 'High Control', 'low': 'Low Control'}
+    positions = [0, 1]
+
+    for pos, cond in zip(positions, conditions):
+        cond_df = test_df[test_df['control_condition'] == cond]
+        ratings = cond_df['agency_rating'].dropna().values
+        if len(ratings) == 0:
+            continue
+
+        # Half-violin (density) — shifted left of centre
+        vp = ax.violinplot(ratings, positions=[pos], showmeans=False,
+                           showmedians=False, showextrema=False, widths=0.6)
+        for body in vp['bodies']:
+            # Clip violin to left half only
+            m = np.mean(body.get_paths()[0].vertices[:, 0])
+            body.get_paths()[0].vertices[:, 0] = np.clip(
+                body.get_paths()[0].vertices[:, 0], -np.inf, m)
+            body.set_facecolor(color_map[cond])
+            body.set_edgecolor('black')
+            body.set_linewidth(0.8)
+            body.set_alpha(0.7)
+
+        # Boxplot — narrow, shifted slightly right
+        bp = ax.boxplot(ratings, positions=[pos + 0.15], widths=0.08,
+                        patch_artist=True, showfliers=False,
+                        boxprops=dict(facecolor=color_map[cond], alpha=0.9),
+                        medianprops=dict(color='black', linewidth=2),
+                        whiskerprops=dict(color='black'),
+                        capprops=dict(color='black'))
+
+        # Jitter strip — shifted right of boxplot
+        jitter = np.random.default_rng(42).uniform(-0.04, 0.04, size=len(ratings))
+        ax.scatter(np.full_like(ratings, pos + 0.30, dtype=float) + jitter,
+                   ratings, s=8, alpha=0.25, color=color_map[cond],
+                   edgecolors='none', zorder=2)
+
+    # Custom legend
+    from matplotlib.patches import Patch
+    legend_handles = [Patch(facecolor=color_map[c], edgecolor='black', alpha=0.7,
+                            label=label_map[c]) for c in conditions]
+    ax.legend(handles=legend_handles, loc='upper right', frameon=True,
+              facecolor='white', framealpha=0.9, fontsize=11)
+
+    ax.set_xticks(positions)
+    ax.set_xticklabels(['High Control', 'Low Control'], fontsize=13)
+    ax.set_yticks(np.arange(1, 8))
+    ax.set_ylim(0.5, 7.5)
+    ax.set_ylabel('Agency Rating (1–7)', fontsize=13)
+    ax.set_xlabel('Control Condition', fontsize=13)
+    ax.set_title('Raincloud Plot: Agency Rating Distribution by Condition',
+                 fontsize=14, fontweight='bold')
+
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+    print(f"Saved agency raincloud: {out_path}")
+
+
+# --- Generate the plots ---
+test_data_e5 = data[data['phase'] == 'test'].copy()
+test_data_e5['agency_rating'] = pd.to_numeric(test_data_e5['agency_rating'], errors='coerce')
+test_data_e5 = test_data_e5.dropna(subset=['agency_rating'])
+
+make_agency_histogram(test_data_e5, EXPLORE_DIR / "e5_agency_rating_histogram.png")
+make_agency_raincloud(test_data_e5, EXPLORE_DIR / "e5_agency_rating_raincloud.png")
+
+# --- Report descriptive stats ---
+write_report("### Descriptive Statistics\n")
+for cond_label, cond_val in [("Overall", None), ("High Control", "high"), ("Low Control", "low")]:
+    sub = test_data_e5 if cond_val is None else test_data_e5[test_data_e5['control_condition'] == cond_val]
+    ratings = sub['agency_rating']
+    mode_val = ratings.mode().iloc[0] if not ratings.mode().empty else np.nan
+    write_report(f"**{cond_label}:** N trials = {len(ratings)}, "
+                 f"M = {ratings.mean():.2f}, SD = {ratings.std():.2f}, "
+                 f"Median = {ratings.median():.1f}, Mode = {mode_val:.0f}, "
+                 f"Skewness = {ratings.skew():.2f}, Kurtosis = {ratings.kurtosis():.2f}")
+
+# Per-participant modal rating
+px_modes = test_data_e5.groupby('participant')['agency_rating'].agg(
+    lambda x: x.mode().iloc[0] if not x.mode().empty else np.nan)
+write_report(f"\nPer-participant modal ratings: {dict(px_modes)}")
+write_report(f"Proportion of participants with mode at endpoints (1 or 7): "
+             f"{((px_modes == 1) | (px_modes == 7)).mean():.1%}\n")
+
+# Rating usage breadth: how many unique values does each participant use?
+px_unique = test_data_e5.groupby('participant')['agency_rating'].nunique()
+write_report(f"Scale breadth (unique ratings used per participant): "
+             f"M = {px_unique.mean():.1f}, SD = {px_unique.std():.1f}, "
+             f"Min = {px_unique.min()}, Max = {px_unique.max()}\n")
 
 
 # ============================================================================

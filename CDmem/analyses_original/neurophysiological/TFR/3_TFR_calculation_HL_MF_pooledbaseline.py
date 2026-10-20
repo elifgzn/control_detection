@@ -19,7 +19,7 @@ PURPOSE:
     subsequent memory), balances trial counts, applies dB baseline correction
     with the pooled baseline, and saves the condition averages to:
         CDmem_XXXX_TFR_MainEffect_Control.npz
-    in a SEPARATE output folder (..._HL_MF_pooledbaseline), so the results of
+    in a SEPARATE output folder (..._HL_pooledbaseline), so the results of
     the per-condition-baseline version are not overwritten.
 
 PIPELINE (per participant):
@@ -56,7 +56,7 @@ OUTPUT:
       posterior ROI channels (P*/O*), raw trial counts per cell, balanced
       trial count, and the minimum-trial rule used.
     - trial_counts_HL.csv (all participants x cells, included yes/no).
-    - Output folder: main_data/eeg/TFR/eeg4_TFR_stimlocked_HL_MF_pooledbaseline
+    - Output folder: main_data/eeg/TFR/eeg4_TFR_stimlocked_HL_pooledbaseline
       (the 5_/6_ HL scripts read eeg4_TFR_stimlocked_HL_MF; point their
       input_path to this folder to analyse the pooled-baseline results).
     - At the end of the run: trial-count summary and a trigger-check summary
@@ -75,7 +75,7 @@ from mne.time_frequency import tfr_morlet
 # ══════════════════════════════════════════════════════════════════════════════
 eeg_path        = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg3_clean_stimlocked"
 behavioral_path = r"H:\PHD\control_detection\main_data\behavioral"
-output_path     = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg4_TFR_stimlocked_HL_MF_pooledbaseline"   # separate folder for the pooled-baseline version
+output_path     = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg4_TFR_stimlocked_HL_pooledbaseline"   # separate folder for the pooled-baseline version
 
 os.makedirs(output_path, exist_ok=True)
 

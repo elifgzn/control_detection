@@ -63,6 +63,10 @@ plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 17, 24, 26, 43, 45, 46, 
 ROI = 'Wen'
 
 # ──────────────────────────────────────────────────────────────
+# PATHS UPDATED (20.10): data folders moved -> inputs are now in main_data\eeg\ERP\,
+# new outputs go to main_data\eeg\ERP\from 15.10\ (the earlier outputs stay untouched
+# in main_data\eeg\archive\from_15.10\). Montage file: the copy in analyses_original
+# (same file the TFR scripts use; the old CDmem\analyses\ path may no longer exist).
 # Paths
 # ──────────────────────────────────────────────────────────────
 # Both dataset folders - the script loops over each automatically
@@ -71,7 +75,7 @@ ROI = 'Wen'
 # (= the old analysis) and with the pre-STIMULUS baseline (new robustness
 # check, see 3_ERP_calculation.py). Comment out lines you do not want to run.
 # The output folders end with the ROI name (e.g. eeg5_ERP_premove_MF).
-_root = r"H:\PHD\control_detection\main_data\eeg\from_15.10"
+_root = r"H:\PHD\control_detection\main_data\eeg\ERP\from 15.10"
 datasets = [
     (_root + r"\eeg4_ERPSummaries_premove",             _root + rf"\eeg5_ERP_premove_{ROI}",
      "All Items - pre-movement baseline"),
@@ -155,7 +159,7 @@ for dfolder, save_to, dataset_label in datasets:
         # CRITICAL FIX: Re-apply montage to restore FCz positions 
         # that were lost in earlier preprocessing runs.
         # ──────────────────────────────────────────────────────────
-        bvef_path = r"H:\PHD\control_detection\CDmem\analyses\neurophysiological\CACS-64_REF_new.bvef"
+        bvef_path = r"H:\PHD\control_detection\CDmem\analyses_original\neurophysiological\CACS-64_REF_new.bvef"
         montage = mne.channels.read_custom_montage(bvef_path)
         montage.rename_channels({'REF': 'FCz'})
         for ev in evokeds_main + evokeds_det:
