@@ -49,7 +49,8 @@ sys.stdout.reconfigure(encoding='utf-8')
 # data-based exclusions: 2, 3, 11, 24, 26, 43, 45, 46, 47
 # participants with 100% accuracy: 7,18, 21, 44
 
-plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 17, 24, 26, 43, 45, 46, 47})
+# plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
+plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47, 6,20,37,50})
 
 
 
@@ -60,13 +61,17 @@ plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 17, 24, 26, 43, 45, 46, 
 #   'MF'  = Fz, FCz, FC1, FC2   (following Giersiepen et al., 2024, 2025) - used so far
 #   'Wen' = FCz, Cz, CPz, Pz    (Wen et al., 2017)
 #   'PO'  = all channels starting with P or O (parieto-occipital)
-ROI = 'Wen'
+ROI = 'PO'
 
 # ──────────────────────────────────────────────────────────────
-# PATHS UPDATED (20.10): data folders moved -> inputs are now in main_data\eeg\ERP\,
-# new outputs go to main_data\eeg\ERP\from 15.10\ (the earlier outputs stay untouched
-# in main_data\eeg\archive\from_15.10\). Montage file: the copy in analyses_original
-# (same file the TFR scripts use; the old CDmem\analyses\ path may no longer exist).
+# PATHS UPDATED (20.10): data folders moved.
+#   INPUT  (_in_root):  the ERP summaries already made by 3_ERP_calculation.py,
+#                       in main_data\eeg\archive\from_15.10\ (only READ, never written).
+#   OUTPUT (_out_root): main_data\eeg\ERP\from 15.10\ (new results; created automatically).
+#   Montage file: the copy in analyses_original (same file the TFR scripts use;
+#   the old CDmem\analyses\ path may no longer exist).
+#   To use summaries from a new run of 3_ERP_calculation.py instead, set
+#   _in_root = _out_root.
 # Paths
 # ──────────────────────────────────────────────────────────────
 # Both dataset folders - the script loops over each automatically
@@ -75,15 +80,16 @@ ROI = 'Wen'
 # (= the old analysis) and with the pre-STIMULUS baseline (new robustness
 # check, see 3_ERP_calculation.py). Comment out lines you do not want to run.
 # The output folders end with the ROI name (e.g. eeg5_ERP_premove_MF).
-_root = r"H:\PHD\control_detection\main_data\eeg\ERP\from 15.10"
+_in_root  = r"H:\PHD\control_detection\main_data\eeg\archive\from_15.10"   # input: existing ERP summaries (read only)
+_out_root = r"H:\PHD\control_detection\main_data\eeg\ERP\from 15.10"        # output: new statistics folders
 datasets = [
-    (_root + r"\eeg4_ERPSummaries_premove",             _root + rf"\eeg5_ERP_premove_{ROI}",
+    (_in_root + r"\eeg4_ERPSummaries_premove",             _out_root + rf"\eeg5_ERP_premove_{ROI}",
      "All Items - pre-movement baseline"),
-    (_root + r"\eeg4_ERPSummaries_premove_onlycorrect", _root + rf"\eeg5_ERP_premove_onlycorrect_{ROI}",
+    (_in_root + r"\eeg4_ERPSummaries_premove_onlycorrect", _out_root + rf"\eeg5_ERP_premove_onlycorrect_{ROI}",
      "Only Correct - pre-movement baseline"),
-    (_root + r"\eeg4_ERPSummaries_prestim",             _root + rf"\eeg5_ERP_prestim_{ROI}",
+    (_in_root + r"\eeg4_ERPSummaries_prestim",             _out_root + rf"\eeg5_ERP_prestim_{ROI}",
      "All Items - pre-stimulus baseline"),
-    (_root + r"\eeg4_ERPSummaries_prestim_onlycorrect", _root + rf"\eeg5_ERP_prestim_onlycorrect_{ROI}",
+    (_in_root + r"\eeg4_ERPSummaries_prestim_onlycorrect", _out_root + rf"\eeg5_ERP_prestim_onlycorrect_{ROI}",
      "Only Correct - pre-stimulus baseline"),
 ]
 
@@ -205,7 +211,7 @@ for dfolder, save_to, dataset_label in datasets:
 
 
     plot_time = [-0.3, 1.2]    # Full time window for the line graphs (matches 4_ERP_graphs.py)
-    test_time = [0.0, 1.0]     # Time window restricted for the permutation test
+    test_time = [0.3, 0.7]     # Time window restricted for the permutation test, as in preregistraiton
 
     # Get shared time axis from first loaded participant
     t_axis_full = None
