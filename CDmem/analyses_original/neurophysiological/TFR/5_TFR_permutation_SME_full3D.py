@@ -26,6 +26,10 @@ PURPOSE:
       D. Simple Effects of Memory within Low and High Control (ControlledOnly)
       E. Interaction: Memory x Control (ControlledOnly)
 
+    NEW (21.10) - output generated on EVERY run (see section 3b):
+      0. For every tested contrast: topoplots of its two conditions, averaged
+         over 2-30 Hz and the whole tested time window (descriptive, no stars)
+
     Outputs (generated IF AND ONLY IF a cluster is significant, p < 0.05):
       1. Condition Topoplot: Condition 1 (participating cluster electrodes starred)
       2. Condition Topoplot: Condition 2 (participating cluster electrodes starred)
@@ -48,9 +52,9 @@ from scipy.stats import t as t_dist
 # ══════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════
-input_path   = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg4_TFR_movelocked_SME"
+input_path   = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg4_TFR_stimlocked"
 eeg_path     = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg3_clean_stimlocked"
-figures_path = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg5_figures_movelocked_SME_full3D"
+figures_path = r"H:\PHD\control_detection\main_data\eeg\TFR\eeg5_figures_stimlocked_SME_full3D"
 os.makedirs(figures_path, exist_ok=True)
 
 plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47})
@@ -102,8 +106,8 @@ TAIL = 0           # two-sided t-test
 SEED = 2025
 CLUSTER_ALPHA = 0.05
 
-# TEST_TIME = (0.0, 3.0)
-TEST_TIME = (0.0, 2.0) # for movement-locked variation
+TEST_TIME = (0.0, 3.0)
+# TEST_TIME = (0.0, 2.0) # for movement-locked variation
 
 TEST_FREQ = (2.0, 30.0)   # full calculated range
 PLOT_FREQ = (2.0, 30.0)
@@ -366,6 +370,54 @@ if len(valid_subs_4cell_ctrl) >= 2:
         'cond2_ga': np.nanmean(h_diff_c, axis=0),
         'diff_ga':  np.nanmean(inter_c, axis=0)
     }
+
+# ══════════════════════════════════════════════════════════════════
+# 3b. NEW (21.10): CONDITION TOPOPLOTS OVER THE WHOLE TESTED WINDOW
+# ══════════════════════════════════════════════════════════════════
+# Why: the cluster figures in section 5 are only drawn when a cluster is
+# significant. When the tests are null (as so far), the folder contained only
+# the report and no picture of the data at all. These maps are drawn on EVERY
+# run, whatever the statistics say, so the result can always be shown.
+#
+# What: for every contrast that is tested below, the grand average of its two
+# conditions (e.g. Recalled and Not_Recalled), averaged over ALL frequencies
+# (2-30 Hz = PLOT_FREQ) and over the WHOLE tested time window (the time points
+# kept by TEST_TIME), one value per channel. N = participants in that contrast.
+#   - For the interaction contrasts the two "conditions" are the memory
+#     effects (Recalled - Not_Recalled) in Low and in High Control, exactly as
+#     in the cluster figures of this script.
+#   - Purely descriptive: not a statistical test, nothing marked significant.
+#     No electrodes are starred, because the whole scalp was tested (no ROI).
+#   - Same colour map, head model and colour-scale rule as the cluster
+#     topoplots (symmetric, 99th percentile of both maps, minimum 0.5 dB),
+#     ONE shared scale for the two maps of a contrast.
+#   - The time range in the title is taken from the data actually used
+#     (times[0]-times[-1]).
+# Files (in figures_path):
+#   00_TFR_topo_window_<contrast>_<condition>.png
+print("\nGenerating condition topoplots over the whole tested window (2-30 Hz)...")
+win_label = (f"{freqs_plot[0]:.0f}-{freqs_plot[-1]:.0f} Hz, "
+             f"{times[0]:.2f}-{times[-1]:.2f} s")
+for comp_name_w, c_w in contrast_conditions_all.items():
+    n_w = contrasts_3d[comp_name_w].shape[0]                 # participants in this contrast
+    topo_c1_w = np.nanmean(c_w['cond1_ga'], axis=(1, 2))     # (65,) mean over freqs and times
+    topo_c2_w = np.nanmean(c_w['cond2_ga'], axis=(1, 2))
+    v_win = max(0.5, float(np.nanpercentile(np.abs(np.concatenate([topo_c1_w, topo_c2_w])), 99)))
+    v_win = round(v_win, 2)
+    for topo_w, cond_name_w in [(topo_c1_w, c_w['cond1_name']), (topo_c2_w, c_w['cond2_name'])]:
+        fig_w, ax_w = plt.subplots(figsize=(6, 6))
+        im_w, _ = mne.viz.plot_topomap(topo_w, info, axes=ax_w,
+                                       cmap='RdBu_r', sphere='eeglab', vlim=(-v_win, v_win), show=False)
+        cb_w = plt.colorbar(im_w, ax=ax_w, orientation='horizontal', pad=0.08, shrink=0.7)
+        cb_w.set_label('Power (dB)', fontname='Times New Roman', fontsize=12)
+        ax_w.set_title(f"{comp_name_w.replace('_', ' ')}\n{cond_name_w.replace('_', ' ')}, N = {n_w}\n"
+                       f"Whole tested window: {win_label}",
+                       fontsize=12, fontname='Times New Roman', pad=12)
+        plt.tight_layout()
+        fname_w = f"00_TFR_topo_window_{comp_name_w}_{cond_name_w.lower()}.png"
+        fig_w.savefig(os.path.join(figures_path, fname_w), dpi=300)
+        plt.close(fig_w)
+        print(f"  [OK] Saved: {fname_w}")
 
 # ══════════════════════════════════════════════════════════════════
 # 4. CONSTRUCT 3D ADJACENCY MATRIX & SPATIAL PRUNING STAT FUN

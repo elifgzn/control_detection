@@ -18,6 +18,10 @@ PURPOSE:
     trial counts stored in each file) are included; included / skipped
     participant numbers are printed and written to the report.
 
+    NEW (21.10) - output generated on EVERY run (see section 3b):
+      0. Condition topoplots of High Control and Low Control, averaged over
+         2-30 Hz and the whole tested time window (descriptive, no stars)
+
     Outputs (generated IF AND ONLY IF a cluster is significant, p < 0.05):
       1. Condition Topoplot: High Control (participating cluster electrodes starred)
       2. Condition Topoplot: Low Control (participating cluster electrodes starred)
@@ -219,6 +223,55 @@ df = n_subs - 1
 t_threshold = t_dist.ppf(1 - CLUSTER_ALPHA / 2, df)
 print(f"  3D Data shape: {n_subs} subjects x {n_chs} channels x {n_freqs} frequencies x {n_times} time points")
 print(f"  Cluster threshold t = +/-{t_threshold:.3f} (df={df}, alpha={CLUSTER_ALPHA})")
+
+# ══════════════════════════════════════════════════════════════════
+# 3b. NEW (21.10): CONDITION TOPOPLOTS OVER THE WHOLE TESTED WINDOW
+# ══════════════════════════════════════════════════════════════════
+# Why: the cluster figures in section 7 are only drawn when a cluster is
+# significant. When the test is null (as so far), the folder contained only the
+# report and no picture of the data at all. These two maps are drawn on EVERY
+# run, whatever the statistics say, so the result can always be shown.
+#
+# What: grand-average power (dB) of High Control and of Low Control, averaged
+# over ALL frequencies (2-30 Hz = PLOT_FREQ) and over the WHOLE tested time
+# window (the time points kept by TEST_TIME), one value per channel.
+#   - Purely descriptive: this is not a statistical test, and nothing is
+#     marked significant. No electrodes are starred, because the whole scalp
+#     was tested (no ROI).
+#   - Same colour map, head model and colour-scale rule as the cluster
+#     topoplots below (symmetric, 99th percentile of both maps, minimum 0.5 dB),
+#     and ONE shared scale for both maps so they can be compared directly.
+#   - The time range in the title is taken from the data actually used
+#     (times[0]-times[-1]), so it is correct even if TEST_TIME is longer than
+#     the data (e.g. movement-locked data end at 2 s).
+#   - Placed here, BEFORE the candidate-cluster check in section 5, because
+#     that check ends the script early (sys.exit) when there are no candidate
+#     clusters; the maps must also be made in that case.
+# Files (in figures_path):
+#   00_TFR_topo_window_Main_Effect_Control_high_control.png
+#   00_TFR_topo_window_Main_Effect_Control_low_control.png
+print("\nGenerating condition topoplots over the whole tested window (2-30 Hz)...")
+win_label = (f"{freqs_plot[0]:.0f}-{freqs_plot[-1]:.0f} Hz, "
+             f"{times[0]:.2f}-{times[-1]:.2f} s")
+topo_win = {
+    'high_control': np.nanmean(ga_high_all, axis=(1, 2)),   # (65,) mean over freqs and times
+    'low_control':  np.nanmean(ga_low_all,  axis=(1, 2)),
+}
+v_win = max(0.5, float(np.nanpercentile(np.abs(np.concatenate(list(topo_win.values()))), 99)))
+v_win = round(v_win, 2)
+for cond_key, cond_title in [('high_control', 'High Control'), ('low_control', 'Low Control')]:
+    fig_w, ax_w = plt.subplots(figsize=(6, 6))
+    im_w, _ = mne.viz.plot_topomap(topo_win[cond_key], info, axes=ax_w,
+                                   cmap='RdBu_r', sphere='eeglab', vlim=(-v_win, v_win), show=False)
+    cb_w = plt.colorbar(im_w, ax=ax_w, orientation='horizontal', pad=0.08, shrink=0.7)
+    cb_w.set_label('Power (dB)', fontname='Times New Roman', fontsize=12)
+    ax_w.set_title(f"{cond_title}, N = {n_subs}\nWhole tested window: {win_label}",
+                   fontsize=12, fontname='Times New Roman', pad=12)
+    plt.tight_layout()
+    fname_w = f"00_TFR_topo_window_Main_Effect_Control_{cond_key}.png"
+    fig_w.savefig(os.path.join(figures_path, fname_w), dpi=300)
+    plt.close(fig_w)
+    print(f"  [OK] Saved: {fname_w}")
 
 # ══════════════════════════════════════════════════════════════════
 # 4. CONSTRUCT 3D ADJACENCY MATRIX & SPATIAL PRUNING STAT FUN

@@ -61,7 +61,12 @@ plist = sorted(set(range(1, 51)) - {1, 5, 28, 2, 3, 11, 24, 26, 43, 45, 46, 47, 
 #   'MF'  = Fz, FCz, FC1, FC2   (following Giersiepen et al., 2024, 2025) - used so far
 #   'Wen' = FCz, Cz, CPz, Pz    (Wen et al., 2017)
 #   'PO'  = all channels starting with P or O (parieto-occipital)
-ROI = 'PO'
+ROI = 'Wen'
+# NEW (21.10): suffix added to every output folder name, so runs with a
+# different test window do not overwrite earlier results.
+# ''            = normal folder names (preregistered window, 0.3-0.7 s)
+# '_longertest' = run with the wider test window (test_time further below)
+OUT_SUFFIX = '_longertest'
 
 # ──────────────────────────────────────────────────────────────
 # PATHS UPDATED (20.10): data folders moved.
@@ -79,17 +84,18 @@ ROI = 'PO'
 # (all trials / only correct) now exists with the pre-MOVEMENT baseline
 # (= the old analysis) and with the pre-STIMULUS baseline (new robustness
 # check, see 3_ERP_calculation.py). Comment out lines you do not want to run.
-# The output folders end with the ROI name (e.g. eeg5_ERP_premove_MF).
+# The output folders end with the ROI name (e.g. eeg5_ERP_premove_MF), followed by
+# OUT_SUFFIX if one is set (e.g. eeg5_ERP_premove_MF_longertest).
 _in_root  = r"H:\PHD\control_detection\main_data\eeg\archive\from_15.10"   # input: existing ERP summaries (read only)
 _out_root = r"H:\PHD\control_detection\main_data\eeg\ERP\from 15.10"        # output: new statistics folders
 datasets = [
-    (_in_root + r"\eeg4_ERPSummaries_premove",             _out_root + rf"\eeg5_ERP_premove_{ROI}",
+    (_in_root + r"\eeg4_ERPSummaries_premove",             _out_root + rf"\eeg5_ERP_premove_{ROI}{OUT_SUFFIX}",
      "All Items - pre-movement baseline"),
-    (_in_root + r"\eeg4_ERPSummaries_premove_onlycorrect", _out_root + rf"\eeg5_ERP_premove_onlycorrect_{ROI}",
+    (_in_root + r"\eeg4_ERPSummaries_premove_onlycorrect", _out_root + rf"\eeg5_ERP_premove_onlycorrect_{ROI}{OUT_SUFFIX}",
      "Only Correct - pre-movement baseline"),
-    (_in_root + r"\eeg4_ERPSummaries_prestim",             _out_root + rf"\eeg5_ERP_prestim_{ROI}",
+    (_in_root + r"\eeg4_ERPSummaries_prestim",             _out_root + rf"\eeg5_ERP_prestim_{ROI}{OUT_SUFFIX}",
      "All Items - pre-stimulus baseline"),
-    (_in_root + r"\eeg4_ERPSummaries_prestim_onlycorrect", _out_root + rf"\eeg5_ERP_prestim_onlycorrect_{ROI}",
+    (_in_root + r"\eeg4_ERPSummaries_prestim_onlycorrect", _out_root + rf"\eeg5_ERP_prestim_onlycorrect_{ROI}{OUT_SUFFIX}",
      "Only Correct - pre-stimulus baseline"),
 ]
 
@@ -211,7 +217,8 @@ for dfolder, save_to, dataset_label in datasets:
 
 
     plot_time = [-0.3, 1.2]    # Full time window for the line graphs (matches 4_ERP_graphs.py)
-    test_time = [0.3, 0.7]     # Time window restricted for the permutation test, as in preregistraiton
+    # test_time = [0.3, 0.7]     # Time window restricted for the permutation test, as in preregistraiton
+    test_time = [0.0, 1.0]     # Time window restricted for the permutation test, as in preregistraiton
 
     # Get shared time axis from first loaded participant
     t_axis_full = None
@@ -576,6 +583,44 @@ for dfolder, save_to, dataset_label in datasets:
             trials_B=[trial_counts.get(p, {}).get('low_control', 0) for p in subs_test1]
         )
         report_lines.append(rpt_text)
+
+        # ── NEW (21.10): topoplots of the main effect of condition over the TESTED window ──
+        # Always drawn (not only for significant clusters): grand average of High and
+        # Low control, averaged over the whole permutation-test window (test_time),
+        # all channels, with the tested ROI electrodes (elec_include) marked by stars.
+        # Same participants (subs_test1), colour scale (topo_vlim, +/-1.5 µV), colour
+        # map and marker style as the cluster topoplots. Files (.png + .svg) in save_to:
+        #   01_permut_main_effect_condition_topo_window_High_Control
+        #   01_permut_main_effect_condition_topo_window_Low_Control
+        print(f"\n  Generating main-effect topoplots for the tested window "
+              f"({test_time[0]*1000:.0f}-{test_time[1]*1000:.0f} ms, ROI {ROI})...")
+        GA1_A = mne.grand_average(evs1_A)
+        GA1_B = mne.grand_average(evs1_B)
+        for GA, label in zip([GA1_A, GA1_B], ['High Control', 'Low Control']):
+            ev_topo = GA.copy().crop(tmin=test_time[0], tmax=test_time[1])
+            topo_data = ev_topo.data.mean(axis=1)          # mean over the tested window, per channel (V)
+
+            fig_t, ax_t = plt.subplots(figsize=(topo_fig_in, topo_fig_in))
+            h_mask = make_highlight_mask(ev_topo, elec_include)
+            mne.viz.plot_topomap(
+                topo_data, ev_topo.info,
+                axes=ax_t, cmap=topo_cmap,
+                vlim=(topo_vlim[0] * 1e-6, topo_vlim[1] * 1e-6),
+                mask=h_mask, mask_params=mask_params,
+                show=False, contours=6
+            )
+            ax_t.set_title(f"{label}, N = {len(subs_test1)}\n"
+                           f"({test_time[0]*1000:.0f} - {test_time[1]*1000:.0f} ms, * = ROI {ROI})",
+                           fontsize=12)
+            fig_t.patch.set_facecolor('white')
+            fig_t.tight_layout()
+
+            topo_name = f"01_permut_main_effect_condition_topo_window_{label.replace(' ', '_')}"
+            fig_t.savefig(os.path.join(save_to, f"{topo_name}.png"), format='png', dpi=600,
+                          bbox_inches='tight', facecolor='white')
+            fig_t.savefig(os.path.join(save_to, f"{topo_name}.svg"), format='svg',
+                          bbox_inches='tight', facecolor='white')
+            print(f"    Saved: {topo_name} (.png + .svg)")
 
     # ──────────────────────────────────────────────────────────────
     # EXPLORATORY: Split by Starting Condition (High-start vs Low-start)
